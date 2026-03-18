@@ -1,0 +1,44 @@
+# ------------------------------
+# LessAI (.gitignore)
+# ------------------------------
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+.vite/
+*.tsbuildinfo
+
+# Tauri / Rust build artifacts
+src-tauri/target/
+src-tauri/.tauri/
+
+# Env / local config
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE / editors
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# AI / agent tooling (local only)
+.claude/
+.codex/
