@@ -64,6 +64,30 @@
 
 ---
 
+## 全平台打包（GitHub Actions）
+
+仓库内已提供 GitHub Actions 工作流：`Tauri Bundles`（`.github/workflows/tauri-bundles.yml`）。
+
+触发方式二选一：
+
+1. **手动触发**：GitHub → Actions → `Tauri Bundles` → Run workflow
+2. **打 Tag 触发**：创建并推送 `v*` tag（例如 `v0.1.0`），会自动开始三平台打包（Windows / macOS / Linux）
+   - 同时会自动创建对应的 **GitHub Release**，并把各平台安装包作为 Release Assets 上传
+
+Tag 触发示例：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+打包完成后：
+
+- 产物会在对应 workflow run 的 **Artifacts** 中可下载
+- 同时也会出现在 GitHub 的 **Releases** 页面（建议优先从 Release 下载）
+
+---
+
 ## 数据存储位置
 
 LessAI 的设置与文档会话不保存在仓库中，运行时会落到系统应用数据目录（Tauri `app_data_dir`）。
