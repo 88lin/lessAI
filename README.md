@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="160" alt="LessAI Logo" />
+</p>
+
 # LessAI
 
 LessAI 是一个基于 **Tauri 2 + React + Vite** 的桌面改写工作台：
@@ -9,6 +13,18 @@ LessAI 是一个基于 **Tauri 2 + React + Vite** 的桌面改写工作台：
 - 修改对：按顺序保留（可应用 / 忽略 / 删除），支持断点续跑
 - 视图：修改前 / 修改后 / 含修订标记
 - Finalize：把已应用结果写回原文件，并清空该文档全部记录
+
+## Logo 与图标
+
+- Logo 源文件：`src-tauri/icons/lessai-logo.svg`
+- 重新生成全平台图标（会覆盖 `src-tauri/icons/icon.*` 等文件）：
+
+```bash
+pnpm run icons:generate
+```
+
+- 打包使用的图标配置：`src-tauri/tauri.conf.json` → `bundle.icon`
+- GitHub Actions 打包流程会在构建前自动执行一次 `pnpm run icons:generate`，确保 Release 安装包使用最新 Logo。
 
 ## 开发运行
 
@@ -23,9 +39,6 @@ Windows 也可以直接双击：
 - `start-lessai.bat`
 
 建议先用仓库自带的 `test.txt` 走一遍完整流程。
-
-Windows 常见报错（如 `EACCES ... node_modules\\.ignored_*`、`tauri` 缺失、`'sh' 不是内部或外部命令`）：
-- 见 `docs/windows-troubleshooting.md`
 
 ## 打包与发布
 
