@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { LoaderCircle } from "lucide-react";
 

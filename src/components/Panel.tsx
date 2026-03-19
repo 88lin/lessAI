@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import type { PanelProps } from "../lib/constants";
 
 export const Panel = memo(function Panel({

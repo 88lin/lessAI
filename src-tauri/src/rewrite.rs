@@ -121,7 +121,7 @@ pub fn detect_line_ending(text: &str) -> LineEnding {
     }
 }
 
-pub fn normalize_line_endings_to_lf(text: &str) -> String {
+fn normalize_line_endings_to_lf(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 

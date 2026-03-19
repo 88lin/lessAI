@@ -72,15 +72,6 @@ export function countCharacters(text: string) {
   return text.replace(/\s+/g, "").length;
 }
 
-export function countParagraphs(text: string) {
-  const normalized = text.trim();
-  if (!normalized) {
-    return 0;
-  }
-
-  return normalized.split(/\n\s*\n/g).filter(Boolean).length;
-}
-
 // ── 日期格式化（缓存 Intl.DateTimeFormat 实例） ──────────
 
 const zhDateFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -203,14 +194,6 @@ export function getLatestSuggestion(session: DocumentSession) {
   );
 }
 
-export function getChunkEffectiveText(
-  chunk: ChunkTask,
-  chunkSuggestions: ReadonlyArray<EditSuggestion>
-) {
-  const summary = summarizeChunkSuggestions(chunkSuggestions);
-  return summary.applied?.afterText ?? chunk.sourceText;
-}
-
 export function formatChunkStatus(
   chunk: ChunkTask,
   chunkSuggestions: ReadonlyArray<EditSuggestion>
@@ -284,7 +267,7 @@ export function getSessionStats(session: DocumentSession): SessionStats {
   let chunksTouched = 0;
   let chunksApplied = 0;
   let chunksProposed = 0;
-  for (const [chunkIndex, list] of suggestionsByChunk.entries()) {
+  for (const list of suggestionsByChunk.values()) {
     if (list.length === 0) continue;
     chunksTouched += 1;
     const summary = summarizeChunkSuggestions(list);
@@ -314,7 +297,7 @@ export function getSessionStats(session: DocumentSession): SessionStats {
 
 // ── Chunk 查询 ───────────────────────────────────────────
 
-export function firstChunkIndexBy(
+function firstChunkIndexBy(
   session: DocumentSession,
   predicate: (chunk: ChunkTask) => boolean
 ) {
@@ -382,21 +365,6 @@ export function formatDisplayPath(path: string) {
 export function sanitizeFileName(name: string) {
   const cleaned = name.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
   return cleaned.length > 0 ? cleaned : "lessai-result";
-}
-
-// ── Chunk 色调样式（消除 3 处重复） ─────────────────────
-
-export function getChunkToneClass(
-  chunk: ChunkTask,
-  chunkSuggestions: ReadonlyArray<EditSuggestion>
-): string {
-  if (chunk.status === "failed") return "is-failed";
-
-  const summary = summarizeChunkSuggestions(chunkSuggestions);
-  if (summary.applied) return "is-approved";
-  if (summary.proposed) return "is-pending";
-  if (chunk.status === "done" && summary.total > 0) return "is-rejected";
-  return "is-idle";
 }
 
 // ── Chunk 状态对应 StatusBadge 色调 ──────────────────────

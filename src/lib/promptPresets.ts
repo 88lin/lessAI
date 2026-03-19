@@ -24,14 +24,9 @@ export const PROMPT_PRESETS: ReadonlyArray<PromptPresetDefinition> = [
   }
 ] as const;
 
-export function getPromptPresetDefinition(id: PromptPresetId) {
-  return PROMPT_PRESETS.find((item) => item.id === id) ?? PROMPT_PRESETS[0];
-}
-
 export function makePromptPreview(content: string, maxChars = 320) {
   const normalized = content.trim().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const compact = normalized.replace(/\n{3,}/g, "\n\n");
   if (compact.length <= maxChars) return compact;
   return `${compact.slice(0, maxChars)}…`;
 }
-
