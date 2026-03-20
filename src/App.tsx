@@ -524,6 +524,19 @@ export default function App() {
 
   const handleCheckUpdate = useCallback(async () => {
     try {
+      if (import.meta.env.DEV) {
+        showNotice(
+          "warning",
+          [
+            "你正在通过开发模式启动（start-lessai.bat / tauri dev）。",
+            "应用内更新只对“已安装的 Release 版本”生效，不会覆盖当前源码运行实例。",
+            "想升级源码：请 git 拉取最新 tag/分支后重新运行；想升级安装版：请从开始菜单启动已安装的 LessAI 再检查更新。"
+          ].join("\n"),
+          { autoDismissMs: 12_000 }
+        );
+        return;
+      }
+
       const currentVersion = await getVersion();
       const bundleType = await getBundleType();
 

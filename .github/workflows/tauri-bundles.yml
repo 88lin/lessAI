@@ -2,6 +2,15 @@ name: Tauri Bundles
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (tag/branch/sha). Leave empty to use the workflow ref."
+        required: false
+        default: ""
+      release_tag:
+        description: "Upload artifacts to this release tag (e.g. v0.1.8). Leave empty to skip release."
+        required: false
+        default: ""
   push:
     tags:
       - "v*"
@@ -20,6 +29,70 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve build ref & release version
+        shell: bash
+        env:
+          INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
+          INPUT_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
+        run: |
+          set -euo pipefail
+
+          # workflow_dispatch 默认会 checkout 到触发 workflow 的分支。
+          # 但如果你填了 release_tag / ref，我们需要切到对应 ref 才能保证“tag 对应的代码”和“打包产物版本”一致。
+          build_ref=""
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ -n "${INPUT_REF}" ]]; then
+              build_ref="${INPUT_REF}"
+            elif [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+              build_ref="${INPUT_RELEASE_TAG}"
+            fi
+          fi
+
+          if [[ -n "${build_ref}" ]]; then
+            echo "[INFO] Checking out build ref: ${build_ref}"
+            if ! git checkout --force "${build_ref}"; then
+              if [[ "${build_ref}" != v* ]]; then
+                echo "[WARN] Failed to checkout '${build_ref}', retrying as 'v${build_ref}'."
+                git checkout --force "v${build_ref}"
+                build_ref="v${build_ref}"
+              else
+                echo "[ERROR] Failed to checkout build ref: ${build_ref}" >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          # 仅在“tag push”或“手动指定 release_tag”时认为是 release 构建。
+          release_tag=""
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            release_tag="${GITHUB_REF_NAME}"
+          fi
+
+          normalized_tag=""
+          version=""
+          if [[ -n "${release_tag}" ]]; then
+            normalized_tag="${release_tag}"
+            if [[ "${normalized_tag}" != v* ]]; then
+              normalized_tag="v${normalized_tag}"
+            fi
+            version="${normalized_tag#v}"
+          fi
+
+          echo "RELEASE_TAG=${normalized_tag}" >> "${GITHUB_ENV}"
+          echo "RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
+
+          if [[ -n "${version}" ]]; then
+            echo "{ \"version\": \"${version}\" }" > src-tauri/tauri.release.conf.json
+            echo "[INFO] Release tag: ${normalized_tag}"
+            echo "[INFO] Release version: ${version}"
+          else
+            echo "[INFO] Not a release build (no tag detected / no release_tag input)."
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -77,7 +150,7 @@ jobs:
         run: pnpm run icons:generate
 
       - name: Validate updater signing keys (tag release)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && env.TAURI_SIGNING_PRIVATE_KEY == '' }}
+        if: ${{ env.RELEASE_VERSION != '' && env.TAURI_SIGNING_PRIVATE_KEY == '' }}
         shell: bash
         run: |
           echo "[ERROR] Missing updater signing key secrets." >&2
@@ -90,15 +163,27 @@ jobs:
 
       - name: Build bundles (with updater artifacts)
         if: ${{ env.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        shell: bash
         env:
           RUST_BACKTRACE: "1"
-        run: pnpm exec tauri build -c src-tauri/tauri.updater.conf.json
+        run: |
+          args=(-c src-tauri/tauri.updater.conf.json)
+          if [ -f src-tauri/tauri.release.conf.json ]; then
+            args+=(-c src-tauri/tauri.release.conf.json)
+          fi
+          pnpm exec tauri build "${args[@]}"
 
       - name: Build bundles (without updater artifacts)
         if: ${{ env.TAURI_SIGNING_PRIVATE_KEY == '' }}
+        shell: bash
         env:
           RUST_BACKTRACE: "1"
-        run: pnpm exec tauri build
+        run: |
+          args=()
+          if [ -f src-tauri/tauri.release.conf.json ]; then
+            args+=(-c src-tauri/tauri.release.conf.json)
+          fi
+          pnpm exec tauri build "${args[@]}"
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
@@ -109,13 +194,34 @@ jobs:
 
   release:
     name: Release (GitHub)
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') }}
     needs: bundle
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      - name: Resolve release tag
+        shell: bash
+        env:
+          INPUT_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
+        run: |
+          set -euo pipefail
+
+          tag="${INPUT_RELEASE_TAG}"
+          if [[ -z "${tag}" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ "${tag}" != v* ]]; then
+            tag="v${tag}"
+          fi
+
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "RELEASE_VERSION=${tag#v}" >> "${GITHUB_ENV}"
+
+          echo "[INFO] Release tag resolved to: ${tag}"
+          echo "[INFO] Release version: ${tag#v}"
+
       - name: Download bundles
         uses: actions/download-artifact@v4
         with:
@@ -160,8 +266,8 @@ jobs:
           fi
 
           # ── Generate updater manifest (latest.json) ───────────────────────────
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#v}"
+          tag="${RELEASE_TAG}"
+          version="${RELEASE_VERSION}"
           repo="${GITHUB_REPOSITORY}"
 
           win_exe="$(ls release-assets/bundles-windows-latest__*.exe 2>/dev/null | head -n 1 || true)"
@@ -204,6 +310,14 @@ jobs:
           win_msi_asset="$(basename "$win_msi")"
           linux_asset="$(basename "$linux_appimage")"
           mac_asset="$(basename "$mac_app_tar")"
+
+          for asset in "$win_asset" "$linux_asset" "$mac_asset"; do
+            if [[ "$asset" != *"${version}"* ]]; then
+              echo "[ERROR] Bundle filename does not include version '${version}': ${asset}" >&2
+              echo "[HINT] This usually means the build did not inject the tag version into tauri config." >&2
+              exit 1
+            fi
+          done
 
           mac_arch="aarch64"
           mac_asset_lower="$(printf '%s' "$mac_asset" | tr '[:upper:]' '[:lower:]')"
@@ -267,8 +381,22 @@ jobs:
           echo "[INFO] Release assets:"
           ls -la release-assets
 
+      - name: Delete stable assets (rerun-safe)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # 允许重跑同一个 tag：先删除固定文件名的资产，避免 422 already exists。
+          # 如果 release 还不存在，忽略错误即可。
+          for asset in latest.json checksums.sha256; do
+            gh release delete-asset "${RELEASE_TAG}" "${asset}" -y || true
+          done
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: release-assets/*
           generate_release_notes: true
