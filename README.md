@@ -248,6 +248,10 @@ git push origin v0.1.0
 - `prompt/`：Prompt 模板
 - `.github/workflows/`：CI 与 Release 流程
 
+## 🙏 致谢
+
+- 感谢 **[linuxdo（linux.do）](https://linux.do/)** 社区的交流、分享与反馈，让 LessAI 的迭代更高效。
+
 ## 📄 License
 
 MIT（见 `LICENSE`）。
