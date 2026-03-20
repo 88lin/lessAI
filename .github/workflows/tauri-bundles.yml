@@ -185,6 +185,30 @@ jobs:
           fi
           pnpm exec tauri build "${args[@]}"
 
+      - name: Write bundle metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          arch_raw="$(uname -m || true)"
+          arch="${arch_raw}"
+          case "${arch_raw}" in
+            x86_64|amd64) arch="x86_64" ;;
+            arm64|aarch64) arch="aarch64" ;;
+          esac
+
+          mkdir -p src-tauri/target/release/bundle
+          cat > src-tauri/target/release/bundle/ci-meta.json <<EOF
+          {
+            "os": "${{ matrix.os }}",
+            "arch": "${arch}",
+            "release_tag": "${RELEASE_TAG:-}",
+            "release_version": "${RELEASE_VERSION:-}"
+          }
+          EOF
+          echo "[INFO] Bundle meta written:"
+          cat src-tauri/target/release/bundle/ci-meta.json
+
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
@@ -270,10 +294,26 @@ jobs:
           version="${RELEASE_VERSION}"
           repo="${GITHUB_REPOSITORY}"
 
-          win_exe="$(ls release-assets/bundles-windows-latest__*.exe 2>/dev/null | head -n 1 || true)"
-          win_msi="$(ls release-assets/bundles-windows-latest__*.msi 2>/dev/null | head -n 1 || true)"
-          linux_appimage="$(ls release-assets/bundles-ubuntu-latest__*.AppImage 2>/dev/null | head -n 1 || true)"
-          mac_app_tar="$(ls release-assets/bundles-macos-latest__*.app.tar.gz 2>/dev/null | head -n 1 || true)"
+          # Prefer filenames that include the expected version if available.
+          win_exe="$(ls release-assets/bundles-windows-latest__*${version}*.exe 2>/dev/null | head -n 1 || true)"
+          if [ -z "$win_exe" ]; then
+            win_exe="$(ls release-assets/bundles-windows-latest__*.exe 2>/dev/null | head -n 1 || true)"
+          fi
+
+          win_msi="$(ls release-assets/bundles-windows-latest__*${version}*.msi 2>/dev/null | head -n 1 || true)"
+          if [ -z "$win_msi" ]; then
+            win_msi="$(ls release-assets/bundles-windows-latest__*.msi 2>/dev/null | head -n 1 || true)"
+          fi
+
+          linux_appimage="$(ls release-assets/bundles-ubuntu-latest__*${version}*.AppImage 2>/dev/null | head -n 1 || true)"
+          if [ -z "$linux_appimage" ]; then
+            linux_appimage="$(ls release-assets/bundles-ubuntu-latest__*.AppImage 2>/dev/null | head -n 1 || true)"
+          fi
+
+          mac_app_tar="$(ls release-assets/bundles-macos-latest__*${version}*.app.tar.gz 2>/dev/null | head -n 1 || true)"
+          if [ -z "$mac_app_tar" ]; then
+            mac_app_tar="$(ls release-assets/bundles-macos-latest__*.app.tar.gz 2>/dev/null | head -n 1 || true)"
+          fi
 
           if [ -z "$win_exe" ] || [ -z "$linux_appimage" ] || [ -z "$mac_app_tar" ]; then
             echo "[ERROR] Updater artifacts missing. Ensure createUpdaterArtifacts=true and signing key are configured." >&2
@@ -311,22 +351,52 @@ jobs:
           linux_asset="$(basename "$linux_appimage")"
           mac_asset="$(basename "$mac_app_tar")"
 
-          for asset in "$win_asset" "$linux_asset" "$mac_asset"; do
-            if [[ "$asset" != *"${version}"* ]]; then
-              echo "[ERROR] Bundle filename does not include version '${version}': ${asset}" >&2
+          extract_semver() {
+            local name="$1"
+            if [[ "$name" =~ ([0-9]+\\.[0-9]+\\.[0-9]+) ]]; then
+              printf '%s' "${BASH_REMATCH[1]}"
+            fi
+          }
+
+          check_asset_version() {
+            local asset="$1"
+            local label="$2"
+            local found=""
+            found="$(extract_semver "$asset" || true)"
+
+            if [[ -z "${found}" ]]; then
+              echo "[WARN] Could not detect version from ${label} asset filename: ${asset}"
+              return 0
+            fi
+            if [[ "${found}" != "${version}" ]]; then
+              echo "[ERROR] ${label} asset filename version mismatch: expected ${version}, got ${found} (${asset})" >&2
               echo "[HINT] This usually means the build did not inject the tag version into tauri config." >&2
               exit 1
             fi
-          done
+          }
 
-          mac_arch="aarch64"
-          mac_asset_lower="$(printf '%s' "$mac_asset" | tr '[:upper:]' '[:lower:]')"
-          if [[ "$mac_asset_lower" == *"x86_64"* ]] || [[ "$mac_asset_lower" == *"amd64"* ]] || [[ "$mac_asset_lower" == *"x64"* ]]; then
-            mac_arch="x86_64"
+          check_asset_version "$win_asset" "windows"
+          check_asset_version "$linux_asset" "linux"
+          check_asset_version "$mac_asset" "macos"
+
+          mac_arch=""
+          mac_meta="$(find artifacts/bundles-macos-latest -name ci-meta.json -print -quit 2>/dev/null || true)"
+          if [[ -n "${mac_meta}" ]]; then
+            mac_arch="$(python3 -c 'import json,sys; from pathlib import Path; p=Path(sys.argv[1]); data=json.loads(p.read_text(\"utf-8\")); print((data.get(\"arch\") or \"\").strip())' "${mac_meta}" 2>/dev/null || true)"
           fi
-          if [[ "$mac_asset_lower" == *"aarch64"* ]] || [[ "$mac_asset_lower" == *"arm64"* ]]; then
+
+          if [[ -z "${mac_arch}" ]]; then
             mac_arch="aarch64"
+            mac_asset_lower="$(printf '%s' "$mac_asset" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$mac_asset_lower" == *"x86_64"* ]] || [[ "$mac_asset_lower" == *"amd64"* ]] || [[ "$mac_asset_lower" == *"x64"* ]]; then
+              mac_arch="x86_64"
+            fi
+            if [[ "$mac_asset_lower" == *"aarch64"* ]] || [[ "$mac_asset_lower" == *"arm64"* ]]; then
+              mac_arch="aarch64"
+            fi
           fi
+
+          echo "[INFO] macOS arch resolved to: ${mac_arch}"
 
           pub_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -388,11 +458,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 允许重跑同一个 tag：先删除固定文件名的资产，避免 422 already exists。
+          # 允许重跑同一个 tag：先删除将要上传的同名资产，避免 422 already exists。
           # 如果 release 还不存在，忽略错误即可。
-          for asset in latest.json checksums.sha256; do
-            gh release delete-asset "${RELEASE_TAG}" "${asset}" -y || true
-          done
+          if [ -d release-assets ]; then
+            while IFS= read -r -d '' file; do
+              asset="$(basename "$file")"
+              gh release delete-asset "${RELEASE_TAG}" "${asset}" -y || true
+            done < <(find release-assets -maxdepth 1 -type f -print0)
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
