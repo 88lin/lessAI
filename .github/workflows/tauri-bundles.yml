@@ -222,8 +222,8 @@ jobs:
                 "url": "https://github.com/${repo}/releases/download/${tag}/${win_msi_asset}",
                 "signature": "${win_msi_sig}"
               },
-EOF
-)
+          EOF
+          )
           fi
 
           cat > release-assets/latest.json <<EOF
@@ -236,7 +236,7 @@ EOF
                 "url": "https://github.com/${repo}/releases/download/${tag}/${win_asset}",
                 "signature": "${win_sig}"
               },
-${win_msi_entry}
+          ${win_msi_entry}
               "windows-x86_64": {
                 "url": "https://github.com/${repo}/releases/download/${tag}/${win_asset}",
                 "signature": "${win_sig}"
