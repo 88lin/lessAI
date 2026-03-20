@@ -8,15 +8,17 @@
     "dev": "vite --host 0.0.0.0 --port 1420",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "icons:generate": "tauri icon src-tauri/icons/lessai-logo.svg",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "icons:generate": "pnpm exec tauri icon src-tauri/icons/lessai-logo.svg",
+    "tauri": "pnpm exec tauri",
+    "tauri:dev": "pnpm exec tauri dev",
+    "tauri:build": "pnpm exec tauri build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.0",
     "lucide-react": "^0.542.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

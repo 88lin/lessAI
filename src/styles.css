@@ -1482,14 +1482,16 @@ p {
 }
 
 .toast-layer {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  padding: 12px;
+  /* 预留窗口缩放热区，避免提示挡住右下角 resize handle */
+  padding: 20px;
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
   pointer-events: none;
-  z-index: 90;
+  /* 需要高于 modal-overlay（120），否则在设置弹窗里触发提示会“像没反应” */
+  z-index: 130;
 }
 
 .notice.toast {

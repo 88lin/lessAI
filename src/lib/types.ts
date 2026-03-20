@@ -16,6 +16,11 @@ export interface AppSettings {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /**
+   * 检查更新/下载更新使用的代理（可选）。
+   * 为空字符串表示直连。
+   */
+  updateProxy: string;
   timeoutMs: number;
   temperature: number;
   chunkPreset: ChunkPreset;

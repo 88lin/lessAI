@@ -73,10 +73,31 @@ jobs:
       - name: Generate app icons
         run: pnpm run icons:generate
 
-      - name: Build bundles
+      - name: Validate updater signing keys (tag release)
+        if: startsWith(github.ref, 'refs/tags/v') && (secrets.TAURI_SIGNING_PRIVATE_KEY == '')
+        shell: bash
+        run: |
+          echo "[ERROR] Missing updater signing key secrets." >&2
+          echo "[HINT] Configure repository secrets:" >&2
+          echo "  - TAURI_SIGNING_PRIVATE_KEY" >&2
+          echo "  - TAURI_SIGNING_PRIVATE_KEY_PASSWORD (optional, if your key is password-protected)" >&2
+          echo "" >&2
+          echo "[HINT] Without a stable signing key, in-app updates cannot work." >&2
+          exit 1
+
+      - name: Build bundles (with updater artifacts)
+        if: secrets.TAURI_SIGNING_PRIVATE_KEY != ''
         env:
           RUST_BACKTRACE: "1"
-        run: pnpm run tauri:build
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm exec tauri build -c src-tauri/tauri.updater.conf.json
+
+      - name: Build bundles (without updater artifacts)
+        if: secrets.TAURI_SIGNING_PRIVATE_KEY == ''
+        env:
+          RUST_BACKTRACE: "1"
+        run: pnpm exec tauri build
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
@@ -125,7 +146,8 @@ jobs:
                   -name "*.msi" -o \
                   -name "*.exe" -o \
                   -name "*.zip" -o \
-                  -name "*.tar.gz" \
+                  -name "*.tar.gz" -o \
+                  -name "*.sig" \
                 \) -print0
             )
           done
@@ -135,6 +157,109 @@ jobs:
             echo "[HINT] Check Tauri output under src-tauri/target/release/bundle on each OS." >&2
             exit 1
           fi
+
+          # ── Generate updater manifest (latest.json) ───────────────────────────
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          repo="${GITHUB_REPOSITORY}"
+
+          win_exe="$(ls release-assets/bundles-windows-latest__*.exe 2>/dev/null | head -n 1 || true)"
+          win_msi="$(ls release-assets/bundles-windows-latest__*.msi 2>/dev/null | head -n 1 || true)"
+          linux_appimage="$(ls release-assets/bundles-ubuntu-latest__*.AppImage 2>/dev/null | head -n 1 || true)"
+          mac_app_tar="$(ls release-assets/bundles-macos-latest__*.app.tar.gz 2>/dev/null | head -n 1 || true)"
+
+          if [ -z "$win_exe" ] || [ -z "$linux_appimage" ] || [ -z "$mac_app_tar" ]; then
+            echo "[ERROR] Updater artifacts missing. Ensure createUpdaterArtifacts=true and signing key are configured." >&2
+            echo "[HINT] Expected files:" >&2
+            echo "  - release-assets/bundles-windows-latest__*.exe" >&2
+            echo "  - release-assets/bundles-ubuntu-latest__*.AppImage" >&2
+            echo "  - release-assets/bundles-macos-latest__*.app.tar.gz" >&2
+            exit 1
+          fi
+
+          win_sig_file="${win_exe}.sig"
+          win_msi_sig_file="${win_msi}.sig"
+          linux_sig_file="${linux_appimage}.sig"
+          mac_sig_file="${mac_app_tar}.sig"
+
+          if [ ! -f "$win_sig_file" ] || [ ! -f "$linux_sig_file" ] || [ ! -f "$mac_sig_file" ]; then
+            echo "[ERROR] Signature files missing. Expected .sig files next to update bundles." >&2
+            echo "[HINT] Missing one of:" >&2
+            echo "  - $win_sig_file" >&2
+            echo "  - $linux_sig_file" >&2
+            echo "  - $mac_sig_file" >&2
+            exit 1
+          fi
+
+          win_sig="$(tr -d '\r\n' < "$win_sig_file")"
+          win_msi_sig=""
+          if [ -n "$win_msi" ] && [ -f "$win_msi_sig_file" ]; then
+            win_msi_sig="$(tr -d '\r\n' < "$win_msi_sig_file")"
+          fi
+          linux_sig="$(tr -d '\r\n' < "$linux_sig_file")"
+          mac_sig="$(tr -d '\r\n' < "$mac_sig_file")"
+
+          win_asset="$(basename "$win_exe")"
+          win_msi_asset="$(basename "$win_msi")"
+          linux_asset="$(basename "$linux_appimage")"
+          mac_asset="$(basename "$mac_app_tar")"
+
+          mac_arch="aarch64"
+          mac_asset_lower="$(printf '%s' "$mac_asset" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$mac_asset_lower" == *"x86_64"* ]] || [[ "$mac_asset_lower" == *"amd64"* ]] || [[ "$mac_asset_lower" == *"x64"* ]]; then
+            mac_arch="x86_64"
+          fi
+          if [[ "$mac_asset_lower" == *"aarch64"* ]] || [[ "$mac_asset_lower" == *"arm64"* ]]; then
+            mac_arch="aarch64"
+          fi
+
+          pub_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          win_msi_entry=""
+          if [ -n "$win_msi_sig" ] && [ -n "$win_msi_asset" ]; then
+            win_msi_entry=$(cat <<EOF
+              "windows-x86_64-msi": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${win_msi_asset}",
+                "signature": "${win_msi_sig}"
+              },
+EOF
+)
+          fi
+
+          cat > release-assets/latest.json <<EOF
+          {
+            "version": "${version}",
+            "notes": "",
+            "pub_date": "${pub_date}",
+            "platforms": {
+              "windows-x86_64-nsis": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${win_asset}",
+                "signature": "${win_sig}"
+              },
+${win_msi_entry}
+              "windows-x86_64": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${win_asset}",
+                "signature": "${win_sig}"
+              },
+              "linux-x86_64-appimage": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${linux_asset}",
+                "signature": "${linux_sig}"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${linux_asset}",
+                "signature": "${linux_sig}"
+              },
+              "darwin-${mac_arch}-app": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${mac_asset}",
+                "signature": "${mac_sig}"
+              },
+              "darwin-${mac_arch}": {
+                "url": "https://github.com/${repo}/releases/download/${tag}/${mac_asset}",
+                "signature": "${mac_sig}"
+              }
+            }
+          }
+          EOF
 
           (cd release-assets && sha256sum * > checksums.sha256)
 

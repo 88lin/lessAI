@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
-import { Check, Orbit, Trash2, X } from "lucide-react";
+import { ArrowUpCircle, Check, Orbit, Trash2, X } from "lucide-react";
 import type { AppSettings, PromptTemplate, ProviderCheckResult } from "../lib/types";
 import type { NoticeTone } from "../lib/constants";
 import { MODE_OPTIONS, PRESET_OPTIONS } from "../lib/constants";
@@ -30,7 +30,7 @@ interface SettingsModalProps {
   providerStatus: ProviderCheckResult | null;
   busyAction: string | null;
   onClose: () => void;
-  onUpdateStringSetting: <K extends "baseUrl" | "apiKey" | "model">(
+  onUpdateStringSetting: <K extends "baseUrl" | "apiKey" | "model" | "updateProxy">(
     key: K,
     value: string
   ) => void;
@@ -46,6 +46,7 @@ interface SettingsModalProps {
   onConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
   onTestProvider: () => void;
   onSaveSettings: () => void;
+  onCheckUpdate: () => void;
 }
 
 export const SettingsModal = memo(function SettingsModal({
@@ -63,7 +64,8 @@ export const SettingsModal = memo(function SettingsModal({
   onDeleteCustomPrompt,
   onConfirm,
   onTestProvider,
-  onSaveSettings
+  onSaveSettings,
+  onCheckUpdate
 }: SettingsModalProps) {
   const [page, setPage] = useState<SettingsPage>("provider");
   const [showPromptPreview, setShowPromptPreview] = useState(false);
@@ -282,6 +284,24 @@ export const SettingsModal = memo(function SettingsModal({
                       onUpdateNumberSetting("temperature", event.target.value)
                     }
                   />
+                </div>
+
+                <div className="field-block">
+                  <div className="field-line">
+                    <span>应用更新</span>
+                    <strong>网络</strong>
+                  </div>
+                  <label className="field">
+                    <span>更新代理（可选）</span>
+                    <input
+                      value={settings.updateProxy}
+                      onChange={(event) =>
+                        onUpdateStringSetting("updateProxy", event.target.value)
+                      }
+                      placeholder="http://127.0.0.1:7890"
+                    />
+                  </label>
+                  <span className="workspace-hint">留空则直连；仅用于检查/下载更新。</span>
                 </div>
 
                 {providerStatus ? (
@@ -539,6 +559,14 @@ export const SettingsModal = memo(function SettingsModal({
           </div>
 
           <div className="modal-footer-actions">
+            <ActionButton
+              icon={ArrowUpCircle}
+              label="检查更新"
+              busy={busyAction === "check-update"}
+              disabled={Boolean(busyAction) && busyAction !== "check-update"}
+              onClick={onCheckUpdate}
+              variant="secondary"
+            />
             {page === "provider" ? (
               <ActionButton
                 icon={Orbit}

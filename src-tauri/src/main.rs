@@ -1296,6 +1296,19 @@ fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            {
+                if let Err(error) =
+                    app.handle()
+                        .plugin(tauri_plugin_updater::Builder::new().build())
+                {
+                    eprintln!("[WARN] Updater plugin init failed: {error}");
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             load_settings,
             save_settings,

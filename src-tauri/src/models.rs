@@ -7,6 +7,8 @@ pub struct AppSettings {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default)]
+    pub update_proxy: String,
     pub timeout_ms: u64,
     pub temperature: f32,
     pub chunk_preset: ChunkPreset,
@@ -41,6 +43,7 @@ impl Default for AppSettings {
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
             model: "gpt-4.1-mini".to_string(),
+            update_proxy: String::new(),
             timeout_ms: 45_000,
             temperature: 0.8,
             chunk_preset: ChunkPreset::Sentence,

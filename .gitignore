@@ -22,6 +22,10 @@ dist/
 src-tauri/target/
 src-tauri/.tauri/
 
+# Tauri updater signing keys (never commit)
+src-tauri/updater.key
+src-tauri/updater.key.pub
+
 # Env / local config
 .env
 .env.*

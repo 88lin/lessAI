@@ -14,6 +14,12 @@ export type ReviewView = "diff" | "source" | "candidate";
 export interface NoticeState {
   tone: NoticeTone;
   message: string;
+  /**
+   * 自动关闭时间（毫秒）。
+   * - 省略：使用默认值
+   * - null/<=0：常驻，直到手动关闭或被下一条提示覆盖
+   */
+  autoDismissMs?: number | null;
 }
 
 export interface ChunkCompletedPayload {
@@ -57,6 +63,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "",
   model: "gpt-4.1-mini",
+  updateProxy: "",
   timeoutMs: 45_000,
   temperature: 0.8,
   chunkPreset: "sentence",
