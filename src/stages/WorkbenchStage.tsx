@@ -5,6 +5,7 @@ import {
   Copy,
   FileDiff,
   FileCheck2,
+  FilePenLine,
   FolderOpen,
   LoaderCircle,
   Pause,
@@ -82,6 +83,7 @@ interface WorkbenchStageProps {
   onDeleteSuggestion: (suggestionId: string) => void;
   onRetry: () => void;
   onOpenSettings: () => void;
+  onEnterEditor: () => void;
 }
 
 export const WorkbenchStage = memo(function WorkbenchStage({
@@ -108,7 +110,8 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   onDismissSuggestion,
   onDeleteSuggestion,
   onRetry,
-  onOpenSettings
+  onOpenSettings,
+  onEnterEditor
 }: WorkbenchStageProps) {
   const settingsReady = isSettingsReady(settings);
   const [documentView, setDocumentView] = useState<DocumentView>("markup");
@@ -134,6 +137,34 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   const cancelBusy = busyAction === "cancel-rewrite";
   const finalizeBusy = busyAction === "finalize-document";
   const hasAppliedEdits = Boolean(currentStats && currentStats.suggestionsApplied > 0);
+
+  const canEnterEditor = Boolean(
+    currentSession &&
+      !rewriteRunning &&
+      !rewritePaused &&
+      currentSession.status === "idle" &&
+      currentSession.suggestions.length === 0 &&
+      currentSession.chunks.every((chunk) => chunk.status === "idle") &&
+      !anyBusy
+  );
+
+  const enterEditorTitle = useMemo(() => {
+    if (!currentSession) return "请先打开一个文档";
+    if (rewriteRunning || rewritePaused) {
+      return "请先取消自动任务后再编辑终稿";
+    }
+    if (anyBusy) return "当前有操作在执行，请稍后再试";
+    if (currentSession.status !== "idle") {
+      return "当前文档状态不是空闲，暂不可编辑终稿";
+    }
+    if (currentSession.suggestions.length > 0) {
+      return "该文档存在修订记录，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑";
+    }
+    if (currentSession.chunks.some((chunk) => chunk.status !== "idle")) {
+      return "该文档存在生成进度/失败片段，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑";
+    }
+    return "编辑终稿（仅在无修订记录时开放）";
+  }, [anyBusy, currentSession, rewritePaused, rewriteRunning]);
 
   const finalizeDisabled =
     finalizeBusy ||
@@ -394,6 +425,17 @@ export const WorkbenchStage = memo(function WorkbenchStage({
                         )}
                       </button>
                     ) : null}
+
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={onEnterEditor}
+                      aria-label="编辑终稿"
+                      title={enterEditorTitle}
+                      disabled={!canEnterEditor}
+                    >
+                      <FilePenLine />
+                    </button>
 
                     <button
                       type="button"

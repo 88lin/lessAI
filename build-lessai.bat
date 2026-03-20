@@ -103,12 +103,20 @@ exit /b !ERRORLEVEL!
 :install_deps
 echo [INFO] Installing dependencies (including devDependencies)...
 echo [INFO] Command: pnpm install --prefer-frozen-lockfile --no-prod
+call :cleanup_ignored_links
 call pnpm install --prefer-frozen-lockfile --no-prod
 if errorlevel 1 (
   echo(
   echo [ERROR] Dependency installation failed.
-  call :print_install_hints
-  exit /b 1
+  echo [INFO] Trying to cleanup broken .ignored_* links and retry once...
+  call :cleanup_ignored_links
+  call pnpm install --prefer-frozen-lockfile --no-prod
+  if errorlevel 1 (
+    echo(
+    echo [ERROR] Dependency installation failed again.
+    call :print_install_hints
+    exit /b 1
+  )
 )
 
 if not exist "node_modules\\.bin\\tauri.cmd" (
@@ -129,6 +137,16 @@ if errorlevel 1 (
   exit /b !ERRORLEVEL!
 )
 
+exit /b 0
+
+:cleanup_ignored_links
+rem 有些 Windows 环境会因为 node_modules\.ignored_*（junction/symlink）损坏导致 EACCES/lstat 失败。
+rem 这里在安装前/失败后做一次轻量清理，避免用户被卡住。
+if exist "node_modules\\.ignored_*" (
+  for /d %%i in (node_modules\\.ignored_*) do (
+    rmdir /s /q "%%i" >nul 2>nul
+  )
+)
 exit /b 0
 
 :offer_repair_install

@@ -32,6 +32,7 @@ import {
   resetSession,
   resumeRewrite,
   retryChunk,
+  saveDocumentEdits,
   saveSettings,
   startRewrite,
   testProvider
@@ -65,6 +66,7 @@ import type { ConfirmModalOptions } from "./components/ConfirmModal";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { WorkbenchStage } from "./stages/WorkbenchStage";
+import { EditorStage } from "./stages/EditorStage";
 
 type ResizeDirection =
   | "East"
@@ -79,6 +81,7 @@ type ResizeDirection =
 export default function App() {
   // ── 核心状态 ─────────────────────────────────────────
 
+  const [stage, setStage] = useState<"workbench" | "editor">("workbench");
   const [booting, setBooting] = useState(true);
   const [windowMaximized, setWindowMaximized] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -91,6 +94,8 @@ export default function App() {
     useState<ProviderCheckResult | null>(null);
   const [liveProgress, setLiveProgress] = useState<RewriteProgress | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmModalOptions | null>(null);
+  const [editorBaselineText, setEditorBaselineText] = useState("");
+  const [editorText, setEditorText] = useState("");
 
   const { notice, showNotice, dismissNotice } = useNotice();
   const { busyAction, withBusy } = useBusyAction();
@@ -116,12 +121,22 @@ export default function App() {
   }, []);
 
   // 使用 ref 持有最新值，供事件回调读取，避免闭包捕获旧状态
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
   const currentSessionRef = useRef(currentSession);
   currentSessionRef.current = currentSession;
   const activeChunkIndexRef = useRef(activeChunkIndex);
   activeChunkIndexRef.current = activeChunkIndex;
   const activeSuggestionIdRef = useRef(activeSuggestionId);
   activeSuggestionIdRef.current = activeSuggestionId;
+  const editorTextRef = useRef(editorText);
+  editorTextRef.current = editorText;
+  const editorBaselineTextRef = useRef(editorBaselineText);
+  editorBaselineTextRef.current = editorBaselineText;
+
+  const editorDirty = editorText !== editorBaselineText;
+  const editorDirtyRef = useRef(editorDirty);
+  editorDirtyRef.current = editorDirty;
 
   // ── 派生值（useMemo）────────────────────────────────
 
@@ -361,11 +376,14 @@ export default function App() {
         const storedSettings = await loadSettings();
         startTransition(() => {
           setSettings(storedSettings);
+          setStage("workbench");
           setCurrentSession(null);
           setActiveChunkIndex(0);
           setActiveSuggestionId(null);
           // 默认先展示工作台，设置以弹窗形式按需打开。
           setSettingsOpen(false);
+          setEditorBaselineText("");
+          setEditorText("");
         });
       } catch (error) {
         showNotice("error", `初始化失败：${readableError(error)}`);
@@ -375,6 +393,12 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (stage === "editor" && !currentSession) {
+      setStage("workbench");
+    }
+  }, [currentSession, stage]);
 
   // ── Settings handlers ────────────────────────────────
 
@@ -492,6 +516,16 @@ export default function App() {
   // ── Document handlers ────────────────────────────────
 
   const handleOpenDocument = useCallback(async () => {
+    if (stageRef.current === "editor") {
+      showNotice(
+        "warning",
+        editorDirtyRef.current
+          ? "你有未保存的手动编辑，请先保存或放弃修改。"
+          : "请先返回工作台后再打开其他文件。"
+      );
+      return;
+    }
+
     const session = currentSessionRef.current;
     if (session && ["running", "paused"].includes(session.status)) {
       showNotice(
@@ -517,6 +551,9 @@ export default function App() {
       );
       applySessionState(opened, selectDefaultChunkIndex(opened));
       setReviewView("diff");
+      setStage("workbench");
+      setEditorBaselineText("");
+      setEditorText("");
       closeSettings();
       showNotice(
         "success",
@@ -527,10 +564,126 @@ export default function App() {
     }
   }, [applySessionState, closeSettings, showNotice, withBusy]);
 
+  const handleEnterEditor = useCallback(() => {
+    const session = currentSessionRef.current;
+    if (!session) {
+      showNotice("warning", "请先打开一个文档。");
+      return;
+    }
+
+    if (busyAction) {
+      showNotice("warning", "当前有操作在执行，请稍后再试。");
+      return;
+    }
+
+    if (session.status === "running" || session.status === "paused") {
+      showNotice("warning", "文档正在执行自动任务，请先取消后再编辑。");
+      return;
+    }
+
+    const cleanSession =
+      session.status === "idle" &&
+      session.suggestions.length === 0 &&
+      session.chunks.every((chunk) => chunk.status === "idle");
+
+    if (!cleanSession) {
+      showNotice(
+        "warning",
+        "该文档存在修订记录或进度，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑。"
+      );
+      return;
+    }
+
+    startTransition(() => {
+      setStage("editor");
+      setEditorBaselineText(session.sourceText);
+      setEditorText(session.sourceText);
+      setLiveProgress(null);
+      setSettingsOpen(false);
+    });
+  }, [busyAction, showNotice]);
+
+  const handleDiscardEditorChanges = useCallback(() => {
+    if (stageRef.current !== "editor") return;
+    if (!editorDirtyRef.current) {
+      showNotice("info", "当前没有需要放弃的修改。");
+      return;
+    }
+    startTransition(() => {
+      setEditorText(editorBaselineTextRef.current);
+    });
+    showNotice("warning", "已放弃未保存的修改。");
+  }, [showNotice]);
+
+  const handleExitEditor = useCallback(() => {
+    if (stageRef.current !== "editor") return;
+    if (editorDirtyRef.current) {
+      showNotice("warning", "你有未保存的手动编辑，请先保存或放弃修改。");
+      return;
+    }
+    setStage("workbench");
+  }, [showNotice]);
+
+  const handleSaveEditor = useCallback(
+    async (options?: { returnToWorkbench?: boolean }) => {
+      const session = currentSessionRef.current;
+      if (!session) return;
+      if (stageRef.current !== "editor") return;
+
+      if (!editorDirtyRef.current) {
+        showNotice("info", "没有修改，无需保存。");
+        if (options?.returnToWorkbench) {
+          setStage("workbench");
+        }
+        return;
+      }
+
+      const returnToWorkbench = Boolean(options?.returnToWorkbench);
+      const actionKey = returnToWorkbench ? "save-edits-and-back" : "save-edits";
+      const content = editorTextRef.current;
+
+      try {
+        const updated = await withBusy(actionKey, () =>
+          saveDocumentEdits(session.id, content)
+        );
+
+        applySessionState(updated, selectDefaultChunkIndex(updated));
+        setReviewView("diff");
+        setLiveProgress(null);
+
+        startTransition(() => {
+          setEditorBaselineText(updated.sourceText);
+          setEditorText(updated.sourceText);
+        });
+
+        if (returnToWorkbench) {
+          setStage("workbench");
+          showNotice("success", "已保存并返回工作台，可继续 AI 优化。");
+          return;
+        }
+
+        showNotice("success", "已保存到原文件。");
+      } catch (error) {
+        showNotice("error", `保存失败：${readableError(error)}`);
+      }
+    },
+    [applySessionState, showNotice, withBusy]
+  );
+
   // ── Rewrite handlers ─────────────────────────────────
 
   const handleStartRewrite = useCallback(
     async (mode: RewriteMode) => {
+      if (stageRef.current === "editor") {
+        showNotice(
+          "warning",
+          editorDirtyRef.current
+            ? "你有未保存的手动编辑，请先保存或放弃修改。"
+            : "当前处于编辑页，请先返回工作台再执行 AI 优化。"
+        );
+        return;
+      }
+
       const session = currentSessionRef.current;
       if (!session) {
         showNotice("warning", "请先打开一个文档。");
@@ -786,6 +939,16 @@ export default function App() {
   // ── Export ────────────────────────────────────────────
 
   const handleExport = useCallback(async () => {
+    if (stageRef.current === "editor") {
+      showNotice(
+        "warning",
+        editorDirtyRef.current
+          ? "你有未保存的手动编辑，请先保存或放弃修改后再导出。"
+          : "请先返回工作台后再导出终稿。"
+      );
+      return;
+    }
+
     const session = currentSessionRef.current;
     if (!session) {
       showNotice("warning", "当前没有可导出的文档。");
@@ -975,7 +1138,7 @@ export default function App() {
               <div className="workspace-bar-brand">
                 <strong>LessAI</strong>
                 <span className="workspace-bar-view">
-                  {settingsOpen ? "Settings" : "Workbench"}
+                  {settingsOpen ? "Settings" : stage === "editor" ? "Editor" : "Workbench"}
                 </span>
               </div>
             </div>
@@ -1032,6 +1195,7 @@ export default function App() {
                 aria-label="打开文档"
                 title="打开文件"
                 disabled={
+                  stage === "editor" ||
                   Boolean(busyAction) ||
                   Boolean(
                     currentSession &&
@@ -1062,6 +1226,7 @@ export default function App() {
                 aria-label="导出终稿"
                 title="导出"
                 disabled={
+                  stage === "editor" ||
                   !currentSession ||
                   Boolean(busyAction) ||
                   Boolean(
@@ -1109,49 +1274,68 @@ export default function App() {
             </div>
           </div>
 
+          <div className="workspace-stage">
+            {stage === "editor" && currentSession ? (
+              <EditorStage
+                session={currentSession}
+                text={editorText}
+                dirty={editorDirty}
+                busyAction={busyAction}
+                onChangeText={setEditorText}
+                onSave={() => void handleSaveEditor()}
+                onSaveAndBack={() =>
+                  void handleSaveEditor({ returnToWorkbench: true })
+                }
+                onDiscard={handleDiscardEditorChanges}
+                onBack={handleExitEditor}
+              />
+            ) : (
+              <WorkbenchStage
+                settings={settings}
+                currentSession={currentSession}
+                liveProgress={liveProgress}
+                currentStats={currentStats}
+                activeChunk={activeChunk}
+                activeChunkIndex={activeChunkIndex}
+                activeSuggestionId={activeSuggestionId}
+                reviewView={reviewView}
+                busyAction={busyAction}
+                onOpenDocument={handleOpenDocument}
+                onSelectChunk={handleSelectChunk}
+                onSelectSuggestion={handleSelectSuggestion}
+                onSetReviewView={setReviewView}
+                onStartRewrite={(mode) => void handleStartRewrite(mode)}
+                onPause={() => void handlePause()}
+                onResume={() => void handleResume()}
+                onCancel={() => void handleCancel()}
+                onFinalizeDocument={() => void handleFinalizeDocument()}
+                onResetSession={() => void handleResetSession()}
+                onApplySuggestion={handleApplySuggestion}
+                onDismissSuggestion={handleDismissSuggestion}
+                onDeleteSuggestion={handleDeleteSuggestion}
+                onRetry={handleRetry}
+                onOpenSettings={openSettings}
+                onEnterEditor={handleEnterEditor}
+              />
+            )}
+          </div>
+
           {notice ? (
-            <div className={`notice is-${notice.tone}`}>
-              <span>{notice.message}</span>
-              <button
-                type="button"
-                className="notice-dismiss"
-                onClick={dismissNotice}
-                aria-label="关闭提示"
-                title="关闭"
-              >
-                <X />
-              </button>
+            <div className="toast-layer" aria-live="polite" aria-label="操作提示">
+              <div className={`notice is-${notice.tone} toast`}>
+                <span>{notice.message}</span>
+                <button
+                  type="button"
+                  className="notice-dismiss"
+                  onClick={dismissNotice}
+                  aria-label="关闭提示"
+                  title="关闭"
+                >
+                  <X />
+                </button>
+              </div>
             </div>
           ) : null}
-
-          <div className="workspace-stage">
-            <WorkbenchStage
-              settings={settings}
-              currentSession={currentSession}
-              liveProgress={liveProgress}
-              currentStats={currentStats}
-              activeChunk={activeChunk}
-              activeChunkIndex={activeChunkIndex}
-              activeSuggestionId={activeSuggestionId}
-              reviewView={reviewView}
-              busyAction={busyAction}
-              onOpenDocument={handleOpenDocument}
-              onSelectChunk={handleSelectChunk}
-              onSelectSuggestion={handleSelectSuggestion}
-              onSetReviewView={setReviewView}
-              onStartRewrite={(mode) => void handleStartRewrite(mode)}
-              onPause={() => void handlePause()}
-              onResume={() => void handleResume()}
-              onCancel={() => void handleCancel()}
-              onFinalizeDocument={() => void handleFinalizeDocument()}
-              onResetSession={() => void handleResetSession()}
-              onApplySuggestion={handleApplySuggestion}
-              onDismissSuggestion={handleDismissSuggestion}
-              onDeleteSuggestion={handleDeleteSuggestion}
-              onRetry={handleRetry}
-              onOpenSettings={openSettings}
-            />
-          </div>
 
           <SettingsModal
             open={settingsOpen}

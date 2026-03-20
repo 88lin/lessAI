@@ -69,3 +69,7 @@ export async function exportDocument(sessionId: string, path: string) {
 export async function finalizeDocument(sessionId: string) {
   return invoke<string>("finalize_document", { sessionId });
 }
+
+export async function saveDocumentEdits(sessionId: string, content: string) {
+  return invoke<DocumentSession>("save_document_edits", { sessionId, content });
+}

@@ -211,6 +211,99 @@ fn reset_session(
 }
 
 #[tauri::command]
+fn save_document_edits(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    content: String,
+) -> Result<DocumentSession, String> {
+    if content.trim().is_empty() {
+        return Err("文档内容为空，无法保存。".to_string());
+    }
+
+    {
+        // 避免与后台 job 竞争写 session 文件/源文件；如果任务仍在运行或退出中，直接拒绝。
+        let jobs = state
+            .jobs
+            .lock()
+            .map_err(|_| "任务状态锁已损坏。".to_string())?;
+        if jobs.contains_key(&session_id) {
+            return Err("后台任务仍在运行或正在退出，请稍后再试。".to_string());
+        }
+    }
+
+    let session_id_for_lock = session_id.clone();
+    with_session_lock(state.inner(), &session_id_for_lock, move || {
+        let existing = storage::load_session(&app, &session_id)?;
+
+        let clean_session = existing.status == RunningState::Idle
+            && existing.suggestions.is_empty()
+            && existing
+                .chunks
+                .iter()
+                .all(|chunk| chunk.status == ChunkStatus::Idle);
+
+        if !clean_session {
+            return Err(
+                "该文档存在修订记录或进度，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑。"
+                    .to_string(),
+            );
+        }
+
+        let line_ending = rewrite::detect_line_ending(&existing.source_text);
+        let mut processed = content;
+        if !rewrite::has_trailing_spaces_per_line(&existing.source_text) {
+            processed = rewrite::strip_trailing_spaces_per_line(&processed);
+        }
+        processed = rewrite::convert_line_endings(&processed, line_ending);
+
+        let target = PathBuf::from(&existing.document_path);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(&target, &processed).map_err(|error| error.to_string())?;
+
+        let settings = storage::load_settings(&app)?;
+        let normalized_text = rewrite::normalize_text(&processed);
+        let chunks = rewrite::segment_text(&processed, settings.chunk_preset)
+            .into_iter()
+            .enumerate()
+            .map(|(index, chunk)| ChunkTask {
+                index,
+                source_text: chunk.text,
+                separator_after: chunk.separator_after,
+                status: ChunkStatus::Idle,
+                error_message: None,
+            })
+            .collect::<Vec<_>>();
+
+        let title = PathBuf::from(&existing.document_path)
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("未命名文稿")
+            .to_string();
+
+        let now = Utc::now();
+        let session = DocumentSession {
+            id: session_id.clone(),
+            title,
+            document_path: existing.document_path,
+            source_text: processed,
+            normalized_text,
+            chunks,
+            suggestions: Vec::new(),
+            next_suggestion_sequence: 1,
+            status: RunningState::Idle,
+            created_at: now,
+            updated_at: now,
+        };
+
+        storage::save_session(&app, &session)?;
+        Ok(session)
+    })
+}
+
+#[tauri::command]
 fn open_document(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1210,6 +1303,7 @@ fn main() {
             open_document,
             load_session,
             reset_session,
+            save_document_edits,
             start_rewrite,
             pause_rewrite,
             resume_rewrite,
