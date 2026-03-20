@@ -10,6 +10,9 @@ jobs:
   bundle:
     name: Bundle (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +77,7 @@ jobs:
         run: pnpm run icons:generate
 
       - name: Validate updater signing keys (tag release)
-        if: startsWith(github.ref, 'refs/tags/v') && (secrets.TAURI_SIGNING_PRIVATE_KEY == '')
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && env.TAURI_SIGNING_PRIVATE_KEY == '' }}
         shell: bash
         run: |
           echo "[ERROR] Missing updater signing key secrets." >&2
@@ -86,15 +89,13 @@ jobs:
           exit 1
 
       - name: Build bundles (with updater artifacts)
-        if: secrets.TAURI_SIGNING_PRIVATE_KEY != ''
+        if: ${{ env.TAURI_SIGNING_PRIVATE_KEY != '' }}
         env:
           RUST_BACKTRACE: "1"
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build -c src-tauri/tauri.updater.conf.json
 
       - name: Build bundles (without updater artifacts)
-        if: secrets.TAURI_SIGNING_PRIVATE_KEY == ''
+        if: ${{ env.TAURI_SIGNING_PRIVATE_KEY == '' }}
         env:
           RUST_BACKTRACE: "1"
         run: pnpm exec tauri build
