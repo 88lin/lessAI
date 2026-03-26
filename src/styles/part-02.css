@@ -284,6 +284,7 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: nowrap;
+  max-width: 100%;
 }
 
 .workbench-doc-panel .panel-header {
@@ -291,8 +292,20 @@
   align-items: center;
 }
 
-.workbench-doc-panel .panel-action {
+.workbench-doc-panel .panel-heading {
   flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workbench-doc-panel .panel-subtitle,
+.workbench-doc-panel .panel-heading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-doc-panel .panel-action {
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -343,24 +356,18 @@
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .workbench-doc-actionbar-left {
   flex: 1 1 auto;
   min-width: 0;
   justify-content: flex-start;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  padding-right: 4px;
-  scrollbar-width: none;
-}
-
-.workbench-doc-actionbar-left::-webkit-scrollbar {
-  height: 0;
 }
 
 .workbench-doc-actionbar-right {
   flex: 0 0 auto;
+  overflow: visible;
 }
 
 .workbench-action-reel {
@@ -369,16 +376,12 @@
   --slot-height: 46px;
   height: var(--slot-height);
   overflow-y: hidden;
-  /* 说明：当一个轴是 visible、另一个轴是 hidden/auto 时，
-     visible 会被浏览器按规范折算成 auto，从而出现横向滚动条。
-     Workbench 动作区不应显示滚动条，因此这里显式隐藏滚动条。 */
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow-x: hidden;
 }
 
-.workbench-action-reel::-webkit-scrollbar {
-  height: 0;
+.workbench-doc-actionbar .workbench-action-reel {
+  /* 给阴影/边框留一点“内边距缓冲”，避免看起来像被裁切了一点点 */
+  padding: 0 6px;
 }
 
 .workbench-action-track {
@@ -399,6 +402,31 @@
 
 .workbench-doc-actionbar-left .workbench-action-row {
   justify-content: flex-start;
+}
+
+.workbench-doc-actionbar .workbench-action-row {
+  gap: 6px;
+}
+
+.workbench-doc-actionbar .switch-chip:hover:not(:disabled),
+.workbench-doc-actionbar .switch-chip:active:not(:disabled),
+.workbench-doc-actionbar .toolbar-button:hover:not(:disabled),
+.workbench-doc-actionbar .toolbar-button:active:not(:disabled),
+.workbench-doc-actionbar .icon-button:hover:not(:disabled),
+.workbench-doc-actionbar .icon-button:active:not(:disabled) {
+  /* 顶部动作条按钮不应“动来动去”，否则在 overflow hidden 容器内会出现边缘被截断的观感 */
+  transform: none;
+}
+
+.workbench-doc-actionbar-right .icon-button {
+  width: 36px;
+  height: 36px;
+}
+
+.workbench-doc-actionbar-right .toolbar-button {
+  min-width: 132px;
+  padding: 0 14px;
+  gap: 8px;
 }
 
 .workbench-action-row {
@@ -434,9 +462,9 @@
 }
 
 .workbench-doc-actionbar-left .switch-chip {
-  min-height: 38px;
-  padding: 0 12px;
-  font-size: 0.86rem;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 0.82rem;
 }
 
 .panel-body.workbench-center-body {
@@ -628,4 +656,3 @@
   overflow: auto;
   min-height: 0;
 }
-

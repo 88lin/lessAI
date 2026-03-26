@@ -182,30 +182,30 @@ export const DocumentActionBar = memo(function DocumentActionBar({
       </div>
 
       <div className="workbench-doc-actionbar-right">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onCopy}
+          aria-label={canCopy ? copyTitle : "复制（当前视图不可用）"}
+          title={copyTitle}
+          disabled={!canCopy || copyState === "copying"}
+        >
+          {!canCopy ? (
+            <Copy />
+          ) : copyState === "copying" ? (
+            <LoaderCircle className="spin" />
+          ) : copyState === "done" ? (
+            <Check />
+          ) : copyState === "error" ? (
+            <AlertCircle />
+          ) : (
+            <Copy />
+          )}
+        </button>
+
         <div className={`workbench-action-reel ${editorMode ? "is-editor" : ""}`}>
           <div className="workbench-action-track">
             <div className="workbench-action-row is-normal" aria-hidden={editorMode}>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onCopy}
-                aria-label={canCopy ? copyTitle : "复制（当前视图不可用）"}
-                title={copyTitle}
-                disabled={!canCopy || copyState === "copying" || editorMode}
-              >
-                {!canCopy ? (
-                  <Copy />
-                ) : copyState === "copying" ? (
-                  <LoaderCircle className="spin" />
-                ) : copyState === "done" ? (
-                  <Check />
-                ) : copyState === "error" ? (
-                  <AlertCircle />
-                ) : (
-                  <Copy />
-                )}
-              </button>
-
               <button
                 type="button"
                 className="icon-button"
@@ -292,25 +292,6 @@ export const DocumentActionBar = memo(function DocumentActionBar({
             </div>
 
             <div className="workbench-action-row is-editor" aria-hidden={!editorMode}>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onCopy}
-                aria-label={copyTitle}
-                title={copyTitle}
-                disabled={copyState === "copying"}
-              >
-                {copyState === "copying" ? (
-                  <LoaderCircle className="spin" />
-                ) : copyState === "done" ? (
-                  <Check />
-                ) : copyState === "error" ? (
-                  <AlertCircle />
-                ) : (
-                  <Copy />
-                )}
-              </button>
-
               <button
                 type="button"
                 className={`icon-button is-danger ${discardVisible ? "" : "is-placeholder"}`}
