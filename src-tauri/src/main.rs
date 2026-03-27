@@ -12,7 +12,8 @@ mod storage;
 use commands::{
     apply_suggestion, cancel_rewrite, delete_suggestion, dismiss_suggestion, export_document,
     finalize_document, load_session, load_settings, open_document, pause_rewrite, reset_session,
-    resume_rewrite, retry_chunk, save_document_edits, save_settings, start_rewrite, test_provider,
+    resume_rewrite, retry_chunk, rewrite_snippet, save_document_edits, save_settings, start_rewrite,
+    test_provider,
 };
 use state::AppState;
 
@@ -45,6 +46,7 @@ fn main() {
             pause_rewrite,
             resume_rewrite,
             cancel_rewrite,
+            rewrite_snippet,
             apply_suggestion,
             dismiss_suggestion,
             delete_suggestion,

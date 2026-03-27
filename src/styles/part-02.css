@@ -304,6 +304,12 @@
   white-space: nowrap;
 }
 
+.workbench-doc-panel .panel-heading h2 {
+  /* Newsreader 在 line-height 较紧 + overflow hidden 时容易出现字形被裁切 */
+  line-height: 1.14;
+  padding-bottom: 1px;
+}
+
 .workbench-doc-panel .panel-action {
   flex: 0 1 auto;
   min-width: 0;
@@ -315,6 +321,11 @@
 }
 
 .workbench-review-panel .panel-action {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workbench-review-panel .panel-heading {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -356,13 +367,18 @@
 }
 
 .workbench-doc-actionbar-left {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   justify-content: flex-start;
 }
 
 .workbench-doc-actionbar-right {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  justify-content: end;
+  gap: 8px;
   overflow: visible;
 }
 
@@ -378,7 +394,7 @@
 .workbench-doc-actionbar .workbench-action-reel {
   /* 给阴影/边框留一点“内边距缓冲”，避免看起来像被裁切了一点点 */
   padding: 0 6px;
-  overflow-x: visible;
+  overflow-x: hidden;
 }
 
 .workbench-action-track {

@@ -73,3 +73,7 @@ export async function finalizeDocument(sessionId: string) {
 export async function saveDocumentEdits(sessionId: string, content: string) {
   return invoke<DocumentSession>("save_document_edits", { sessionId, content });
 }
+
+export async function rewriteSnippet(sessionId: string, text: string) {
+  return invoke<string>("rewrite_snippet", { sessionId, text });
+}

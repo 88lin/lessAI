@@ -145,7 +145,8 @@
   min-height: 0;
   display: grid;
   gap: 10px;
-  padding: 10px 0;
+  /* settings-nav-item 使用 panel-shadow-sm（4px 右下投影），需要留出空间避免被裁切 */
+  padding: 10px 6px 14px 2px;
   align-content: start;
   overflow: auto;
 }
@@ -210,6 +211,14 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.settings-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .settings-page-head {
@@ -566,4 +575,3 @@
   background:
     linear-gradient(135deg, rgba(23, 68, 207, 0.12), rgba(255, 250, 241, 0.92));
 }
-

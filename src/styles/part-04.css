@@ -8,7 +8,7 @@
 }
 
 .suggestion-row {
-  padding: 14px;
+  padding: 10px 12px;
 }
 
 .suggestion-row.is-active {
@@ -16,31 +16,33 @@
     linear-gradient(135deg, rgba(23, 68, 207, 0.12), rgba(255, 250, 241, 0.92));
 }
 
-.suggestion-row-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.suggestion-row-meta {
-  margin-top: 8px;
+.suggestion-row-line {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
-  flex-wrap: wrap;
-  font-size: 0.82rem;
-  color: var(--muted);
+  min-width: 0;
+  width: 100%;
 }
 
-.suggestion-row-preview {
-  margin-top: 10px;
-  display: -webkit-box;
+.suggestion-row-title {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
-  line-height: 1.55;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+}
+
+.suggestion-row-meta-inline {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
   color: var(--muted);
 }
 
@@ -254,8 +256,9 @@
   justify-content: flex-start;
   flex-wrap: nowrap;
   flex-shrink: 0;
-  padding: 0 22px;
-  overflow: hidden;
+  /* switch-chip 使用 4px 右下投影（panel-shadow-sm），需要留出底部空间避免被裁切 */
+  padding: 2px 22px 10px;
+  overflow: visible;
 }
 
 .review-switches .switch-chip {
@@ -264,6 +267,12 @@
   justify-content: center;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.review-switches .switch-chip:hover:not(:disabled),
+.review-switches .switch-chip:active:not(:disabled) {
+  /* review switches 在窄容器内做位移会显得“抖”，也容易导致边缘被裁切 */
+  transform: none;
 }
 
 .switch-chip {

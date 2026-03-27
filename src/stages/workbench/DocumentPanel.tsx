@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
+import type { MutableRefObject } from "react";
 import type {
   AppSettings,
   DocumentSession,
@@ -11,7 +12,7 @@ import { guessClientDocumentFormat } from "../../lib/protectedText";
 import { Panel } from "../../components/Panel";
 import { useCopyDocument, type DocumentView } from "./hooks/useCopyDocument";
 import { DocumentActionBar } from "./document/DocumentActionBar";
-import { DocumentEditor } from "./document/DocumentEditor";
+import { DocumentEditor, type DocumentEditorHandle } from "./document/DocumentEditor";
 import { DocumentEmptyState } from "./document/DocumentEmptyState";
 import { DocumentFlow } from "./document/DocumentFlow";
 
@@ -29,6 +30,8 @@ interface DocumentPanelProps {
   editorMode: boolean;
   editorText: string;
   editorDirty: boolean;
+  editorHasSelection: boolean;
+  editorRef: MutableRefObject<DocumentEditorHandle | null>;
   onOpenDocument: () => void;
   onOpenSettings: () => void;
   onSelectChunk: (index: number) => void;
@@ -41,11 +44,13 @@ interface DocumentPanelProps {
   onResetSession: () => void;
   onEnterEditor: () => void;
   onChangeEditorText: (value: string) => void;
+  onChangeEditorHasSelection: (value: boolean) => void;
   onSaveEditor: () => void;
   onSaveEditorAndExit: () => void;
   onDiscardEditorChanges: () => void;
   onExitEditor: () => void;
   onToggleMarkers: () => void;
+  onRewriteSelection: () => void;
 }
 
 export const DocumentPanel = memo(function DocumentPanel({
@@ -62,6 +67,8 @@ export const DocumentPanel = memo(function DocumentPanel({
   editorMode,
   editorText,
   editorDirty,
+  editorHasSelection,
+  editorRef,
   onOpenDocument,
   onOpenSettings,
   onSelectChunk,
@@ -74,11 +81,13 @@ export const DocumentPanel = memo(function DocumentPanel({
   onResetSession,
   onEnterEditor,
   onChangeEditorText,
+  onChangeEditorHasSelection,
   onSaveEditor,
   onSaveEditorAndExit,
   onDiscardEditorChanges,
   onExitEditor,
-  onToggleMarkers
+  onToggleMarkers,
+  onRewriteSelection
 }: DocumentPanelProps) {
   const [documentView, setDocumentView] = useState<DocumentView>("markup");
 
@@ -99,6 +108,7 @@ export const DocumentPanel = memo(function DocumentPanel({
   const finalizeBusy = busyAction === "finalize-document";
   const resetBusy = busyAction === "reset-session";
   const saveAndExitBusy = busyAction === "save-edits-and-back";
+  const rewriteSelectionBusy = busyAction === "rewrite-selection";
 
   const showCancelAction = rewriteRunning || rewritePaused;
   const hasAppliedEdits = Boolean(currentStats && currentStats.suggestionsApplied > 0);
@@ -144,24 +154,10 @@ export const DocumentPanel = memo(function DocumentPanel({
     settingsReady
   ]);
 
-  const documentSubtitle = useMemo(() => {
-    if (!currentSession) {
-      return "导入文档后可切换：修改前 / 修改后 / 修订标记";
-    }
-    if (editorMode) {
-      return "编辑终稿";
-    }
-    switch (documentView) {
-      case "source":
-        return "修改前（原文）";
-      case "final":
-        return "修改后（合并视图）";
-      case "markup":
-        return "含修订标记";
-      default:
-        return "文档";
-    }
-  }, [currentSession, documentView, editorMode]);
+  const documentSubtitle = useMemo(
+    () => (currentSession && editorMode ? "编辑终稿" : undefined),
+    [currentSession, editorMode]
+  );
 
   const canEnterEditor = Boolean(
     currentSession &&
@@ -285,6 +281,16 @@ export const DocumentPanel = memo(function DocumentPanel({
     ? saveAndExitBusy || (anyBusy && !saveAndExitBusy)
     : anyBusy;
 
+  const canRewriteSelection = editorHasSelection;
+  const rewriteSelectionDisabled = !editorMode || !canRewriteSelection || anyBusy;
+  const rewriteSelectionTitle = !editorMode
+    ? "仅在编辑终稿中可用"
+    : anyBusy
+      ? "当前有操作在执行，请稍后再试"
+      : canRewriteSelection
+        ? "对当前选区执行降 AIGC 处理"
+        : "请先在正文中选中需要处理的文本";
+
   const handleCopy = useCallback(() => {
     void handleCopyDocument();
   }, [handleCopyDocument]);
@@ -343,6 +349,10 @@ export const DocumentPanel = memo(function DocumentPanel({
             editorPrimaryTitle={editorPrimaryTitle}
             onSaveEditorAndExit={onSaveEditorAndExit}
             onExitEditor={onExitEditor}
+            rewriteSelectionBusy={rewriteSelectionBusy}
+            rewriteSelectionDisabled={rewriteSelectionDisabled}
+            rewriteSelectionTitle={rewriteSelectionTitle}
+            onRewriteSelection={onRewriteSelection}
           />
         ) : null
       }
@@ -352,11 +362,13 @@ export const DocumentPanel = memo(function DocumentPanel({
           <div className="paper-content scroll-region">
             {editorMode ? (
               <DocumentEditor
+                ref={editorRef}
                 value={editorText}
                 dirty={editorDirty}
                 busy={anyBusy}
                 onChange={onChangeEditorText}
                 onSave={onSaveEditor}
+                onSelectionChange={onChangeEditorHasSelection}
               />
             ) : (
               <DocumentFlow

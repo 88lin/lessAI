@@ -152,34 +152,39 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
             <span>还没有修改对。点击左侧「文档」右上角的“开始优化”生成一段。</span>
           </div>
         ) : (
-          orderedSuggestions.map((suggestion) => (
-            <button
-              key={suggestion.id}
-              type="button"
-              className={`suggestion-row ${suggestion.id === activeSuggestionId ? "is-active" : ""}`}
-              onClick={() => {
-                onSelectChunk(suggestion.chunkIndex);
-                onSelectSuggestion(suggestion.id);
-              }}
-            >
-              <div className="suggestion-row-head">
-                <strong>
-                  #{suggestion.sequence} ·{" "}
-                  {suggestion.beforeText.trim().replace(/\s+/g, " ").slice(0, 24) ||
-                    "（空片段）"}
-                  {suggestion.beforeText.trim().length > 24 ? "…" : ""}
-                </strong>
-                <StatusBadge tone={suggestionTone(suggestion.decision)}>
-                  {formatSuggestionDecision(suggestion.decision)}
-                </StatusBadge>
-              </div>
-              <div className="suggestion-row-meta">
-                <span>{formatDate(suggestion.createdAt)}</span>
-                <span>{countCharacters(suggestion.afterText)} 字</span>
-              </div>
-              <p className="suggestion-row-preview">{suggestion.afterText}</p>
-            </button>
-          ))
+          orderedSuggestions.map((suggestion) => {
+            const compact = (value: string) => value.replace(/\s+/g, " ").trim();
+            const before = compact(suggestion.beforeText);
+            const after = compact(suggestion.afterText);
+            const preferred = before || after || "（空片段）";
+            const preview = preferred.slice(0, 200);
+            const more = preferred.length > 200 ? "…" : "";
+            const meta = `${formatDate(suggestion.createdAt)} · ${countCharacters(suggestion.afterText)} 字`;
+
+            return (
+              <button
+                key={suggestion.id}
+                type="button"
+                className={`suggestion-row ${suggestion.id === activeSuggestionId ? "is-active" : ""}`}
+                onClick={() => {
+                  onSelectChunk(suggestion.chunkIndex);
+                  onSelectSuggestion(suggestion.id);
+                }}
+                title={meta}
+              >
+                <div className="suggestion-row-line">
+                  <span className="suggestion-row-title">
+                    #{suggestion.sequence} · {preview}
+                    {more}
+                  </span>
+                  <span className="suggestion-row-meta-inline">{meta}</span>
+                  <StatusBadge tone={suggestionTone(suggestion.decision)}>
+                    {formatSuggestionDecision(suggestion.decision)}
+                  </StatusBadge>
+                </div>
+              </button>
+            );
+          })
         )}
       </div>
     </>

@@ -123,11 +123,12 @@ export const EditorReviewPane = memo(function EditorReviewPane({
               const compact = (value: string) => value.replace(/\s+/g, " ").trim();
               const preferred = compact(hunk.afterText) || compact(hunk.beforeText);
               const preview =
-                preferred.slice(0, 24) ||
+                preferred.slice(0, 200) ||
                 (hunk.insertedChars === 0 && hunk.deletedChars === 0
                   ? "（仅空白变更）"
                   : "（空变更）");
-              const more = preferred.length > 24 ? "…" : "";
+              const more = preferred.length > 200 ? "…" : "";
+              const meta = `${countCharacters(hunk.afterText)} 字`;
 
               return (
                 <button
@@ -135,20 +136,18 @@ export const EditorReviewPane = memo(function EditorReviewPane({
                   type="button"
                   className={`suggestion-row ${hunk.id === activeEditorHunk.id ? "is-active" : ""}`}
                   onClick={() => setActiveEditorHunkId(hunk.id)}
+                  title={meta}
                 >
-                  <div className="suggestion-row-head">
-                    <strong>
+                  <div className="suggestion-row-line">
+                    <span className="suggestion-row-title">
                       #{hunk.sequence} · {preview}
                       {more}
-                    </strong>
+                    </span>
+                    <span className="suggestion-row-meta-inline">{meta}</span>
                     <StatusBadge tone="info">
                       +{hunk.insertedChars} -{hunk.deletedChars}
                     </StatusBadge>
                   </div>
-                  <div className="suggestion-row-meta">
-                    <span>片段：{countCharacters(hunk.afterText)} 字</span>
-                  </div>
-                  <p className="suggestion-row-preview">{hunk.afterText}</p>
                 </button>
               );
             })}

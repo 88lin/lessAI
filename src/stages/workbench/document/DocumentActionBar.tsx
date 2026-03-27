@@ -83,6 +83,11 @@ interface DocumentActionBarProps {
   editorPrimaryTitle: string;
   onSaveEditorAndExit: () => void;
   onExitEditor: () => void;
+
+  rewriteSelectionBusy: boolean;
+  rewriteSelectionDisabled: boolean;
+  rewriteSelectionTitle: string;
+  onRewriteSelection: () => void;
 }
 
 export const DocumentActionBar = memo(function DocumentActionBar({
@@ -130,7 +135,11 @@ export const DocumentActionBar = memo(function DocumentActionBar({
   editorPrimaryDisabled,
   editorPrimaryTitle,
   onSaveEditorAndExit,
-  onExitEditor
+  onExitEditor,
+  rewriteSelectionBusy,
+  rewriteSelectionDisabled,
+  rewriteSelectionTitle,
+  onRewriteSelection
 }: DocumentActionBarProps) {
   return (
     <div className="workbench-doc-actionbar">
@@ -182,27 +191,6 @@ export const DocumentActionBar = memo(function DocumentActionBar({
       </div>
 
       <div className="workbench-doc-actionbar-right">
-        <button
-          type="button"
-          className="icon-button"
-          onClick={onCopy}
-          aria-label={canCopy ? copyTitle : "复制（当前视图不可用）"}
-          title={copyTitle}
-          disabled={!canCopy || copyState === "copying"}
-        >
-          {!canCopy ? (
-            <Copy />
-          ) : copyState === "copying" ? (
-            <LoaderCircle className="spin" />
-          ) : copyState === "done" ? (
-            <Check />
-          ) : copyState === "error" ? (
-            <AlertCircle />
-          ) : (
-            <Copy />
-          )}
-        </button>
-
         <div className={`workbench-action-reel ${editorMode ? "is-editor" : ""}`}>
           <div className="workbench-action-track">
             <div className="workbench-action-row is-normal" aria-hidden={editorMode}>
@@ -333,6 +321,40 @@ export const DocumentActionBar = memo(function DocumentActionBar({
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          className={`icon-button ${editorMode ? "" : "is-placeholder"}`}
+          onClick={onRewriteSelection}
+          aria-label="对选区执行降 AIGC 处理"
+          title={rewriteSelectionTitle}
+          aria-hidden={!editorMode}
+          tabIndex={editorMode ? 0 : -1}
+          disabled={rewriteSelectionDisabled}
+        >
+          {rewriteSelectionBusy ? <LoaderCircle className="spin" /> : <WandSparkles />}
+        </button>
+
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onCopy}
+          aria-label={canCopy ? copyTitle : "复制（当前视图不可用）"}
+          title={copyTitle}
+          disabled={!canCopy || copyState === "copying"}
+        >
+          {!canCopy ? (
+            <Copy />
+          ) : copyState === "copying" ? (
+            <LoaderCircle className="spin" />
+          ) : copyState === "done" ? (
+            <Check />
+          ) : copyState === "error" ? (
+            <AlertCircle />
+          ) : (
+            <Copy />
+          )}
+        </button>
       </div>
     </div>
   );

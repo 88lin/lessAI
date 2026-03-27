@@ -39,11 +39,13 @@ import { useUpdateChecker } from "./app/hooks/useUpdateChecker";
 import { useChunkStrategyLock } from "./app/hooks/useChunkStrategyLock";
 import { useDocumentActions } from "./app/hooks/useDocumentActions";
 import { useDocumentFinalizeActions } from "./app/hooks/useDocumentFinalizeActions";
+import { useEditorSelectionRewrite } from "./app/hooks/useEditorSelectionRewrite";
 import { useSettingsHandlers } from "./app/hooks/useSettingsHandlers";
 import { useRewriteActions } from "./app/hooks/useRewriteActions";
 import { useSuggestionActions } from "./app/hooks/useSuggestionActions";
 import { useWindowControls } from "./app/hooks/useWindowControls";
 import { WorkbenchStage } from "./stages/WorkbenchStage";
+import type { DocumentEditorHandle } from "./stages/workbench/document/DocumentEditor";
 import logoUrl from "../src-tauri/icons/lessai-logo.svg";
 
 export default function App() {
@@ -62,6 +64,7 @@ export default function App() {
   const [liveProgress, setLiveProgress] = useState<RewriteProgress | null>(null);
   const [editorBaselineText, setEditorBaselineText] = useState("");
   const [editorText, setEditorText] = useState("");
+  const [editorHasSelection, setEditorHasSelection] = useState(false);
 
   const { notice, showNotice, dismissNotice } = useNotice();
   const { busyAction, withBusy } = useBusyAction();
@@ -94,6 +97,7 @@ export default function App() {
   editorTextRef.current = editorText;
   const editorBaselineTextRef = useRef(editorBaselineText);
   editorBaselineTextRef.current = editorBaselineText;
+  const editorRef = useRef<DocumentEditorHandle | null>(null);
 
   const editorDirty = editorText !== editorBaselineText;
   const editorDirtyRef = useRef(editorDirty);
@@ -232,7 +236,7 @@ export default function App() {
       currentSession &&
       liveProgress &&
       liveProgress.sessionId === currentSession.id &&
-      currentSession.status !== "running"
+      !["running", "paused"].includes(currentSession.status)
     ) {
       setLiveProgress(null);
     }
@@ -242,7 +246,24 @@ export default function App() {
 
   useTauriEvents({
     onProgress: async (payload: RewriteProgress) => {
-      setLiveProgress(payload);
+      setLiveProgress((current) => {
+        if (!current || current.sessionId !== payload.sessionId) return payload;
+
+        const sameIndices =
+          current.runningIndices.length === payload.runningIndices.length &&
+          current.runningIndices.every((value, index) => value === payload.runningIndices[index]);
+
+        const unchanged =
+          current.completedChunks === payload.completedChunks &&
+          current.inFlight === payload.inFlight &&
+          current.totalChunks === payload.totalChunks &&
+          current.mode === payload.mode &&
+          current.runningState === payload.runningState &&
+          current.maxConcurrency === payload.maxConcurrency &&
+          sameIndices;
+
+        return unchanged ? current : payload;
+      });
       // 只关心当前打开的文档；其他 session 的事件无需刷新列表（项目不再展示会话库）。
     },
     onChunkCompleted: async (payload) => {
@@ -369,6 +390,15 @@ export default function App() {
     withBusy
   });
 
+  const { handleRewriteSelection } = useEditorSelectionRewrite({
+    stageRef,
+    currentSessionRef,
+    editorRef,
+    requestConfirm,
+    showNotice,
+    withBusy
+  });
+
   const { handleExport, handleFinalizeDocument, handleResetSession } =
     useDocumentFinalizeActions({
       stageRef,
@@ -467,6 +497,8 @@ export default function App() {
               editorMode={stage === "editor"}
               editorText={editorText}
               editorDirty={editorDirty}
+              editorHasSelection={editorHasSelection}
+              editorRef={editorRef}
               onOpenDocument={handleOpenDocument}
               onSelectChunk={handleSelectChunk}
               onSelectSuggestion={handleSelectSuggestion}
@@ -484,12 +516,14 @@ export default function App() {
               onOpenSettings={openSettings}
               onEnterEditor={handleEnterEditor}
               onChangeEditorText={handleChangeEditorText}
+              onChangeEditorHasSelection={setEditorHasSelection}
               onSaveEditor={() => void handleSaveEditor()}
               onSaveEditorAndExit={() =>
                 void handleSaveEditor({ returnToWorkbench: true })
               }
               onDiscardEditorChanges={handleDiscardEditorChanges}
               onExitEditor={handleExitEditor}
+              onRewriteSelection={() => void handleRewriteSelection()}
             />
           </div>
 

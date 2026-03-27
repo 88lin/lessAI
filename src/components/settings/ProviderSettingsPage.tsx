@@ -1,12 +1,17 @@
 import { memo } from "react";
+import { Orbit } from "lucide-react";
 import type { AppSettings, ProviderCheckResult } from "../../lib/types";
 import type { NoticeTone } from "../../lib/constants";
+import { ActionButton } from "../ActionButton";
 import { StatusBadge } from "../StatusBadge";
 
 interface ProviderSettingsPageProps {
   settings: AppSettings;
   providerStatus: ProviderCheckResult | null;
   providerTone: NoticeTone;
+  testProviderBusy: boolean;
+  testProviderDisabled: boolean;
+  onTestProvider: () => void;
   onUpdateStringSetting: <K extends "baseUrl" | "apiKey" | "model" | "updateProxy">(
     key: K,
     value: string
@@ -21,6 +26,9 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
   settings,
   providerStatus,
   providerTone,
+  testProviderBusy,
+  testProviderDisabled,
+  onTestProvider,
   onUpdateStringSetting,
   onUpdateNumberSetting
 }: ProviderSettingsPageProps) {
@@ -71,6 +79,17 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
         </label>
       </div>
 
+      <div className="settings-page-actions">
+        <ActionButton
+          icon={Orbit}
+          label="测试连接"
+          busy={testProviderBusy}
+          disabled={testProviderDisabled}
+          onClick={onTestProvider}
+          variant="secondary"
+        />
+      </div>
+
       <div className="field-block">
         <div className="field-line">
           <span>Temperature</span>
@@ -110,4 +129,3 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
     </div>
   );
 });
-

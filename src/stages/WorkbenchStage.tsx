@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
+import type { MutableRefObject } from "react";
 import type {
   AppSettings,
   ChunkTask,
@@ -12,6 +13,7 @@ import type { ReviewView } from "../lib/constants";
 import { groupSuggestionsByChunk, isSettingsReady } from "../lib/helpers";
 import { DocumentPanel } from "./workbench/DocumentPanel";
 import { ReviewPanel } from "./workbench/ReviewPanel";
+import type { DocumentEditorHandle } from "./workbench/document/DocumentEditor";
 
 interface WorkbenchStageProps {
   settings: AppSettings;
@@ -26,6 +28,8 @@ interface WorkbenchStageProps {
   editorMode: boolean;
   editorText: string;
   editorDirty: boolean;
+  editorHasSelection: boolean;
+  editorRef: MutableRefObject<DocumentEditorHandle | null>;
   onOpenDocument: () => void;
   onSelectChunk: (index: number) => void;
   onSelectSuggestion: (suggestionId: string) => void;
@@ -43,10 +47,12 @@ interface WorkbenchStageProps {
   onOpenSettings: () => void;
   onEnterEditor: () => void;
   onChangeEditorText: (value: string) => void;
+  onChangeEditorHasSelection: (value: boolean) => void;
   onSaveEditor: () => void;
   onSaveEditorAndExit: () => void;
   onDiscardEditorChanges: () => void;
   onExitEditor: () => void;
+  onRewriteSelection: () => void;
 }
 
 export const WorkbenchStage = memo(function WorkbenchStage({
@@ -62,6 +68,8 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   editorMode,
   editorText,
   editorDirty,
+  editorHasSelection,
+  editorRef,
   onOpenDocument,
   onSelectChunk,
   onSelectSuggestion,
@@ -79,10 +87,12 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   onOpenSettings,
   onEnterEditor,
   onChangeEditorText,
+  onChangeEditorHasSelection,
   onSaveEditor,
   onSaveEditorAndExit,
   onDiscardEditorChanges,
-  onExitEditor
+  onExitEditor,
+  onRewriteSelection
 }: WorkbenchStageProps) {
   const settingsReady = isSettingsReady(settings);
 
@@ -167,6 +177,8 @@ export const WorkbenchStage = memo(function WorkbenchStage({
             editorMode={editorMode}
             editorText={editorText}
             editorDirty={editorDirty}
+            editorHasSelection={editorHasSelection}
+            editorRef={editorRef}
             onOpenDocument={onOpenDocument}
             onOpenSettings={onOpenSettings}
             onSelectChunk={onSelectChunk}
@@ -179,10 +191,12 @@ export const WorkbenchStage = memo(function WorkbenchStage({
             onResetSession={onResetSession}
             onEnterEditor={onEnterEditor}
             onChangeEditorText={onChangeEditorText}
+            onChangeEditorHasSelection={onChangeEditorHasSelection}
             onSaveEditor={onSaveEditor}
             onSaveEditorAndExit={onSaveEditorAndExit}
             onDiscardEditorChanges={onDiscardEditorChanges}
             onExitEditor={onExitEditor}
+            onRewriteSelection={onRewriteSelection}
             onToggleMarkers={() => setShowMarkers((value) => !value)}
           />
         </div>

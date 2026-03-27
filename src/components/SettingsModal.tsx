@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
-import { ArrowUpCircle, Check, Orbit, X } from "lucide-react";
+import { ArrowUpCircle, Check, X } from "lucide-react";
 import type { AppSettings, PromptTemplate, ProviderCheckResult } from "../lib/types";
 import type { NoticeTone } from "../lib/constants";
 import { isSettingsReady } from "../lib/helpers";
@@ -154,6 +154,11 @@ export const SettingsModal = memo(function SettingsModal({
                 settings={settings}
                 providerStatus={providerStatus}
                 providerTone={providerTone}
+                testProviderBusy={busyAction === "test-provider"}
+                testProviderDisabled={
+                  Boolean(busyAction) && busyAction !== "test-provider"
+                }
+                onTestProvider={onTestProvider}
                 onUpdateStringSetting={onUpdateStringSetting}
                 onUpdateNumberSetting={onUpdateNumberSetting}
               />
@@ -199,18 +204,6 @@ export const SettingsModal = memo(function SettingsModal({
               disabled={Boolean(busyAction) && busyAction !== "check-update"}
               onClick={onCheckUpdate}
               variant="secondary"
-            />
-            <ActionButton
-              icon={Orbit}
-              label="测试连接"
-              busy={busyAction === "test-provider"}
-              disabled={
-                page !== "provider" ||
-                (Boolean(busyAction) && busyAction !== "test-provider")
-              }
-              onClick={onTestProvider}
-              variant="secondary"
-              className={page === "provider" ? "" : "is-placeholder"}
             />
             <ActionButton
               icon={Check}
