@@ -11,7 +11,11 @@ import {
   X
 } from "lucide-react";
 import type { AppSettings, DocumentSession, RewriteProgress } from "../../lib/types";
-import { formatDisplayPath, formatSessionStatus, statusTone } from "../../lib/helpers";
+import {
+  formatDisplayPath,
+  formatSessionStatus,
+  statusTone
+} from "../../lib/helpers";
 import { StatusBadge } from "../../components/StatusBadge";
 
 interface WorkspaceBarProps {
@@ -62,6 +66,8 @@ export const WorkspaceBar = memo(function WorkspaceBar({
     Boolean(busyAction) ||
     Boolean(currentSession && ["running", "paused"].includes(currentSession.status));
 
+  const rawPath = currentSession ? formatDisplayPath(currentSession.documentPath) : "";
+
   return (
     <div
       className="workspace-bar"
@@ -85,36 +91,36 @@ export const WorkspaceBar = memo(function WorkspaceBar({
       </div>
 
       <div className="workspace-bar-center">
-        <strong className="workspace-bar-session">
-          {currentSession ? currentSession.title : "未打开文档"}
-        </strong>
-        <div className="workspace-bar-chips scroll-region" data-tauri-drag-region="false">
-          <StatusBadge
-            tone={
-              currentSession ? statusTone(currentSession.status) : settingsReady ? "info" : "warning"
-            }
-          >
-            {currentSession
-              ? formatSessionStatus(currentSession.status)
-              : settingsReady
-                ? "未打开"
-                : "未配置"}
-          </StatusBadge>
-          {currentSession ? (
-            <span className="context-chip">
-              路径：{formatDisplayPath(currentSession.documentPath)}
-            </span>
-          ) : null}
-          <span className="context-chip">模型：{settings.model}</span>
-          <span className="context-chip">应用：{topbarProgress}</span>
-          {liveProgress && currentSession && liveProgress.sessionId === currentSession.id ? (
-            <span className="context-chip">
-              进度 {liveProgress.completedChunks}/{liveProgress.totalChunks}
-              {liveProgress.inFlight > 0 ? ` · 进行中 ${liveProgress.inFlight}` : ""}
-              {liveProgress.maxConcurrency > 1 ? ` · 并发 ${liveProgress.maxConcurrency}` : ""}
-            </span>
-          ) : null}
+        <div className="workspace-bar-status-row">
+          <div className="workspace-bar-chips scroll-region" data-tauri-drag-region="false">
+            <StatusBadge
+              tone={
+                currentSession ? statusTone(currentSession.status) : settingsReady ? "info" : "warning"
+              }
+            >
+              {currentSession
+                ? formatSessionStatus(currentSession.status)
+                : settingsReady
+                  ? "未打开"
+                  : "未配置"}
+            </StatusBadge>
+            <span className="context-chip">模型：{settings.model}</span>
+            <span className="context-chip">应用：{topbarProgress}</span>
+            {liveProgress && currentSession && liveProgress.sessionId === currentSession.id ? (
+              <span className="context-chip">
+                进度 {liveProgress.completedChunks}/{liveProgress.totalChunks}
+                {liveProgress.inFlight > 0 ? ` · 进行中 ${liveProgress.inFlight}` : ""}
+                {liveProgress.maxConcurrency > 1 ? ` · 并发 ${liveProgress.maxConcurrency}` : ""}
+              </span>
+            ) : null}
+          </div>
         </div>
+        {currentSession ? (
+          <div className="workspace-bar-path-line" title={`路径：${rawPath}`}>
+            <span className="workspace-bar-path-label">路径：</span>
+            <span className="workspace-bar-path-text">{rawPath}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="workspace-bar-actions" data-tauri-drag-region="false">
@@ -182,4 +188,3 @@ export const WorkspaceBar = memo(function WorkspaceBar({
     </div>
   );
 });
-

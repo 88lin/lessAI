@@ -17,28 +17,56 @@
 .workspace-bar-center {
   min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
 }
 
-.workspace-bar-session {
+.workspace-bar-status-row {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: "Newsreader", Georgia, serif;
-  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 
 .workspace-bar-chips {
   min-width: 0;
+  flex: 1 1 auto;
+  max-width: 100%;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   flex-wrap: nowrap;
   overflow-x: auto;
   padding-bottom: 2px;
+}
+
+.workspace-bar-path-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.workspace-bar-path-label {
+  flex: 0 0 auto;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-bar-path-text {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-bar-actions {

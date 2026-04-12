@@ -111,8 +111,22 @@ const part04 = read("src/styles/part-04.css");
 const documentActionBar = read("src/stages/workbench/document/DocumentActionBar.tsx");
 const documentPanel = read("src/stages/workbench/DocumentPanel.tsx");
 const documentFlow = read("src/stages/workbench/document/DocumentFlow.tsx");
+const workspaceBar = read("src/app/components/WorkspaceBar.tsx");
 const { renderInlineProtectedText } = await loadProtectedTextModule();
 const { buildChunkGroups, normalizeSelectedChunkIndices } = await loadChunkSelectionModule();
+
+assertIncludes(workspaceBar, 'className="workspace-bar-status-row"');
+assertIncludes(workspaceBar, 'className="workspace-bar-path-line"');
+assertIncludes(workspaceBar, 'className="workspace-bar-path-text"');
+assertNotIncludes(workspaceBar, 'className="workspace-bar-session"');
+assertNotIncludes(workspaceBar, "title={rawTitle}");
+assertNotIncludes(workspaceBar, 'className="workspace-bar-session-text"');
+assertNotIncludes(workspaceBar, "workspace-bar-path-chip");
+assertNotIncludes(workspaceBar, "formatTopbarTitle");
+assertNotIncludes(workspaceBar, "formatTopbarPath");
+assertRule(part02, ".workspace-bar-status-row", "display", "flex");
+assertRule(part02, ".workspace-bar-path-line", "display", "flex");
+assertRule(part02, ".workspace-bar-path-text", "text-overflow", "ellipsis");
 
 const paragraphChunks = [
   {
