@@ -3,7 +3,6 @@ use std::{fs, path::PathBuf};
 use tauri::{AppHandle, State};
 
 use crate::{
-    adapters::docx::DocxAdapter,
     atomic_write::write_bytes_atomically,
     documents::{
         ensure_document_can_write_back, is_docx_path, load_verified_writeback_bytes,
@@ -85,9 +84,7 @@ pub fn finalize_document(
                 &session.source_text,
                 session.source_snapshot.as_ref(),
             )?;
-            let updated_regions = rewrite_jobs::build_merged_regions(&session);
-            let updated =
-                DocxAdapter::write_updated_regions(&bytes, &session.source_text, &updated_regions)?;
+            let updated = rewrite_jobs::build_docx_writeback_bytes(&session, &bytes)?;
             write_bytes_atomically(&target, &updated)?;
         } else {
             let line_ending = rewrite::detect_line_ending(&session.source_text);

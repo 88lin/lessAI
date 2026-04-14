@@ -114,9 +114,16 @@ export function findNextManualTargetChunk(
     chunks.find(
       (chunk) =>
         matchesTarget(selectedChunkIndices, chunk) &&
-        (chunk.status === "idle" || chunk.status === "failed")
+      (chunk.status === "idle" || chunk.status === "failed")
     ) ?? null
   );
+}
+
+export function resolveOptimisticManualRunningIndex(
+  chunks: readonly ChunkTask[],
+  selectedChunkIndices: readonly number[]
+) {
+  return findNextManualTargetChunk(chunks, selectedChunkIndices)?.index ?? null;
 }
 
 export function findAutoPendingTargetChunks(

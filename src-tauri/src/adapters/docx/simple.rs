@@ -10,11 +10,18 @@ use quick_xml::{
 use zip::{write::FileOptions, ZipArchive, ZipWriter};
 
 use super::{
+    display::{build_display_blocks, DisplayBlockKind, DisplayBlockRef},
     model::{
-        EditableRegionRender, EditableRegionTemplate, LockedRegionRender, LockedRegionTemplate,
-        WritebackBlockTemplate, WritebackParagraphTemplate, WritebackRegionTemplate,
+        EditableRegionRender, EditableRegionTemplate, LockedDisplayMode, LockedRegionRender,
+        LockedRegionTemplate, WritebackBlockTemplate, WritebackParagraphTemplate,
+        WritebackRegionTemplate,
+    },
+    numbering::{
+        list_marker_for_paragraph, parse_numbering_xml, NumberingDefinitions, NumberingTracker,
     },
     placeholders,
+    specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
+    styles::{parse_styles_xml, ParagraphStyles},
 };
 use crate::{
     adapters::TextRegion,
@@ -33,21 +40,28 @@ impl DocxAdapter {
     #[cfg(test)]
     pub fn extract_text(docx_bytes: &[u8]) -> Result<String, String> {
         let xml = read_document_xml(docx_bytes)?;
-        extract_text_from_document_xml(&xml)
+        let support = read_docx_support_data(docx_bytes)?;
+        let regions = extract_regions_from_document_xml(&xml, &support, true)?;
+        Ok(regions
+            .into_iter()
+            .map(|region| region.body)
+            .collect::<String>()
+            .trim_matches('\u{feff}')
+            .to_string())
     }
 
     pub(crate) fn extract_writeback_source_text(docx_bytes: &[u8]) -> Result<String, String> {
         let xml = read_document_xml(docx_bytes)?;
-        let hyperlink_targets = read_document_relationships(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&xml, &hyperlink_targets)?;
+        let support = read_docx_support_data(docx_bytes)?;
+        let blocks = extract_writeback_paragraph_templates(&xml, &support)?;
         Ok(build_writeback_source_text(&blocks))
     }
 
     #[cfg(test)]
     pub fn extract_writeback_regions(docx_bytes: &[u8]) -> Result<Vec<TextRegion>, String> {
         let xml = read_document_xml(docx_bytes)?;
-        let hyperlink_targets = read_document_relationships(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&xml, &hyperlink_targets)?;
+        let support = read_docx_support_data(docx_bytes)?;
+        let blocks = extract_writeback_paragraph_templates(&xml, &support)?;
         Ok(flatten_writeback_blocks_for_test(&blocks))
     }
 
@@ -56,8 +70,8 @@ impl DocxAdapter {
         rewrite_headings: bool,
     ) -> Result<Vec<TextRegion>, String> {
         let xml = read_document_xml(docx_bytes)?;
-        let hyperlink_targets = read_document_relationships(docx_bytes)?;
-        extract_regions_from_document_xml(&xml, &hyperlink_targets, rewrite_headings)
+        let support = read_docx_support_data(docx_bytes)?;
+        extract_regions_from_document_xml(&xml, &support, rewrite_headings)
     }
 
     pub fn write_updated_text(
@@ -66,8 +80,8 @@ impl DocxAdapter {
         updated_text: &str,
     ) -> Result<Vec<u8>, String> {
         let xml = read_document_xml(docx_bytes)?;
-        let hyperlink_targets = read_document_relationships(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&xml, &hyperlink_targets)?;
+        let support = read_docx_support_data(docx_bytes)?;
+        let blocks = extract_writeback_paragraph_templates(&xml, &support)?;
         let current_source_text = build_writeback_source_text(&blocks);
         if current_source_text != expected_source_text {
             return Err(
@@ -87,8 +101,8 @@ impl DocxAdapter {
         updated_regions: &[TextRegion],
     ) -> Result<Vec<u8>, String> {
         let xml = read_document_xml(docx_bytes)?;
-        let hyperlink_targets = read_document_relationships(docx_bytes)?;
-        let paragraphs = extract_writeback_paragraph_templates(&xml, &hyperlink_targets)?;
+        let support = read_docx_support_data(docx_bytes)?;
+        let paragraphs = extract_writeback_paragraph_templates(&xml, &support)?;
         let current_source_text = build_writeback_source_text(&paragraphs);
         if current_source_text != expected_source_text {
             return Err(
@@ -103,13 +117,28 @@ impl DocxAdapter {
 
     pub fn validate_writeback(docx_bytes: &[u8]) -> Result<(), String> {
         let xml = read_document_xml(docx_bytes)?;
-        let hyperlink_targets = read_document_relationships(docx_bytes)?;
-        extract_writeback_paragraph_templates(&xml, &hyperlink_targets).map(|_| ())
+        let support = read_docx_support_data(docx_bytes)?;
+        extract_writeback_paragraph_templates(&xml, &support).map(|_| ())
     }
 
     pub fn validate_plain_text_editor(docx_bytes: &[u8]) -> Result<(), String> {
         Self::validate_writeback(docx_bytes)
     }
+}
+
+#[derive(Debug, Default)]
+struct DocxSupportData {
+    hyperlink_targets: HashMap<String, String>,
+    numbering: NumberingDefinitions,
+    styles: ParagraphStyles,
+}
+
+fn read_docx_support_data(docx_bytes: &[u8]) -> Result<DocxSupportData, String> {
+    Ok(DocxSupportData {
+        hyperlink_targets: read_document_relationships(docx_bytes)?,
+        numbering: read_numbering_definitions(docx_bytes)?,
+        styles: read_styles(docx_bytes)?,
+    })
 }
 
 fn read_document_xml(docx_bytes: &[u8]) -> Result<String, String> {
@@ -145,6 +174,36 @@ fn read_document_relationships(docx_bytes: &[u8]) -> Result<HashMap<String, Stri
     file.read_to_string(&mut xml)
         .map_err(|error| format!("读取 document.xml.rels 失败：{error}"))?;
     parse_relationship_targets(&xml)
+}
+
+fn read_numbering_definitions(docx_bytes: &[u8]) -> Result<NumberingDefinitions, String> {
+    let cursor = Cursor::new(docx_bytes);
+    let mut archive = ZipArchive::new(cursor)
+        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
+    let mut file = match archive.by_name("word/numbering.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(NumberingDefinitions::default()),
+    };
+
+    let mut xml = String::new();
+    file.read_to_string(&mut xml)
+        .map_err(|error| format!("读取 numbering.xml 失败：{error}"))?;
+    parse_numbering_xml(&xml)
+}
+
+fn read_styles(docx_bytes: &[u8]) -> Result<ParagraphStyles, String> {
+    let cursor = Cursor::new(docx_bytes);
+    let mut archive = ZipArchive::new(cursor)
+        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
+    let mut file = match archive.by_name("word/styles.xml") {
+        Ok(file) => file,
+        Err(_) => return Ok(ParagraphStyles::default()),
+    };
+
+    let mut xml = String::new();
+    file.read_to_string(&mut xml)
+        .map_err(|error| format!("读取 styles.xml 失败：{error}"))?;
+    parse_styles_xml(&xml)
 }
 
 fn parse_relationship_targets(xml: &str) -> Result<HashMap<String, String>, String> {
@@ -222,25 +281,13 @@ struct RunStyle {
     underline: bool,
 }
 
-#[cfg(test)]
-fn extract_text_from_document_xml(xml: &str) -> Result<String, String> {
-    let regions = extract_regions_from_document_xml(xml, &HashMap::new(), true)?;
-    Ok(regions
-        .into_iter()
-        .map(|region| region.body)
-        .collect::<String>()
-        .trim_matches('\u{feff}')
-        .to_string())
-}
-
 fn extract_regions_from_document_xml(
     xml: &str,
-    hyperlink_targets: &HashMap<String, String>,
+    support: &DocxSupportData,
     rewrite_headings: bool,
 ) -> Result<Vec<TextRegion>, String> {
-    let (blocks, _paragraphs) =
-        extract_import_blocks_from_document_xml(xml, hyperlink_targets, rewrite_headings)?;
-    Ok(flatten_import_blocks(blocks))
+    let blocks = extract_writeback_paragraph_templates(xml, support)?;
+    Ok(flatten_writeback_blocks(&blocks, rewrite_headings))
 }
 
 fn is_heading_style_id(style_id: &str) -> bool {
@@ -757,7 +804,12 @@ fn try_skip_ignored_paragraph_event(event: &Event<'static>, ignored_depth: &mut 
 fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
     matches!(
         name,
-        b"bookmarkStart" | b"bookmarkEnd" | b"proofErr" | b"fldChar" | b"instrText"
+        b"bookmarkStart"
+            | b"bookmarkEnd"
+            | b"proofErr"
+            | b"fldChar"
+            | b"instrText"
+            | b"lastRenderedPageBreak"
     )
 }
 
@@ -826,67 +878,74 @@ fn should_capture_locked_inline_object(
 }
 
 fn is_locked_inline_object_name(name: &[u8]) -> bool {
-    matches!(name, b"drawing" | b"pict" | b"AlternateContent")
+    is_inline_special_name(name)
 }
 
 fn push_locked_inline_object_region(
     regions: &mut Vec<TextRegion>,
     events: &[Event<'static>],
 ) -> Result<(), String> {
-    let (text, kind) = classify_locked_object_placeholder(events)?;
+    let special = classify_inline_special_region(events)?;
     push_import_region(
         regions,
-        text.to_string(),
+        special.text,
         true,
-        placeholders::placeholder_presentation(kind),
+        placeholders::placeholder_presentation(special.kind),
     );
     Ok(())
 }
 
-fn classify_locked_object_placeholder(
+fn writeback_locked_region_from_special(
     events: &[Event<'static>],
-) -> Result<(&'static str, &'static str), String> {
-    if contains_local_tag(events, b"txbxContent") || contains_local_tag(events, b"textbox") {
-        return Ok((placeholders::DOCX_TEXTBOX_PLACEHOLDER, "textbox"));
-    }
-    if contains_local_tag(events, b"pic") {
-        return Ok((placeholders::DOCX_IMAGE_PLACEHOLDER, "image"));
-    }
-    if contains_local_tag(events, b"chart") {
-        return Ok((placeholders::DOCX_CHART_PLACEHOLDER, "chart"));
-    }
-    if contains_local_tag(events, b"wgp") || contains_local_tag(events, b"grpSp") {
-        return Ok((placeholders::DOCX_GROUP_SHAPE_PLACEHOLDER, "group-shape"));
-    }
-    if is_vml_shape_object(events)
-        || contains_local_tag(events, b"wsp")
-        || contains_local_tag(events, b"sp")
-        || contains_local_tag(events, b"cxnSp")
-        || contains_local_tag(events, b"graphicFrame")
-        || contains_local_tag(events, b"relIds")
-        || contains_local_tag(events, b"dataModelExt")
-    {
-        return Ok((placeholders::DOCX_SHAPE_PLACEHOLDER, "shape"));
-    }
-    Err("当前仅支持文章语义相关的 docx：无法归类正文中的图形对象，无法安全导入。".to_string())
-}
-
-fn is_vml_shape_object(events: &[Event<'static>]) -> bool {
-    contains_local_tag(events, b"pict")
-        && (contains_local_tag(events, b"rect")
-            || contains_local_tag(events, b"roundrect")
-            || contains_local_tag(events, b"shape")
-            || contains_local_tag(events, b"shapetype")
-            || contains_local_tag(events, b"line")
-            || contains_local_tag(events, b"oval"))
-}
-
-fn contains_local_tag(events: &[Event<'static>], tag: &[u8]) -> bool {
-    events.iter().any(|event| match event {
-        Event::Start(e) | Event::Empty(e) => local_name(e.name().as_ref()) == tag,
-        Event::End(e) => local_name(e.name().as_ref()) == tag,
-        _ => false,
+) -> Result<WritebackRegionTemplate, String> {
+    let special = classify_inline_special_region(events)?;
+    Ok(match special.display_mode {
+        LockedDisplayMode::AfterParagraph => {
+            placeholders::raw_locked_region_after_paragraph(&special.text, special.kind, events)
+        }
+        LockedDisplayMode::Inline => {
+            placeholders::raw_locked_region(&special.text, special.kind, events)
+        }
     })
+}
+
+fn writeback_locked_run_special_region(
+    run_property_events: &[Event<'static>],
+    child_events: &[Event<'static>],
+) -> Result<WritebackRegionTemplate, String> {
+    let special = classify_inline_special_region(child_events)?;
+    Ok(placeholders::locked_run_child_region(
+        &special.text,
+        special.kind,
+        run_property_events,
+        child_events,
+        special.display_mode,
+    ))
+}
+
+fn is_fill_line_text(text: &str) -> bool {
+    !text.is_empty()
+        && !text.contains('\n')
+        && !text.contains('\t')
+        && text.chars().all(char::is_whitespace)
+}
+
+fn run_property_has_underline(run_property_events: &[Event<'static>]) -> bool {
+    let mut style = RunStyle::default();
+    for event in run_property_events {
+        if let Event::Start(e) | Event::Empty(e) = event {
+            update_run_style(&mut style, e);
+        }
+    }
+    style.underline
+}
+
+fn special_run_char(event: &BytesStart<'_>) -> Option<char> {
+    match local_name(event.name().as_ref()) {
+        b"noBreakHyphen" => Some('\u{2011}'),
+        b"softHyphen" => Some('\u{00ad}'),
+        _ => None,
+    }
 }
 
 fn handle_paragraph_start(
@@ -1668,7 +1727,7 @@ fn is_embedded_object_name(name: &[u8]) -> bool {
 
 fn extract_writeback_paragraph_templates(
     xml: &str,
-    hyperlink_targets: &HashMap<String, String>,
+    support: &DocxSupportData,
 ) -> Result<Vec<WritebackBlockTemplate>, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
@@ -1679,6 +1738,7 @@ fn extract_writeback_paragraph_templates(
     let mut block_name: Option<Vec<u8>> = None;
     let mut block_events: Vec<Event<'static>> = Vec::new();
     let mut blocks = Vec::new();
+    let mut numbering_tracker = NumberingTracker::default();
 
     loop {
         let event = match reader.read_event_into(&mut buf) {
@@ -1730,11 +1790,12 @@ fn extract_writeback_paragraph_templates(
                         b"p" => blocks.push(WritebackBlockTemplate::Paragraph(
                             parse_writeback_paragraph_template(
                                 &[Event::Empty(e)],
-                                hyperlink_targets,
+                                support,
+                                &mut numbering_tracker,
                             )?,
                         )),
                         b"tbl" => blocks.push(parse_table_placeholder_block(&[Event::Empty(e)])?),
-                        b"sdt" => blocks.push(parse_toc_placeholder_block(&[Event::Empty(e)])?),
+                        b"sdt" => blocks.push(parse_sdt_placeholder_block(&[Event::Empty(e)])?),
                         b"sectPr" => {
                             blocks.push(parse_section_break_placeholder_block(&[Event::Empty(e)])?)
                         }
@@ -1758,11 +1819,12 @@ fn extract_writeback_paragraph_templates(
                             b"p" => WritebackBlockTemplate::Paragraph(
                                 parse_writeback_paragraph_template(
                                     &block_events,
-                                    hyperlink_targets,
+                                    support,
+                                    &mut numbering_tracker,
                                 )?,
                             ),
                             b"tbl" => parse_table_placeholder_block(&block_events)?,
-                            b"sdt" => parse_toc_placeholder_block(&block_events)?,
+                            b"sdt" => parse_sdt_placeholder_block(&block_events)?,
                             b"sectPr" => parse_section_break_placeholder_block(&block_events)?,
                             _ => return Err("解析 docx 写回模板失败：未知正文块类型。".to_string()),
                         };
@@ -1814,10 +1876,11 @@ fn parse_section_break_placeholder_block(
     )
 }
 
-fn parse_toc_placeholder_block(
+fn parse_sdt_placeholder_block(
     events: &[Event<'static>],
 ) -> Result<WritebackBlockTemplate, String> {
-    parse_locked_block(events, placeholders::DOCX_TOC_PLACEHOLDER, "toc")
+    let (text, kind) = classify_block_sdt(events);
+    parse_locked_block(events, text, kind)
 }
 
 fn parse_locked_block(
@@ -1899,55 +1962,95 @@ fn trim_region_end_bom(region: &mut WritebackRegionTemplate) {
 }
 
 fn build_writeback_source_text(blocks: &[WritebackBlockTemplate]) -> String {
-    blocks
-        .iter()
-        .map(WritebackBlockTemplate::text)
-        .collect::<Vec<_>>()
+    build_display_block_texts(blocks)
         .join(DOCX_BLOCK_SEPARATOR)
         .trim_matches('\u{feff}')
         .to_string()
 }
 
-#[cfg(test)]
-fn flatten_writeback_blocks_for_test(blocks: &[WritebackBlockTemplate]) -> Vec<TextRegion> {
+fn build_display_block_texts(blocks: &[WritebackBlockTemplate]) -> Vec<String> {
+    build_display_blocks(blocks)
+        .into_iter()
+        .map(|display_block| display_block_text(blocks, &display_block))
+        .collect()
+}
+
+fn display_block_text(
+    blocks: &[WritebackBlockTemplate],
+    display_block: &DisplayBlockRef,
+) -> String {
+    match display_block.kind {
+        DisplayBlockKind::Paragraph { block_index } => {
+            let WritebackBlockTemplate::Paragraph(paragraph) = &blocks[block_index] else {
+                return String::new();
+            };
+            display_block
+                .region_indices
+                .iter()
+                .filter_map(|region_index| paragraph.regions.get(*region_index))
+                .map(WritebackRegionTemplate::text)
+                .collect()
+        }
+        DisplayBlockKind::LockedBlock { block_index } => match &blocks[block_index] {
+            WritebackBlockTemplate::Locked(region) => region.text.clone(),
+            WritebackBlockTemplate::Paragraph(_) => String::new(),
+        },
+    }
+}
+
+fn flatten_writeback_blocks(
+    blocks: &[WritebackBlockTemplate],
+    rewrite_headings: bool,
+) -> Vec<TextRegion> {
+    let display_blocks = build_display_blocks(blocks);
     let mut regions = Vec::new();
-    for (block_index, block) in blocks.iter().enumerate() {
-        let append_block_separator = block_index + 1 < blocks.len();
-        match block {
-            WritebackBlockTemplate::Paragraph(paragraph) => {
-                if paragraph.regions.is_empty() {
+
+    for (display_index, display_block) in display_blocks.iter().enumerate() {
+        let append_block_separator = display_index + 1 < display_blocks.len();
+        match display_block.kind {
+            DisplayBlockKind::Paragraph { block_index } => {
+                let WritebackBlockTemplate::Paragraph(paragraph) = &blocks[block_index] else {
+                    continue;
+                };
+                if display_block.region_indices.is_empty() {
                     regions.push(TextRegion {
                         body: if append_block_separator {
                             DOCX_BLOCK_SEPARATOR.to_string()
                         } else {
                             String::new()
                         },
-                        skip_rewrite: paragraph.is_heading,
+                        skip_rewrite: paragraph.is_heading && !rewrite_headings,
                         presentation: None,
                     });
                     continue;
                 }
-                for (region_index, region) in paragraph.regions.iter().enumerate() {
+                for (region_position, region_index) in
+                    display_block.region_indices.iter().enumerate()
+                {
+                    let Some(region) = paragraph.regions.get(*region_index) else {
+                        continue;
+                    };
                     let mut body = region.text().to_string();
-                    if append_block_separator && region_index + 1 == paragraph.regions.len() {
+                    if append_block_separator
+                        && region_position + 1 == display_block.region_indices.len()
+                    {
                         body.push_str(DOCX_BLOCK_SEPARATOR);
-                    }
-                    let mut presentation = region.presentation().cloned();
-                    if paragraph.is_heading && !region.skip_rewrite() {
-                        if let Some(presentation) = presentation.as_mut() {
-                            presentation.writeback_key = region
-                                .presentation()
-                                .and_then(|item| item.writeback_key.clone());
-                        }
                     }
                     regions.push(TextRegion {
                         body,
-                        skip_rewrite: paragraph.is_heading || region.skip_rewrite(),
-                        presentation,
+                        skip_rewrite: paragraph_region_skip_rewrite(
+                            paragraph,
+                            region,
+                            rewrite_headings,
+                        ),
+                        presentation: region.presentation().cloned(),
                     });
                 }
             }
-            WritebackBlockTemplate::Locked(region) => {
+            DisplayBlockKind::LockedBlock { block_index } => {
+                let WritebackBlockTemplate::Locked(region) = &blocks[block_index] else {
+                    continue;
+                };
                 let mut body = region.text.clone();
                 if append_block_separator {
                     body.push_str(DOCX_BLOCK_SEPARATOR);
@@ -1960,12 +2063,30 @@ fn flatten_writeback_blocks_for_test(blocks: &[WritebackBlockTemplate]) -> Vec<T
             }
         }
     }
+
     regions
+}
+
+fn paragraph_region_skip_rewrite(
+    paragraph: &WritebackParagraphTemplate,
+    region: &WritebackRegionTemplate,
+    rewrite_headings: bool,
+) -> bool {
+    if paragraph.is_heading && !rewrite_headings {
+        return true;
+    }
+    region.skip_rewrite()
+}
+
+#[cfg(test)]
+fn flatten_writeback_blocks_for_test(blocks: &[WritebackBlockTemplate]) -> Vec<TextRegion> {
+    flatten_writeback_blocks(blocks, false)
 }
 
 fn parse_writeback_paragraph_template(
     events: &[Event<'static>],
-    hyperlink_targets: &HashMap<String, String>,
+    support: &DocxSupportData,
+    numbering_tracker: &mut NumberingTracker,
 ) -> Result<WritebackParagraphTemplate, String> {
     let (paragraph_start, paragraph_end) = paragraph_bounds(events)?;
     if events.len() == 1 {
@@ -1980,7 +2101,8 @@ fn parse_writeback_paragraph_template(
 
     let mut regions = Vec::new();
     let paragraph_property_events = collect_paragraph_property_events(events);
-    let is_heading = paragraph_properties_indicate_heading(&paragraph_property_events);
+    let is_heading =
+        paragraph_properties_indicate_heading(&paragraph_property_events, &support.styles);
     let mut index = 1usize;
     let limit = events.len().saturating_sub(1);
 
@@ -2001,14 +2123,13 @@ fn parse_writeback_paragraph_template(
                     b"r" => regions.extend(parse_writeback_run_regions(&child_events, None, None)?),
                     b"hyperlink" => regions.extend(parse_writeback_hyperlink_regions(
                         &child_events,
-                        hyperlink_targets,
+                        &support.hyperlink_targets,
                     )?),
                     b"oMath" | b"oMathPara" => {
                         regions.push(parse_writeback_formula_region(&child_events)?)
                     }
                     name if is_locked_inline_object_name(name) => {
-                        let (text, kind) = classify_locked_object_placeholder(&child_events)?;
-                        regions.push(placeholders::raw_locked_region(text, kind, &child_events))
+                        regions.push(writeback_locked_region_from_special(&child_events)?)
                     }
                     name if is_embedded_object_name(name) => {
                         return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string())
@@ -2046,6 +2167,20 @@ fn parse_writeback_paragraph_template(
             | Event::DocType(_)
             | Event::GeneralRef(_) => index += 1,
             Event::End(_) | Event::Eof => index += 1,
+        }
+    }
+
+    if writeback_regions_have_visible_content(&regions) {
+        if let Some(marker) = list_marker_for_paragraph(
+            &support.numbering,
+            &support.styles,
+            numbering_tracker,
+            &paragraph_property_events,
+        ) {
+            regions.insert(
+                0,
+                placeholders::synthetic_locked_region(&marker, "list-marker"),
+            );
         }
     }
 
@@ -2129,8 +2264,7 @@ fn parse_writeback_hyperlink_regions(
                         hyperlink_href.clone(),
                     )?),
                     name if is_locked_inline_object_name(name) => {
-                        let (text, kind) = classify_locked_object_placeholder(&child_events)?;
-                        regions.push(placeholders::raw_locked_region(text, kind, &child_events))
+                        regions.push(writeback_locked_region_from_special(&child_events)?)
                     }
                     name if is_embedded_object_name(name) => {
                         return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string())
@@ -2189,6 +2323,12 @@ fn merge_adjacent_writeback_regions(
     merged
 }
 
+fn writeback_regions_have_visible_content(regions: &[WritebackRegionTemplate]) -> bool {
+    regions
+        .iter()
+        .any(|region| !region.text().trim().is_empty())
+}
+
 fn merge_writeback_region(
     current: &mut WritebackRegionTemplate,
     next: &WritebackRegionTemplate,
@@ -2212,7 +2352,7 @@ fn merge_locked_writeback_regions(
     current: &mut LockedRegionTemplate,
     next: &LockedRegionTemplate,
 ) -> bool {
-    if current.presentation != next.presentation {
+    if current.presentation != next.presentation || current.display_mode != next.display_mode {
         return false;
     }
     current.text.push_str(&next.text);
@@ -2314,8 +2454,10 @@ fn parse_writeback_run_regions(
                         hyperlink_start.cloned(),
                         &run_property_events,
                     );
-                    let (text, kind) = classify_locked_object_placeholder(&child_events)?;
-                    regions.push(placeholders::raw_locked_region(text, kind, &child_events));
+                    regions.push(writeback_locked_run_special_region(
+                        &run_property_events,
+                        &child_events,
+                    )?);
                     index = next_index;
                     continue;
                 }
@@ -2354,14 +2496,21 @@ fn parse_writeback_run_regions(
                         &run_property_events,
                     );
                     let empty_events = [Event::Empty(e.clone())];
-                    let (text, kind) = classify_locked_object_placeholder(&empty_events)?;
-                    regions.push(placeholders::raw_locked_region(text, kind, &empty_events));
+                    regions.push(writeback_locked_run_special_region(
+                        &run_property_events,
+                        &empty_events,
+                    )?);
                     index += 1;
                     continue;
                 }
                 match name.as_slice() {
                     b"t" | b"rPr" => {}
                     b"tab" => buffer.push('\t'),
+                    b"noBreakHyphen" | b"softHyphen" => {
+                        if let Some(ch) = special_run_char(e) {
+                            buffer.push(ch);
+                        }
+                    }
                     b"br" if is_page_break(e) => {
                         flush_writeback_editable_region(
                             &mut regions,
@@ -2377,6 +2526,7 @@ fn parse_writeback_run_regions(
                             text: DOCX_PAGE_BREAK_PLACEHOLDER.to_string(),
                             presentation: placeholders::placeholder_presentation("page-break"),
                             render: LockedRegionRender::PageBreak,
+                            display_mode: LockedDisplayMode::Inline,
                         }));
                     }
                     b"br" | b"cr" => buffer.push('\n'),
@@ -2445,6 +2595,20 @@ fn parse_writeback_run_regions(
         hyperlink_start.cloned(),
         &run_property_events,
     );
+    if hyperlink_start.is_none()
+        && regions.len() == 1
+        && run_property_has_underline(&run_property_events)
+        && matches!(
+            regions.first(),
+            Some(WritebackRegionTemplate::Editable(region)) if is_fill_line_text(&region.text)
+        )
+    {
+        return Ok(vec![placeholders::raw_locked_region(
+            placeholders::DOCX_FILL_LINE_PLACEHOLDER,
+            "fill-line",
+            events,
+        )]);
+    }
     Ok(regions)
 }
 
@@ -2639,24 +2803,37 @@ fn build_plain_text_editor_updated_regions(
     updated_text: &str,
 ) -> Result<Vec<TextRegion>, String> {
     validate_plain_text_editor_blocks(blocks)?;
-    let updated_paragraphs = split_updated_paragraphs(updated_text, blocks.len())?;
+    let display_blocks = build_display_blocks(blocks);
+    let updated_paragraphs = split_updated_paragraphs(updated_text, display_blocks.len())?;
     let mut regions = Vec::new();
 
-    for (index, block) in blocks.iter().enumerate() {
+    for (index, display_block) in display_blocks.iter().enumerate() {
         let updated_paragraph = updated_paragraphs
             .get(index)
             .ok_or_else(|| "docx 段落数量与写回内容不一致，无法生成 document.xml。".to_string())?
             .clone();
-        let append_block_separator = index + 1 < blocks.len();
-        let mut block_regions = match block {
-            WritebackBlockTemplate::Paragraph(paragraph) => {
-                build_plain_text_editor_paragraph_regions(paragraph, &updated_paragraph)?
+        let append_block_separator = index + 1 < display_blocks.len();
+        let mut block_regions = match display_block.kind {
+            DisplayBlockKind::Paragraph { block_index } => {
+                let WritebackBlockTemplate::Paragraph(paragraph) = &blocks[block_index] else {
+                    continue;
+                };
+                build_plain_text_editor_paragraph_display_regions(
+                    paragraph,
+                    &display_block.region_indices,
+                    &updated_paragraph,
+                )?
             }
-            WritebackBlockTemplate::Locked(region) => vec![TextRegion {
-                body: updated_paragraph,
-                skip_rewrite: true,
-                presentation: region.presentation.clone(),
-            }],
+            DisplayBlockKind::LockedBlock { block_index } => {
+                let WritebackBlockTemplate::Locked(region) = &blocks[block_index] else {
+                    continue;
+                };
+                vec![TextRegion {
+                    body: updated_paragraph,
+                    skip_rewrite: true,
+                    presentation: region.presentation.clone(),
+                }]
+            }
         };
         if let Some(last) = block_regions.last_mut() {
             if append_block_separator {
@@ -2678,12 +2855,31 @@ fn validate_plain_text_editor_blocks(blocks: &[WritebackBlockTemplate]) -> Resul
     Ok(())
 }
 
-fn build_plain_text_editor_paragraph_regions(
+fn build_plain_text_editor_paragraph_display_regions(
     paragraph: &WritebackParagraphTemplate,
+    region_indices: &[usize],
     updated_text: &str,
 ) -> Result<Vec<TextRegion>, String> {
-    validate_plain_text_editor_paragraph(paragraph)?;
-    if paragraph.regions.is_empty() {
+    if region_indices.is_empty() {
+        return Ok(vec![TextRegion {
+            body: updated_text.to_string(),
+            skip_rewrite: false,
+            presentation: None,
+        }]);
+    }
+
+    let template = region_indices
+        .iter()
+        .filter_map(|region_index| paragraph.regions.get(*region_index).cloned())
+        .collect::<Vec<_>>();
+    build_plain_text_editor_paragraph_regions_from_template(&template, updated_text)
+}
+
+fn build_plain_text_editor_paragraph_regions_from_template(
+    template: &[WritebackRegionTemplate],
+    updated_text: &str,
+) -> Result<Vec<TextRegion>, String> {
+    if template.is_empty() {
         return Ok(vec![TextRegion {
             body: updated_text.to_string(),
             skip_rewrite: false,
@@ -2693,7 +2889,7 @@ fn build_plain_text_editor_paragraph_regions(
 
     let mut matches = Vec::new();
     collect_plain_text_editor_paragraph_matches(
-        &paragraph.regions,
+        template,
         updated_text,
         0,
         0,
@@ -3235,14 +3431,25 @@ fn collect_updated_writeback_regions(
     blocks: &[WritebackBlockTemplate],
     updated_regions: &[TextRegion],
 ) -> Result<Vec<Vec<String>>, String> {
-    let mut updated_index = 0usize;
-    let mut paragraph_updates = Vec::new();
-
-    for (block_index, block) in blocks.iter().enumerate() {
-        let append_block_separator = block_index + 1 < blocks.len();
-        match block {
+    let display_blocks = build_display_blocks(blocks);
+    let mut paragraph_updates = blocks
+        .iter()
+        .map(|block| match block {
             WritebackBlockTemplate::Paragraph(paragraph) => {
-                if paragraph.regions.is_empty() {
+                Some(vec![None::<String>; paragraph.regions.len()])
+            }
+            WritebackBlockTemplate::Locked(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let mut updated_index = 0usize;
+    for (display_index, display_block) in display_blocks.iter().enumerate() {
+        let append_block_separator = display_index + 1 < display_blocks.len();
+        match display_block.kind {
+            DisplayBlockKind::Paragraph { block_index } => {
+                let WritebackBlockTemplate::Paragraph(paragraph) = &blocks[block_index] else {
+                    continue;
+                };
+                if display_block.region_indices.is_empty() {
                     let updated = updated_regions.get(updated_index).ok_or_else(|| {
                         "写回内容与原 docx 结构不一致：区域数量不足。".to_string()
                     })?;
@@ -3253,16 +3460,23 @@ fn collect_updated_writeback_regions(
                     };
                     validate_updated_empty_paragraph_region(updated, &expected_body)?;
                     updated_index += 1;
-                    paragraph_updates.push(Vec::new());
                     continue;
                 }
-                let mut region_updates = Vec::new();
-                for (region_index, region) in paragraph.regions.iter().enumerate() {
+                let Some(region_updates) = paragraph_updates
+                    .get_mut(block_index)
+                    .and_then(Option::as_mut)
+                else {
+                    return Err("写回内容与原 docx 结构不一致：段落映射丢失。".to_string());
+                };
+                for (position, region_index) in display_block.region_indices.iter().enumerate() {
                     let updated = updated_regions.get(updated_index).ok_or_else(|| {
                         "写回内容与原 docx 结构不一致：区域数量不足。".to_string()
                     })?;
-                    let expected_separator =
-                        append_block_separator && region_index + 1 == paragraph.regions.len();
+                    let Some(region) = paragraph.regions.get(*region_index) else {
+                        return Err("写回内容与原 docx 结构不一致：段落区域索引越界。".to_string());
+                    };
+                    let expected_separator = append_block_separator
+                        && position + 1 == display_block.region_indices.len();
                     let expected_body = if expected_separator {
                         format!("{}{}", region.text(), DOCX_BLOCK_SEPARATOR)
                     } else {
@@ -3280,12 +3494,14 @@ fn collect_updated_writeback_regions(
                     } else {
                         updated.body.clone()
                     };
-                    region_updates.push(cleaned);
+                    region_updates[*region_index] = Some(cleaned);
                     updated_index += 1;
                 }
-                paragraph_updates.push(region_updates);
             }
-            WritebackBlockTemplate::Locked(region) => {
+            DisplayBlockKind::LockedBlock { block_index } => {
+                let WritebackBlockTemplate::Locked(region) = &blocks[block_index] else {
+                    continue;
+                };
                 let updated = updated_regions
                     .get(updated_index)
                     .ok_or_else(|| "写回内容与原 docx 结构不一致：区域数量不足。".to_string())?;
@@ -3304,7 +3520,21 @@ fn collect_updated_writeback_regions(
         return Err("写回内容与原 docx 结构不一致：区域数量过多。".to_string());
     }
 
-    Ok(paragraph_updates)
+    let mut ordered = Vec::new();
+    for updates in paragraph_updates {
+        let Some(updates) = updates else {
+            continue;
+        };
+        let mut resolved = Vec::with_capacity(updates.len());
+        for value in updates {
+            let Some(value) = value else {
+                return Err("写回内容与原 docx 结构不一致：段落区域映射不完整。".to_string());
+            };
+            resolved.push(value);
+        }
+        ordered.push(resolved);
+    }
+    Ok(ordered)
 }
 
 fn validate_updated_empty_paragraph_region(
@@ -3436,7 +3666,12 @@ fn write_locked_region_render(
 ) -> Result<(), String> {
     match render {
         LockedRegionRender::RawEvents(events) => write_raw_locked_events(writer, events),
+        LockedRegionRender::RunChildEvents {
+            run_property_events,
+            child_events,
+        } => write_locked_run_child_events(writer, run_property_events, child_events),
         LockedRegionRender::PageBreak => write_locked_page_break(writer),
+        LockedRegionRender::Synthetic => Ok(()),
         LockedRegionRender::Sequence(items) => {
             for item in items {
                 write_locked_region_render(writer, item)?;
@@ -3455,6 +3690,26 @@ fn write_raw_locked_events(
             .write_event(event.clone())
             .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
     }
+    Ok(())
+}
+
+fn write_locked_run_child_events(
+    writer: &mut Writer<Vec<u8>>,
+    run_property_events: &[Event<'static>],
+    child_events: &[Event<'static>],
+) -> Result<(), String> {
+    writer
+        .write_event(Event::Start(BytesStart::new("w:r")))
+        .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
+    for event in run_property_events {
+        writer
+            .write_event(event.clone())
+            .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
+    }
+    write_raw_locked_events(writer, child_events)?;
+    writer
+        .write_event(Event::End(BytesEnd::new("w:r")))
+        .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
     Ok(())
 }
 
@@ -3553,11 +3808,14 @@ fn collect_paragraph_property_events(events: &[Event<'static>]) -> Vec<Event<'st
     out
 }
 
-fn paragraph_properties_indicate_heading(events: &[Event<'static>]) -> bool {
+fn paragraph_properties_indicate_heading(
+    events: &[Event<'static>],
+    styles: &ParagraphStyles,
+) -> bool {
     events.iter().any(|event| match event {
-        Event::Start(e) | Event::Empty(e) => {
-            local_name(e.name().as_ref()) == b"pStyle"
-                && attr_value(e, b"val").is_some_and(|value| is_heading_style_id(&value))
+        Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"pStyle" => {
+            attr_value(e, b"val")
+                .is_some_and(|value| is_heading_style_id(&value) || styles.is_heading(&value))
         }
         _ => false,
     })
@@ -3591,6 +3849,20 @@ fn write_styled_text_run(
             write_run_text_segment(writer, &mut buffer)?;
             writer
                 .write_event(Event::Empty(BytesStart::new("w:br")))
+                .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
+            continue;
+        }
+        if ch == '\u{2011}' {
+            write_run_text_segment(writer, &mut buffer)?;
+            writer
+                .write_event(Event::Empty(BytesStart::new("w:noBreakHyphen")))
+                .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
+            continue;
+        }
+        if ch == '\u{00ad}' {
+            write_run_text_segment(writer, &mut buffer)?;
+            writer
+                .write_event(Event::Empty(BytesStart::new("w:softHyphen")))
                 .map_err(|error| format!("生成 document.xml 失败：{error}"))?;
             continue;
         }

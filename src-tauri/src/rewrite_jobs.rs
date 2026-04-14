@@ -745,13 +745,21 @@ pub(crate) fn validate_session_writeback(session: &DocumentSession) -> Result<()
         return Ok(());
     }
 
-    let updated_regions = build_merged_regions(session);
-    adapters::docx::DocxAdapter::write_updated_regions(
-        &current_bytes,
+    build_docx_writeback_bytes(session, &current_bytes).map(|_| ())
+}
+
+pub(crate) fn build_docx_writeback_bytes(
+    session: &DocumentSession,
+    current_bytes: &[u8],
+) -> Result<Vec<u8>, String> {
+    // docx 写回必须以原模板为准重新映射整篇文本，不能依赖 chunk 粒度回拼，
+    // 否则“处理所选”这类局部改写会丢失原有的样式/超链接/锁定区边界。
+    let updated_text = build_merged_text(session);
+    adapters::docx::DocxAdapter::write_updated_text(
+        current_bytes,
         &session.source_text,
-        &updated_regions,
+        &updated_text,
     )
-    .map(|_| ())
 }
 
 pub(crate) fn validate_candidate_writeback(

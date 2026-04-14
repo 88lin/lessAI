@@ -133,11 +133,7 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
           return (
             <span
               key={fragment.chunk.index}
-              className={fragmentClassNames(
-                fragment.chunk,
-                fragment.isRunning,
-                fragment.chunk.index === activeChunkIndex
-              )}
+              className={fragmentClassNames(fragment.chunk, fragment.isRunning)}
               data-chunk-index={fragment.chunk.index + 1}
               title={chunkTitle(fragment.chunk, rewriteEnabled, rewriteBlockedReason)}
               onClick={(event) => {

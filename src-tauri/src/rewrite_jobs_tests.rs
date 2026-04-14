@@ -77,6 +77,38 @@ fn sample_docx_session(path: &Path) -> DocumentSession {
     }
 }
 
+fn collapsed_boundary_docx_session(path: &Path) -> DocumentSession {
+    let now = Utc::now();
+    DocumentSession {
+        id: "session-collapsed-boundary".to_string(),
+        title: "示例".to_string(),
+        document_path: path.to_string_lossy().to_string(),
+        source_text: "前文后文".to_string(),
+        source_snapshot: Some(capture_document_snapshot(path).expect("capture snapshot")),
+        normalized_text: "前文后文".to_string(),
+        write_back_supported: true,
+        write_back_block_reason: None,
+        plain_text_editor_safe: true,
+        plain_text_editor_block_reason: None,
+        chunk_preset: Some(crate::models::ChunkPreset::Paragraph),
+        rewrite_headings: Some(false),
+        chunks: vec![ChunkTask {
+            index: 0,
+            source_text: "前文后文".to_string(),
+            separator_after: String::new(),
+            skip_rewrite: false,
+            presentation: None,
+            status: ChunkStatus::Idle,
+            error_message: None,
+        }],
+        suggestions: Vec::new(),
+        next_suggestion_sequence: 1,
+        status: RunningState::Idle,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
 #[test]
 fn validate_candidate_writeback_rejects_docx_candidate_that_changes_paragraph_boundaries() {
     let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -132,5 +164,59 @@ fn validate_session_writeback_rejects_unwritable_docx_applied_suggestion() {
             || error.contains("空段落边界")
             || error.contains("写回内容与原 docx 结构不一致")
     );
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_candidate_writeback_projects_docx_text_through_original_template() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>前文</w:t></w:r>
+      <w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>后文</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(document_xml);
+    let (root, target) = write_temp_file("candidate-projection-pass", "docx", &bytes);
+    let session = collapsed_boundary_docx_session(&target);
+
+    validate_candidate_writeback(&session, 0, "前文新文")
+        .expect("expected candidate validation to use original docx template mapping");
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_session_writeback_projects_docx_text_through_original_template() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>前文</w:t></w:r>
+      <w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>后文</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(document_xml);
+    let (root, target) = write_temp_file("session-projection-pass", "docx", &bytes);
+    let mut session = collapsed_boundary_docx_session(&target);
+    let now = Utc::now();
+    session.suggestions.push(EditSuggestion {
+        id: "suggestion-1".to_string(),
+        sequence: 1,
+        chunk_index: 0,
+        before_text: "前文后文".to_string(),
+        after_text: "前文新文".to_string(),
+        diff_spans: Vec::new(),
+        decision: SuggestionDecision::Applied,
+        created_at: now,
+        updated_at: now,
+    });
+
+    validate_session_writeback(&session)
+        .expect("expected session validation to use original docx template mapping");
+
     cleanup_dir(&root);
 }

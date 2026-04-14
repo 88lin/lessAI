@@ -3,7 +3,7 @@ use crate::adapters::TextRegion;
 use crate::documents::RegionSegmentationStrategy;
 use crate::models::{ChunkPreset, DocumentFormat};
 
-use super::segment::guards::NoopBoundaryGuard;
+use super::segment::stream::NoopBoundaryGuard;
 use super::*;
 
 fn segment_text(text: &str, preset: ChunkPreset) -> Vec<SegmentedChunk> {

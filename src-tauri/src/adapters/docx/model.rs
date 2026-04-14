@@ -84,11 +84,23 @@ pub(crate) struct LockedRegionTemplate {
     pub text: String,
     pub presentation: Option<ChunkPresentation>,
     pub render: LockedRegionRender,
+    pub display_mode: LockedDisplayMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LockedDisplayMode {
+    Inline,
+    AfterParagraph,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum LockedRegionRender {
     RawEvents(Vec<Event<'static>>),
+    RunChildEvents {
+        run_property_events: Vec<Event<'static>>,
+        child_events: Vec<Event<'static>>,
+    },
     PageBreak,
+    Synthetic,
     Sequence(Vec<LockedRegionRender>),
 }

@@ -44,6 +44,10 @@ function assertMatches(text, pattern, message) {
   assert.ok(pattern.test(text), message);
 }
 
+function rewriteRelativeImports(code) {
+  return code.replace(/from\s+["']((?:\.\.?\/)[^"']+)["']/g, 'from "$1.mjs"');
+}
+
 async function loadProtectedTextModule() {
   const tempRoot = join(process.cwd(), ".tmp");
   mkdirSync(tempRoot, { recursive: true });
@@ -67,7 +71,7 @@ async function loadProtectedTextModule() {
         },
         fileName
       }).outputText;
-      const rewritten = transpiled.replace(/from\s+["'](\.\/[^"']+)["']/g, 'from "$1.mjs"');
+      const rewritten = rewriteRelativeImports(transpiled);
       writeFileSync(join(dir, fileName.replace(/\.(ts|tsx)$/, ".mjs")), rewritten, "utf8");
     }
     return await import(pathToFileURL(file).href);
@@ -95,12 +99,48 @@ async function loadChunkSelectionModule() {
         },
         fileName
       }).outputText;
-      const rewritten = transpiled.replace(/from\s+["'](\.\/[^"']+)["']/g, 'from "$1.mjs"');
+      const rewritten = rewriteRelativeImports(transpiled);
       writeFileSync(join(dir, fileName.replace(/\.ts$/, ".mjs")), rewritten, "utf8");
     }
     const chunkSelection = await import(pathToFileURL(file).href);
     const chunkGroups = await import(pathToFileURL(join(dir, "chunkGroups.mjs")).href);
     return { ...chunkSelection, ...chunkGroups };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function loadDocumentFlowSharedModule() {
+  const tempRoot = join(process.cwd(), ".tmp");
+  mkdirSync(tempRoot, { recursive: true });
+  const dir = mkdtempSync(join(tempRoot, "lessai-document-flow-shared-"));
+
+  try {
+    for (const path of [
+      "src/stages/workbench/document/documentFlowShared.tsx",
+      "src/lib/protectedText.tsx",
+      "src/lib/markdownProtectedSegments.ts",
+      "src/lib/protectedTextShared.ts",
+      "src/lib/texProtectedSegments.ts"
+    ]) {
+      const source = read(path);
+      const fileName = path.split("/").pop();
+      const transpiled = ts.transpileModule(source, {
+        compilerOptions: {
+          module: ts.ModuleKind.ES2022,
+          target: ts.ScriptTarget.ES2022,
+          jsx: ts.JsxEmit.ReactJSX
+        },
+        fileName
+      }).outputText;
+      const rewritten = rewriteRelativeImports(transpiled);
+      const outputPath = join(dir, path).replace(/\.(ts|tsx)$/, ".mjs");
+      mkdirSync(outputPath.slice(0, outputPath.lastIndexOf("/")), { recursive: true });
+      writeFileSync(outputPath, rewritten, "utf8");
+    }
+    return await import(
+      pathToFileURL(join(dir, "src/stages/workbench/document/documentFlowShared.mjs")).href
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -113,7 +153,12 @@ const documentPanel = read("src/stages/workbench/DocumentPanel.tsx");
 const documentFlow = read("src/stages/workbench/document/DocumentFlow.tsx");
 const workspaceBar = read("src/app/components/WorkspaceBar.tsx");
 const { renderInlineProtectedText } = await loadProtectedTextModule();
-const { buildChunkGroups, normalizeSelectedChunkIndices } = await loadChunkSelectionModule();
+const {
+  buildChunkGroups,
+  normalizeSelectedChunkIndices,
+  resolveOptimisticManualRunningIndex
+} = await loadChunkSelectionModule();
+const { fragmentClassNames } = await loadDocumentFlowSharedModule();
 
 assertIncludes(workspaceBar, 'className="workspace-bar-status-row"');
 assertIncludes(workspaceBar, 'className="workspace-bar-path-line"');
@@ -127,6 +172,8 @@ assertNotIncludes(workspaceBar, "formatTopbarPath");
 assertRule(part02, ".workspace-bar-status-row", "display", "flex");
 assertRule(part02, ".workspace-bar-path-line", "display", "flex");
 assertRule(part02, ".workspace-bar-path-text", "text-overflow", "ellipsis");
+assertRule(part04, ".docx-editor-chunk.is-editable.is-underline:focus", "text-decoration", "none");
+assertRule(part04, ".docx-editor-chunk.is-editable.is-link:focus", "text-decoration", "none");
 
 const paragraphChunks = [
   {
@@ -237,6 +284,42 @@ assert.deepEqual(
   "小句模式下，应把同一语义小句内的样式碎块归并成一个可见单元"
 );
 
+assertNotIncludes(
+  fragmentClassNames(
+    {
+      index: 0,
+      sourceText: "已选中的片段",
+      separatorAfter: "",
+      skipRewrite: false,
+      presentation: null,
+      status: "idle",
+      errorMessage: null
+    },
+    false,
+    true,
+    true
+  ),
+  "is-fragment-active"
+);
+
+assertNotIncludes(
+  fragmentClassNames(
+    {
+      index: 0,
+      sourceText: "当前激活片段",
+      separatorAfter: "",
+      skipRewrite: false,
+      presentation: null,
+      status: "idle",
+      errorMessage: null
+    },
+    false,
+    true,
+    false
+  ),
+  "is-fragment-active"
+);
+
 assert.deepEqual(
   normalizeSelectedChunkIndices(clauseChunks, [1], "clause"),
   [0, 1, 2],
@@ -295,6 +378,12 @@ assert.deepEqual(
   normalizeSelectedChunkIndices(sentenceChunks, [2], "sentence"),
   [0, 2],
   "整句模式下，选中句内任一可编辑碎块时，应扩展为整句内全部可编辑碎块"
+);
+
+assert.equal(
+  resolveOptimisticManualRunningIndex(sentenceChunks, [3]),
+  3,
+  "手动模式下，乐观中的“正在改写”必须落在所选片段内，而不是全文第一个可改写片段"
 );
 
 function renderTexMarkup(text) {

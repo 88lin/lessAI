@@ -55,6 +55,14 @@ fn protect_kind_of(region: &TextRegion) -> Option<&str> {
         .and_then(|item| item.protect_kind.as_deref())
 }
 
+fn joined_region_text(regions: &[TextRegion]) -> String {
+    regions.iter().map(|region| region.body.as_str()).collect()
+}
+
+fn normalize_xml_layout(xml: &str) -> String {
+    xml.lines().map(str::trim).collect::<String>()
+}
+
 fn build_rfonts_hint_fragmented_docx() -> Vec<u8> {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -333,7 +341,7 @@ fn imports_softwrapped_line_wrapped_docx_with_fewer_lines_during_import() {
 }
 
 #[test]
-fn rejects_writeback_for_softwrapped_line_wrapped_docx() {
+fn allows_writeback_for_softwrapped_line_wrapped_docx() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
@@ -349,14 +357,14 @@ fn rejects_writeback_for_softwrapped_line_wrapped_docx() {
     <w:p><w:r><w:t>第十行内容用于模拟真实文档</w:t></w:r></w:p>
     <w:p><w:r><w:t>第十一行内容用于模拟真实文档</w:t></w:r></w:p>
     <w:p><w:r><w:t>最后一行收尾。</w:t></w:r></w:p>
-  </w:body>
+    </w:body>
 </w:document>"#;
     let bytes = build_minimal_docx(xml);
     let source = DocxAdapter::extract_text(&bytes).expect("extract text");
-    let error =
-        DocxAdapter::write_updated_text(&bytes, &source, &source).expect_err("expected failure");
-    assert!(error.contains("不支持") || error.contains("仅支持简单 docx"));
-    assert!(error.contains("按行断开") || error.contains("简单"));
+    let rewritten =
+        DocxAdapter::write_updated_text(&bytes, &source, &source).expect("expected success");
+    let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+    assert_eq!(extracted, source);
 }
 
 #[test]
@@ -377,6 +385,637 @@ fn imports_report_template_with_locked_non_article_objects() {
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("table")));
+}
+
+#[test]
+fn report_template_keeps_first_heading_numbered_as_chapter_one() {
+    let bytes = load_repo_docx_fixture("04-3 作品报告（大数据应用赛，2025版）模板.docx");
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = joined_region_text(&regions);
+
+    assert!(
+        text.contains("第1章 作品概述"),
+        "expected first heading to stay as chapter one, got:\n{text}"
+    );
+    assert!(
+        source.contains("第1章 作品概述"),
+        "expected writeback source to keep chapter one, got:\n{source}"
+    );
+    assert!(
+        rebuilt.contains("第1章 作品概述"),
+        "expected regions to keep chapter one, got:\n{rebuilt}"
+    );
+    assert!(
+        !text.contains("第2章 作品概述"),
+        "unexpected chapter two in text:\n{text}"
+    );
+    assert!(
+        !source.contains("第2章 作品概述"),
+        "unexpected chapter two in source:\n{source}"
+    );
+    assert!(
+        !rebuilt.contains("第2章 作品概述"),
+        "unexpected chapter two in regions:\n{rebuilt}"
+    );
+}
+
+#[test]
+fn imports_underlined_blank_runs_as_fill_line_placeholders() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>填写日期：</w:t></w:r>
+      <w:r>
+        <w:rPr><w:u w:val="single"/></w:rPr>
+        <w:t xml:space="preserve">　　　　</w:t>
+      </w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = joined_region_text(&regions);
+
+    assert_eq!(rebuilt, "填写日期：[填写线]");
+    assert!(regions
+        .iter()
+        .any(|region| region.body == "[填写线]" && protect_kind_of(region) == Some("fill-line")));
+}
+
+#[test]
+fn imports_numbering_prefixes_as_locked_visible_regions() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="7"/>
+        </w:numPr>
+      </w:pPr>
+      <w:r><w:t>填写日期</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="3">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1、"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="7">
+    <w:abstractNumId w:val="3"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = joined_region_text(&regions);
+
+    assert_eq!(rebuilt, "1、填写日期");
+    assert_eq!(
+        regions.first().map(|region| region.body.as_str()),
+        Some("1、")
+    );
+    assert!(regions.first().is_some_and(|region| region.skip_rewrite));
+    assert_eq!(
+        regions.first().and_then(|region| protect_kind_of(region)),
+        Some("list-marker")
+    );
+}
+
+#[test]
+fn imports_style_inherited_heading_numbering_as_locked_visible_prefixes() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr><w:pStyle w:val="1"/></w:pPr>
+      <w:r><w:t>作品概述</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="1">
+    <w:name w:val="heading 1"/>
+    <w:pPr>
+      <w:numPr><w:numId w:val="1"/></w:numPr>
+    </w:pPr>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="第%1章"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = joined_region_text(&regions);
+
+    assert_eq!(rebuilt, "第1章 作品概述");
+    assert_eq!(
+        regions.first().map(|region| region.body.as_str()),
+        Some("第1章 ")
+    );
+    assert!(regions.first().is_some_and(|region| region.skip_rewrite));
+    assert_eq!(
+        regions.first().and_then(protect_kind_of),
+        Some("list-marker")
+    );
+}
+
+#[test]
+fn imports_style_numbering_through_based_on_chain() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr><w:pStyle w:val="DerivedHeading"/></w:pPr>
+      <w:r><w:t>二级标题示例</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="BaseHeading">
+    <w:name w:val="heading 1"/>
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="DerivedHeading">
+    <w:basedOn w:val="BaseHeading"/>
+    <w:pPr><w:numPr><w:ilvl w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="第%1章"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+    <w:lvl w:ilvl="1">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1.%2"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+
+    assert_eq!(text, "1.1 二级标题示例");
+}
+
+#[test]
+fn imports_multilevel_style_numbering_with_full_marker_text() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:t>作品概述</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="2"/></w:pPr><w:r><w:t>二级标题示例</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="3"/></w:pPr><w:r><w:t>三级标题示例</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="1">
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="2">
+    <w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="3">
+    <w:pPr><w:numPr><w:ilvl w:val="2"/><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="第%1章"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+    <w:lvl w:ilvl="1">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1.%2"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+    <w:lvl w:ilvl="2">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1.%2.%3"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+
+    assert_eq!(
+        text,
+        "第1章 作品概述\n\n1.1 二级标题示例\n\n1.1.1 三级标题示例"
+    );
+}
+
+#[test]
+fn does_not_consume_heading_numbering_on_empty_style_numbered_paragraph() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="1"/></w:pPr></w:p>
+    <w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:t>作品概述</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="1">
+    <w:name w:val="heading 1"/>
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="第%1章"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+
+    assert_eq!(text, "\n\n第1章 作品概述");
+}
+
+#[test]
+fn imports_numbering_when_paragraph_direct_numpr_completes_style_numpr() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="BodyNumbered"/>
+        <w:numPr><w:ilvl w:val="1"/></w:numPr>
+      </w:pPr>
+      <w:r><w:t>二级正文</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="BodyNumbered">
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+    <w:lvl w:ilvl="1">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1.%2"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+
+    assert_eq!(text, "1.1 二级正文");
+}
+
+#[test]
+fn imports_numbering_suffix_tabs_as_visible_locked_text() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="7"/>
+        </w:numPr>
+      </w:pPr>
+      <w:r><w:t>填写日期</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="3">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1."/>
+      <w:suff w:val="tab"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="7">
+    <w:abstractNumId w:val="3"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = joined_region_text(&regions);
+
+    assert_eq!(rebuilt, "1.\t填写日期");
+    assert_eq!(
+        regions.first().map(|region| region.body.as_str()),
+        Some("1.\t")
+    );
+}
+
+#[test]
+fn marks_style_named_heading_regions_as_skip_regions_by_default() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr><w:pStyle w:val="1"/></w:pPr>
+      <w:r><w:t>作品概述</w:t></w:r>
+    </w:p>
+    <w:p><w:r><w:t>正文</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="1">
+    <w:name w:val="heading 1"/>
+  </w:style>
+</w:styles>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+    ]);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    assert!(regions
+        .iter()
+        .any(|region| region.skip_rewrite && region.body.contains("作品概述")));
+}
+
+#[test]
+fn imports_floating_textboxes_as_following_locked_blocks_in_reading_order() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+            xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:drawing>
+          <wp:anchor>
+            <wp:positionV relativeFrom="page"><wp:posOffset>2400</wp:posOffset></wp:positionV>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+                <wps:wsp>
+                  <wps:txbx>
+                    <w:txbxContent>
+                      <w:p><w:r><w:t>填写说明</w:t></w:r></w:p>
+                    </w:txbxContent>
+                  </wps:txbx>
+                </wps:wsp>
+              </a:graphicData>
+            </a:graphic>
+          </wp:anchor>
+        </w:drawing>
+      </w:r>
+      <w:r><w:t>填写日期：</w:t></w:r>
+    </w:p>
+    <w:p><w:r><w:t>后续正文</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = joined_region_text(&regions);
+
+    assert_eq!(rebuilt, "填写日期：\n\n[文本框]\n\n后续正文");
+    assert!(!rebuilt.contains("[文本框]填写日期："));
+}
+
+#[test]
+fn writes_back_numbered_paragraphs_with_visible_locked_prefixes() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="7"/>
+        </w:numPr>
+      </w:pPr>
+      <w:r><w:t>填写日期</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="3">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1、"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="7">
+    <w:abstractNumId w:val="3"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+
+    let rewritten = DocxAdapter::write_updated_text(&bytes, &source, "1、改写日期")
+        .expect("write updated text");
+    let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+
+    assert_eq!(source, "1、填写日期");
+    assert_eq!(extracted, "1、改写日期");
+}
+
+#[test]
+fn writes_back_style_inherited_heading_numbering_without_losing_prefixes() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:t>作品概述</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="2"/></w:pPr><w:r><w:t>二级标题示例</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="1">
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="2">
+    <w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="第%1章"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+    <w:lvl w:ilvl="1">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1.%2"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+
+    let rewritten = DocxAdapter::write_updated_text(
+        &bytes,
+        &source,
+        "第1章 改写后的作品概述\n\n1.1 改写后的二级标题",
+    )
+    .expect("write updated text");
+    let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+
+    assert_eq!(source, "第1章 作品概述\n\n1.1 二级标题示例");
+    assert_eq!(extracted, "第1章 改写后的作品概述\n\n1.1 改写后的二级标题");
+}
+
+#[test]
+fn writes_back_text_around_floating_textboxes_in_display_order() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+            xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:drawing>
+          <wp:anchor>
+            <wp:positionV relativeFrom="page"><wp:posOffset>2400</wp:posOffset></wp:positionV>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+                <wps:wsp>
+                  <wps:txbx>
+                    <w:txbxContent>
+                      <w:p><w:r><w:t>填写说明</w:t></w:r></w:p>
+                    </w:txbxContent>
+                  </wps:txbx>
+                </wps:wsp>
+              </a:graphicData>
+            </a:graphic>
+          </wp:anchor>
+        </w:drawing>
+      </w:r>
+      <w:r><w:t>填写日期：</w:t></w:r>
+    </w:p>
+    <w:p><w:r><w:t>后续正文</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+
+    let rewritten =
+        DocxAdapter::write_updated_text(&bytes, &source, "改写日期：\n\n[文本框]\n\n改写后的正文")
+            .expect("write updated text");
+    let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+
+    assert_eq!(source, "填写日期：\n\n[文本框]\n\n后续正文");
+    assert_eq!(extracted, "改写日期：\n\n[文本框]\n\n改写后的正文");
 }
 
 #[test]
@@ -439,12 +1078,12 @@ fn imports_chart_shape_and_group_shape_as_locked_placeholders() {
 
     assert!(regions
         .iter()
-        .any(|region| region.body == "[图表]" && protect_kind_of(region) == Some("chart")));
+        .any(|region| region.body.contains("[图表]") && protect_kind_of(region) == Some("chart")));
     assert!(regions
         .iter()
-        .any(|region| region.body == "[图形]" && protect_kind_of(region) == Some("shape")));
+        .any(|region| region.body.contains("[图形]") && protect_kind_of(region) == Some("shape")));
     assert!(regions.iter().any(|region| {
-        region.body == "[组合图形]" && protect_kind_of(region) == Some("group-shape")
+        region.body.contains("[组合图形]") && protect_kind_of(region) == Some("group-shape")
     }));
 }
 
@@ -642,8 +1281,8 @@ fn roundtrips_chart_shape_and_group_shape_placeholders_through_writeback() {
         DocxAdapter::write_updated_regions(&bytes, &source, &regions).expect("write regions");
 
     assert_eq!(
-        read_docx_entry(&rewritten, "word/document.xml"),
-        read_docx_entry(&bytes, "word/document.xml")
+        normalize_xml_layout(&read_docx_entry(&rewritten, "word/document.xml")),
+        normalize_xml_layout(&read_docx_entry(&bytes, "word/document.xml"))
     );
 }
 
@@ -678,8 +1317,8 @@ fn roundtrips_vml_pict_shape_placeholders_through_writeback() {
         DocxAdapter::write_updated_regions(&bytes, &source, &regions).expect("write regions");
 
     assert_eq!(
-        read_docx_entry(&rewritten, "word/document.xml"),
-        read_docx_entry(&bytes, "word/document.xml")
+        normalize_xml_layout(&read_docx_entry(&rewritten, "word/document.xml")),
+        normalize_xml_layout(&read_docx_entry(&bytes, "word/document.xml"))
     );
 }
 
@@ -1538,6 +2177,31 @@ fn imports_page_breaks_as_placeholders() {
 }
 
 #[test]
+fn ignores_last_rendered_page_breaks_during_import() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:t>上文</w:t>
+        <w:lastRenderedPageBreak/>
+        <w:t>下文</w:t>
+      </w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rebuilt = regions
+        .iter()
+        .map(|region| region.body.as_str())
+        .collect::<String>();
+
+    assert_eq!(rebuilt, "上文下文");
+}
+
+#[test]
 fn imports_section_breaks_as_placeholders() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -1573,6 +2237,37 @@ fn writes_back_docx_with_section_break_placeholder() {
     let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
 
     assert_eq!(writeback_source, source);
+
+    let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &regions)
+        .expect("write updated regions");
+    let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+
+    assert_eq!(extracted, source);
+}
+
+#[test]
+fn writes_back_docx_with_last_rendered_page_break() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:t>上文</w:t>
+        <w:lastRenderedPageBreak/>
+        <w:t>下文</w:t>
+      </w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let source = DocxAdapter::extract_text(&bytes).expect("extract text");
+    let writeback_source =
+        DocxAdapter::extract_writeback_source_text(&bytes).expect("extract writeback source");
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    assert_eq!(source, "上文下文");
+    assert_eq!(writeback_source, source);
+    DocxAdapter::validate_writeback(&bytes).expect("validate writeback");
 
     let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &regions)
         .expect("write updated regions");
@@ -2197,4 +2892,227 @@ fn writes_back_repo_sample_docx_without_false_source_mismatch() {
     let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
 
     assert_eq!(extracted, source);
+}
+
+#[test]
+fn imports_simple_fields_as_locked_visible_regions() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>前</w:t></w:r>
+      <w:fldSimple w:instr=" FILENAME ">
+        <w:r><w:t>文档名.docx</w:t></w:r>
+      </w:fldSimple>
+      <w:r><w:t>后</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    assert_eq!(joined_region_text(&regions), "前文档名.docx后");
+    let field_region = regions
+        .iter()
+        .find(|region| region.body == "文档名.docx")
+        .expect("field region");
+    assert!(field_region.skip_rewrite);
+    assert_eq!(protect_kind_of(field_region), Some("field"));
+}
+
+#[test]
+fn roundtrips_simple_fields_through_writeback() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>前</w:t></w:r>
+      <w:fldSimple w:instr=" AUTHOR ">
+        <w:r><w:t>作者</w:t></w:r>
+      </w:fldSimple>
+      <w:r><w:t>后</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &regions)
+        .expect("write updated regions");
+    let extracted =
+        DocxAdapter::extract_writeback_source_text(&rewritten).expect("extract rewritten source");
+
+    assert_eq!(source, "前作者后");
+    assert_eq!(extracted, source);
+}
+
+#[test]
+fn imports_inline_content_controls_as_locked_placeholders() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>前</w:t></w:r>
+      <w:sdt>
+        <w:sdtPr><w:alias w:val="普通内容控件"/></w:sdtPr>
+        <w:sdtContent>
+          <w:r><w:t>控件内容</w:t></w:r>
+        </w:sdtContent>
+      </w:sdt>
+      <w:r><w:t>后</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    assert_eq!(joined_region_text(&regions), "前[内容控件]后");
+    assert!(regions.iter().any(|region| region.body == "[内容控件]"
+        && region.skip_rewrite
+        && protect_kind_of(region) == Some("content-control")));
+}
+
+#[test]
+fn imports_block_content_controls_as_content_control_placeholders() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>前</w:t></w:r></w:p>
+    <w:sdt>
+      <w:sdtPr><w:alias w:val="普通内容控件"/></w:sdtPr>
+      <w:sdtContent>
+        <w:p><w:r><w:t>控件内容</w:t></w:r></w:p>
+      </w:sdtContent>
+    </w:sdt>
+    <w:p><w:r><w:t>后</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    assert_eq!(joined_region_text(&regions), "前\n\n[内容控件]\n\n后");
+    assert!(regions
+        .iter()
+        .any(|region| region.body.starts_with("[内容控件]")
+            && region.skip_rewrite
+            && protect_kind_of(region) == Some("content-control")));
+}
+
+#[test]
+fn imports_run_special_characters_and_roundtrips_writeback() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>甲</w:t></w:r>
+      <w:r><w:noBreakHyphen/></w:r>
+      <w:r><w:t>乙</w:t></w:r>
+      <w:r><w:softHyphen/></w:r>
+      <w:r><w:t>丙</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let expected = format!("甲{}乙\u{00ad}丙", '\u{2011}');
+
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &regions)
+        .expect("write updated regions");
+    let extracted =
+        DocxAdapter::extract_writeback_source_text(&rewritten).expect("extract rewritten source");
+
+    assert_eq!(source, expected);
+    assert_eq!(joined_region_text(&regions), expected);
+    assert_eq!(extracted, expected);
+}
+
+#[test]
+fn imports_numbering_start_override_markers() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="9"/>
+        </w:numPr>
+      </w:pPr>
+      <w:r><w:t>覆盖起始值</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1."/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="9">
+    <w:abstractNumId w:val="0"/>
+    <w:lvlOverride w:ilvl="0">
+      <w:startOverride w:val="5"/>
+    </w:lvlOverride>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+
+    assert_eq!(text, "5. 覆盖起始值");
+}
+
+#[test]
+fn imports_numbering_from_level_paragraph_style_binding() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr><w:pStyle w:val="CustomHeading"/></w:pPr>
+      <w:r><w:t>作品概述</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="CustomHeading">
+    <w:name w:val="custom heading"/>
+  </w:style>
+</w:styles>"#;
+    let numbering_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:pStyle w:val="CustomHeading"/>
+      <w:lvlText w:val="第%1章"/>
+      <w:suff w:val="space"/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1">
+    <w:abstractNumId w:val="0"/>
+  </w:num>
+</w:numbering>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+        ("word/numbering.xml", numbering_xml),
+    ]);
+
+    let text = DocxAdapter::extract_text(&bytes).expect("extract text");
+
+    assert_eq!(text, "第1章 作品概述");
 }

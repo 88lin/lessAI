@@ -426,10 +426,6 @@
   box-shadow: inset 0 0 0 1px rgba(20, 20, 20, 0.16);
 }
 
-.doc-paragraph-fragment.is-fragment-active {
-  box-shadow: inset 0 -2px 0 rgba(23, 68, 207, 0.3);
-}
-
 .doc-paragraph-fragment.is-fragment-running {
   background: rgba(134, 93, 255, 0.12);
 }
@@ -714,6 +710,14 @@
 .docx-editor-chunk.is-link {
   text-decoration: underline;
   text-decoration-thickness: 1.5px;
+}
+
+.docx-editor-chunk.is-editable.is-underline:focus {
+  text-decoration: none;
+}
+
+.docx-editor-chunk.is-editable.is-link:focus {
+  text-decoration: none;
 }
 
 .docx-editor-chunk.is-link {

@@ -1,6 +1,7 @@
 use crate::models::{ChunkPresentation, ChunkPreset};
 
 use super::guards::BoundaryGuard;
+pub(crate) use super::guards::NoopBoundaryGuard;
 use super::masked::{append_segmented_masked_text, append_segmented_text};
 use super::{append_separator_to_last, split_trailing_whitespace, SegmentedChunk};
 

@@ -11,6 +11,7 @@ import type {
 import type { SessionStats } from "../lib/helpers";
 import type { ReviewView } from "../lib/constants";
 import { groupSuggestionsByChunk, isSettingsReady } from "../lib/helpers";
+import { resolveOptimisticManualRunningIndex } from "../lib/chunkSelection";
 import type { EditorChunkOverrides } from "../lib/editorChunks";
 import { DocumentPanel } from "./workbench/DocumentPanel";
 import { ReviewPanel } from "./workbench/ReviewPanel";
@@ -145,11 +146,11 @@ export const WorkbenchStage = memo(function WorkbenchStage({
     if (busyAction !== "start-manual") {
       return null;
     }
-    const target = currentSession.chunks.find(
-      (chunk) => chunk.status === "idle" || chunk.status === "failed"
+    return resolveOptimisticManualRunningIndex(
+      currentSession.chunks,
+      selectedChunkIndices
     );
-    return target?.index ?? null;
-  }, [activeChunkIndex, busyAction, currentSession]);
+  }, [activeChunkIndex, busyAction, currentSession, selectedChunkIndices]);
 
   const activeChunkSuggestions = useMemo(() => {
     if (!currentSession || !activeChunk) return [];

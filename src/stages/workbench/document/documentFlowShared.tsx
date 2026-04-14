@@ -96,15 +96,13 @@ export function renderChunkContent(
 
 export function fragmentClassNames(
   chunk: ChunkTask,
-  isRunning: boolean,
-  isActive: boolean
+  isRunning: boolean
 ) {
   return [
     "doc-paragraph-fragment",
     chunk.skipRewrite ? "is-fragment-protected" : "",
     isRunning ? "is-fragment-running" : "",
-    chunk.status === "failed" ? "is-fragment-failed" : "",
-    isActive ? "is-fragment-active" : ""
+    chunk.status === "failed" ? "is-fragment-failed" : ""
   ]
     .filter(Boolean)
     .join(" ");

@@ -284,7 +284,9 @@ mod tests {
     use super::{
         refresh_session_capabilities_if_needed, snapshot_repair_action, SnapshotRepairAction,
     };
-    use crate::models::{ChunkStatus, ChunkTask, DocumentSession, DocumentSnapshot, RunningState};
+    use crate::models::{
+        ChunkPreset, ChunkStatus, ChunkTask, DocumentSession, DocumentSnapshot, RunningState,
+    };
 
     fn sample_session() -> DocumentSession {
         let now = Utc::now();
