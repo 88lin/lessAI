@@ -11,11 +11,9 @@ pub(super) const DOCX_TEXTBOX_PLACEHOLDER: &str = "[文本框]";
 pub(super) const DOCX_CHART_PLACEHOLDER: &str = "[图表]";
 pub(super) const DOCX_SHAPE_PLACEHOLDER: &str = "[图形]";
 pub(super) const DOCX_GROUP_SHAPE_PLACEHOLDER: &str = "[组合图形]";
-pub(super) const DOCX_TOC_PLACEHOLDER: &str = "[目录]";
 pub(super) const DOCX_CONTENT_CONTROL_PLACEHOLDER: &str = "[内容控件]";
 pub(super) const DOCX_TABLE_PLACEHOLDER: &str = "[表格]";
 pub(super) const DOCX_SECTION_BREAK_PLACEHOLDER: &str = "[分节符]";
-pub(super) const DOCX_FILL_LINE_PLACEHOLDER: &str = "[填写线]";
 pub(super) const DOCX_FIELD_PLACEHOLDER: &str = "[字段]";
 
 pub(super) fn placeholder_presentation(kind: &str) -> Option<ChunkPresentation> {

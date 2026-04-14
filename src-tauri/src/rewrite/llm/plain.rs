@@ -4,13 +4,16 @@ use super::prompt::{
     merge_extra_constraints, resolve_system_prompt, EXTRA_CONSTRAINT_NO_MODEL_META,
     EXTRA_CONSTRAINT_NO_MODEL_META_RETRY,
 };
-
-use super::validate::validate_rewrite_output;
-
-use super::super::text::{
-    collapse_line_breaks_to_spaces, enforce_line_skeleton, normalize_line_endings_to_lf,
-    split_line_skeleton, strip_redundant_prefix, trim_ascii_spaces_tabs_start,
+use super::plain_support::{
+    blank_pattern_matches, build_numbered_multiline_template, split_lines_keep_empty,
+    try_parse_multiline_rewrite_response,
 };
+use super::super::text::{
+    collapse_line_breaks_to_spaces, enforce_line_skeleton, split_line_skeleton,
+    strip_redundant_prefix,
+    trim_ascii_spaces_tabs_start,
+};
+use super::validate::validate_rewrite_output;
 
 async fn call_rewrite_model(
     client: &reqwest::Client,
@@ -239,22 +242,7 @@ fn build_multiline_rewrite_prompt(
     source_body: &str,
     extra_constraint: Option<&str>,
 ) -> (String, usize) {
-    // 将换行统一为 LF，保证我们构造的“逐行模板”稳定。
-    let normalized = normalize_line_endings_to_lf(source_body);
-    let lines = normalized.split('\n').collect::<Vec<_>>();
-    let expected = lines.len().max(1);
-
-    let mut template = String::new();
-    for (index, line) in lines.iter().enumerate() {
-        let number = index + 1;
-        template.push_str("@@@");
-        template.push_str(&number.to_string());
-        template.push_str("@@@");
-        template.push_str(line);
-        if number < expected {
-            template.push('\n');
-        }
-    }
+    let (template, expected) = build_numbered_multiline_template(source_body);
 
     let extra_constraint = extra_constraint
         .map(|value| value.trim())
@@ -267,80 +255,4 @@ fn build_multiline_rewrite_prompt(
     );
 
     (prompt, expected)
-}
-
-fn split_lines_keep_empty(text: &str) -> Vec<String> {
-    normalize_line_endings_to_lf(text)
-        .split('\n')
-        .map(|value| value.to_string())
-        .collect::<Vec<_>>()
-}
-
-fn blank_pattern_matches(source_lines: &[String], candidate_lines: &[String]) -> bool {
-    if source_lines.len() != candidate_lines.len() {
-        return false;
-    }
-
-    source_lines
-        .iter()
-        .zip(candidate_lines.iter())
-        .all(|(source, candidate)| source.trim().is_empty() == candidate.trim().is_empty())
-}
-
-fn try_parse_multiline_rewrite_response(
-    output: &str,
-    expected_lines: usize,
-) -> Option<Vec<String>> {
-    let normalized = normalize_line_endings_to_lf(output);
-    let mut collected: Vec<Option<String>> = vec![None; expected_lines];
-
-    for raw_line in normalized.split('\n') {
-        if !raw_line.starts_with("@@@") {
-            continue;
-        }
-
-        let rest = &raw_line["@@@".len()..];
-        let mut digits_end = 0usize;
-        for (offset, ch) in rest.char_indices() {
-            if ch.is_ascii_digit() {
-                digits_end = offset + ch.len_utf8();
-            } else {
-                break;
-            }
-        }
-
-        if digits_end == 0 {
-            continue;
-        }
-
-        let num_str = &rest[..digits_end];
-        let Ok(number) = num_str.parse::<usize>() else {
-            continue;
-        };
-        if number == 0 || number > expected_lines {
-            continue;
-        }
-
-        let after_digits = &rest[digits_end..];
-        if !after_digits.starts_with("@@@") {
-            continue;
-        }
-
-        let content = after_digits["@@@".len()..].to_string();
-        if collected[number - 1].is_some() {
-            return None;
-        }
-        collected[number - 1] = Some(content);
-    }
-
-    if collected.iter().all(|value| value.is_some()) {
-        Some(
-            collected
-                .into_iter()
-                .map(|value| value.unwrap_or_default())
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        None
-    }
 }

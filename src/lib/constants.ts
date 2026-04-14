@@ -70,6 +70,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   rewriteHeadings: false,
   rewriteMode: "manual",
   maxConcurrency: 2,
+  chunksPerRequest: 1,
   promptPresetId: "humanizer_zh",
   customPrompts: []
 };

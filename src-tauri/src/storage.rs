@@ -11,6 +11,11 @@ use crate::models::{AppSettings, DocumentSession};
 const SETTINGS_FILE: &str = "settings.json";
 const SESSIONS_DIR: &str = "sessions";
 
+fn normalize_settings(mut settings: AppSettings) -> AppSettings {
+    settings.chunks_per_request = settings.chunks_per_request.max(1);
+    settings
+}
+
 fn app_root(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -93,12 +98,13 @@ pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
         return Ok(AppSettings::default());
     }
 
-    read_json(&path)
+    read_json(&path).map(normalize_settings)
 }
 
 pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<AppSettings, String> {
     let path = app_root(app)?.join(SETTINGS_FILE);
-    write_json(&path, settings)?;
+    let normalized = normalize_settings(settings.clone());
+    write_json(&path, &normalized)?;
     load_settings(app)
 }
 
@@ -136,4 +142,20 @@ pub fn delete_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
     }
 
     fs::remove_file(&path).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_settings;
+    use crate::models::AppSettings;
+
+    #[test]
+    fn normalize_settings_clamps_chunks_per_request_to_at_least_one() {
+        let mut settings = AppSettings::default();
+        settings.chunks_per_request = 0;
+
+        let normalized = normalize_settings(settings);
+
+        assert_eq!(normalized.chunks_per_request, 1);
+    }
 }

@@ -27,7 +27,7 @@ interface SettingsModalProps {
     value: string
   ) => void;
   onUpdateNumberSetting: (
-    key: "timeoutMs" | "temperature" | "maxConcurrency",
+    key: "timeoutMs" | "temperature" | "maxConcurrency" | "chunksPerRequest",
     value: string
   ) => void;
   onUpdateChunkPreset: (value: AppSettings["chunkPreset"]) => void;

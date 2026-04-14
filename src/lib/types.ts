@@ -28,6 +28,7 @@ export interface AppSettings {
   rewriteHeadings: boolean;
   rewriteMode: RewriteMode;
   maxConcurrency: number;
+  chunksPerRequest: number;
   promptPresetId: PromptPresetId;
   customPrompts: PromptTemplate[];
 }

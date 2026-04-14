@@ -17,6 +17,8 @@ pub struct AppSettings {
     pub rewrite_mode: RewriteMode,
     #[serde(default = "default_max_concurrency")]
     pub max_concurrency: usize,
+    #[serde(default = "default_chunks_per_request")]
+    pub chunks_per_request: usize,
     #[serde(default = "default_prompt_preset_id")]
     pub prompt_preset_id: String,
     #[serde(default)]
@@ -25,6 +27,10 @@ pub struct AppSettings {
 
 fn default_max_concurrency() -> usize {
     2
+}
+
+fn default_chunks_per_request() -> usize {
+    1
 }
 
 fn default_prompt_preset_id() -> String {
@@ -60,6 +66,7 @@ impl Default for AppSettings {
             rewrite_headings: false,
             rewrite_mode: RewriteMode::Manual,
             max_concurrency: default_max_concurrency(),
+            chunks_per_request: default_chunks_per_request(),
             prompt_preset_id: default_prompt_preset_id(),
             custom_prompts: Vec::new(),
         }
@@ -263,34 +270,5 @@ pub struct SessionEvent {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::ChunkPreset;
-
-    #[test]
-    fn rejects_legacy_chunk_preset_aliases() {
-        for legacy in ["small", "medium", "large", "question"] {
-            let payload = format!("\"{legacy}\"");
-            let parsed = serde_json::from_str::<ChunkPreset>(&payload);
-            assert!(
-                parsed.is_err(),
-                "legacy preset should be rejected: {legacy}"
-            );
-        }
-    }
-
-    #[test]
-    fn accepts_current_chunk_preset_values() {
-        assert_eq!(
-            serde_json::from_str::<ChunkPreset>("\"clause\"").unwrap(),
-            ChunkPreset::Clause
-        );
-        assert_eq!(
-            serde_json::from_str::<ChunkPreset>("\"sentence\"").unwrap(),
-            ChunkPreset::Sentence
-        );
-        assert_eq!(
-            serde_json::from_str::<ChunkPreset>("\"paragraph\"").unwrap(),
-            ChunkPreset::Paragraph
-        );
-    }
-}
+#[path = "models_tests.rs"]
+mod tests;

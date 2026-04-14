@@ -31,14 +31,20 @@ fn write_temp_file(name: &str, ext: &str, contents: &[u8]) -> (PathBuf, PathBuf)
 }
 
 fn build_minimal_docx(document_xml: &str) -> Vec<u8> {
+    build_docx_entries(&[("word/document.xml", document_xml)])
+}
+
+fn build_docx_entries(entries: &[(&str, &str)]) -> Vec<u8> {
     let mut out = Vec::new();
     let cursor = std::io::Cursor::new(&mut out);
     let mut zip = ZipWriter::new(cursor);
     let options = FileOptions::<()>::default();
-    zip.start_file("word/document.xml", options)
-        .expect("start document.xml");
-    zip.write_all(document_xml.as_bytes())
-        .expect("write document.xml");
+
+    for (name, contents) in entries {
+        zip.start_file(*name, options).expect("start zip entry");
+        zip.write_all(contents.as_bytes()).expect("write zip entry");
+    }
+
     zip.finish().expect("finish docx");
     out
 }
@@ -249,13 +255,22 @@ fn load_docx_source_preserves_region_boundaries() {
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     <w:p>
-      <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+      <w:pPr><w:pStyle w:val="CustomHeading"/></w:pPr>
       <w:r><w:t>标题</w:t></w:r>
     </w:p>
     <w:p><w:r><w:t>正文</w:t></w:r></w:p>
   </w:body>
 </w:document>"#;
-    let bytes = build_minimal_docx(document_xml);
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="CustomHeading">
+    <w:pPr><w:outlineLvl w:val="0"/></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+    ]);
     let (root, target) = write_temp_file("docx-source", "docx", &bytes);
 
     let loaded = load_document_source(&target, false).expect("load docx");

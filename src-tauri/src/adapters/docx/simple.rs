@@ -268,12 +268,6 @@ const DOCX_EMBEDDED_OBJECT_ERROR: &str =
 const DOCX_HYPERLINK_PAGE_BREAK_ERROR: &str =
     "当前不支持超链接内分页符的 docx：这类结构无法安全写回，请先在 Word 中调整后再导入。";
 
-#[derive(Debug, Clone)]
-struct DocxParagraph {
-    text: String,
-    is_heading: bool,
-}
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RunStyle {
     bold: bool,
@@ -288,11 +282,6 @@ fn extract_regions_from_document_xml(
 ) -> Result<Vec<TextRegion>, String> {
     let blocks = extract_writeback_paragraph_templates(xml, support)?;
     Ok(flatten_writeback_blocks(&blocks, rewrite_headings))
-}
-
-fn is_heading_style_id(style_id: &str) -> bool {
-    let lowered = style_id.trim().to_ascii_lowercase();
-    lowered.starts_with("heading") || matches!(lowered.as_str(), "title" | "subtitle")
 }
 
 fn attr_value(bytes: &quick_xml::events::BytesStart<'_>, key: &[u8]) -> Option<String> {
@@ -337,562 +326,26 @@ fn hyperlink_target(
         .or_else(|| attr_value(event, b"anchor").map(|anchor| format!("#{anchor}")))
 }
 
-fn extract_import_blocks_from_document_xml(
-    xml: &str,
-    hyperlink_targets: &HashMap<String, String>,
-    rewrite_headings: bool,
-) -> Result<(Vec<Vec<TextRegion>>, Vec<DocxParagraph>), String> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-
-    let mut buf = Vec::new();
-    let mut body_depth = 0usize;
-    let mut paragraph_depth = 0usize;
-    let mut table_depth = 0usize;
-    let mut sdt_depth = 0usize;
-    let mut paragraph_events: Vec<Event<'static>> = Vec::new();
-    let mut blocks: Vec<Vec<TextRegion>> = Vec::new();
-    let mut paragraphs: Vec<DocxParagraph> = Vec::new();
-
-    loop {
-        let event = match reader.read_event_into(&mut buf) {
-            Ok(event) => event.into_owned(),
-            Err(error) => return Err(format!("解析 document.xml 失败：{error}")),
-        };
-
-        match event {
-            Event::Start(e) => handle_import_start(
-                e,
-                &mut body_depth,
-                &mut paragraph_depth,
-                &mut table_depth,
-                &mut sdt_depth,
-                &mut paragraph_events,
-                &mut blocks,
-            )?,
-            Event::Empty(e) => handle_import_empty(
-                e,
-                &mut body_depth,
-                &mut paragraph_depth,
-                &mut table_depth,
-                &mut sdt_depth,
-                &mut paragraph_events,
-                &mut blocks,
-                &mut paragraphs,
-                hyperlink_targets,
-                rewrite_headings,
-            )?,
-            Event::End(e) => handle_import_end(
-                e,
-                &mut body_depth,
-                &mut paragraph_depth,
-                &mut table_depth,
-                &mut sdt_depth,
-                &mut paragraph_events,
-                &mut blocks,
-                &mut paragraphs,
-                hyperlink_targets,
-                rewrite_headings,
-            )?,
-            Event::Text(_)
-            | Event::CData(_)
-            | Event::Comment(_)
-            | Event::Decl(_)
-            | Event::PI(_)
-            | Event::DocType(_)
-            | Event::GeneralRef(_) => {
-                if paragraph_depth > 0 {
-                    paragraph_events.push(event);
-                }
-            }
-            Event::Eof => break,
-        }
-
-        buf.clear();
-    }
-
-    trim_paragraph_bom(&mut paragraphs);
-    trim_region_bom(&mut blocks);
-    Ok((blocks, paragraphs))
-}
-
-fn handle_import_start(
-    event: BytesStart<'static>,
-    body_depth: &mut usize,
-    paragraph_depth: &mut usize,
-    table_depth: &mut usize,
-    sdt_depth: &mut usize,
-    paragraph_events: &mut Vec<Event<'static>>,
-    blocks: &mut Vec<Vec<TextRegion>>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if *paragraph_depth > 0 {
-        *paragraph_depth += 1;
-        paragraph_events.push(Event::Start(event));
-        return Ok(());
-    }
-    if *table_depth > 0 {
-        *table_depth += 1;
-        return Ok(());
-    }
-    if *sdt_depth > 0 {
-        *sdt_depth += 1;
-        return Ok(());
-    }
-    if name.as_slice() == b"body" {
-        *body_depth = 1;
-        return Ok(());
-    }
-    if *body_depth == 0 {
-        return Ok(());
-    }
-    if *body_depth != 1 {
-        *body_depth += 1;
-        return Ok(());
-    }
-
-    match name.as_slice() {
-        b"p" => {
-            *paragraph_depth = 1;
-            paragraph_events.clear();
-            paragraph_events.push(Event::Start(event));
-        }
-        b"tbl" => *table_depth = 1,
-        b"sdt" => *sdt_depth = 1,
-        b"sectPr" => {
-            blocks.push(vec![placeholders::locked_region(
-                placeholders::DOCX_SECTION_BREAK_PLACEHOLDER,
-                "section-break",
-            )]);
-            *body_depth += 1;
-        }
-        _ => {
-            return Err(format!(
-                "当前仅支持文档正文内容导入：检测到不支持的正文结构 <{}>。",
-                tag_name(name.as_slice())
-            ))
-        }
-    }
-    Ok(())
-}
-
-fn handle_import_empty(
-    event: BytesStart<'static>,
-    body_depth: &mut usize,
-    paragraph_depth: &mut usize,
-    table_depth: &mut usize,
-    sdt_depth: &mut usize,
-    paragraph_events: &mut Vec<Event<'static>>,
-    blocks: &mut Vec<Vec<TextRegion>>,
-    paragraphs: &mut Vec<DocxParagraph>,
-    hyperlink_targets: &HashMap<String, String>,
-    rewrite_headings: bool,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if *paragraph_depth > 0 {
-        paragraph_events.push(Event::Empty(event));
-        return Ok(());
-    }
-    if *table_depth > 0 {
-        return Ok(());
-    }
-    if *sdt_depth > 0 {
-        return Ok(());
-    }
-    if *body_depth == 0 || *body_depth != 1 {
-        return Ok(());
-    }
-    match name.as_slice() {
-        b"p" => push_import_paragraph_block(
-            vec![Event::Empty(event)],
-            blocks,
-            paragraphs,
-            hyperlink_targets,
-            rewrite_headings,
-        ),
-        b"tbl" => {
-            blocks.push(vec![placeholders::locked_region(
-                placeholders::DOCX_TABLE_PLACEHOLDER,
-                "table",
-            )]);
-            Ok(())
-        }
-        b"sdt" => {
-            blocks.push(vec![placeholders::locked_region(
-                placeholders::DOCX_TOC_PLACEHOLDER,
-                "toc",
-            )]);
-            Ok(())
-        }
-        b"sectPr" => {
-            blocks.push(vec![placeholders::locked_region(
-                placeholders::DOCX_SECTION_BREAK_PLACEHOLDER,
-                "section-break",
-            )]);
-            Ok(())
-        }
-        _ => Err(format!(
-            "当前仅支持文档正文内容导入：检测到不支持的正文结构 <{}>。",
-            tag_name(name.as_slice())
-        )),
-    }
-}
-
-fn handle_import_end(
-    event: BytesEnd<'static>,
-    body_depth: &mut usize,
-    paragraph_depth: &mut usize,
-    table_depth: &mut usize,
-    sdt_depth: &mut usize,
-    paragraph_events: &mut Vec<Event<'static>>,
-    blocks: &mut Vec<Vec<TextRegion>>,
-    paragraphs: &mut Vec<DocxParagraph>,
-    hyperlink_targets: &HashMap<String, String>,
-    rewrite_headings: bool,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if *paragraph_depth > 0 {
-        paragraph_events.push(Event::End(event));
-        *paragraph_depth -= 1;
-        if *paragraph_depth == 0 {
-            let events = std::mem::take(paragraph_events);
-            push_import_paragraph_block(
-                events,
-                blocks,
-                paragraphs,
-                hyperlink_targets,
-                rewrite_headings,
-            )?;
-        }
-        return Ok(());
-    }
-    if *table_depth > 0 {
-        *table_depth -= 1;
-        if *table_depth == 0 {
-            blocks.push(vec![placeholders::locked_region(
-                placeholders::DOCX_TABLE_PLACEHOLDER,
-                "table",
-            )]);
-        }
-        return Ok(());
-    }
-    if *sdt_depth > 0 {
-        *sdt_depth -= 1;
-        if *sdt_depth == 0 {
-            blocks.push(vec![placeholders::locked_region(
-                placeholders::DOCX_TOC_PLACEHOLDER,
-                "toc",
-            )]);
-        }
-        return Ok(());
-    }
-    if *body_depth == 0 {
-        return Ok(());
-    }
-    if name.as_slice() == b"body" && *body_depth == 1 {
-        *body_depth = 0;
-    } else {
-        *body_depth -= 1;
-    }
-    Ok(())
-}
-
-fn push_import_paragraph_block(
-    events: Vec<Event<'static>>,
-    blocks: &mut Vec<Vec<TextRegion>>,
-    paragraphs: &mut Vec<DocxParagraph>,
-    hyperlink_targets: &HashMap<String, String>,
-    rewrite_headings: bool,
-) -> Result<(), String> {
-    let (regions, paragraph) =
-        parse_import_paragraph(&events, hyperlink_targets, rewrite_headings)?;
-    blocks.push(regions);
-    paragraphs.push(paragraph);
-    Ok(())
-}
-
-fn parse_import_paragraph(
-    events: &[Event<'static>],
-    hyperlink_targets: &HashMap<String, String>,
-    rewrite_headings: bool,
-) -> Result<(Vec<TextRegion>, DocxParagraph), String> {
-    let mut regions: Vec<TextRegion> = Vec::new();
-    let mut editable = String::new();
-    let mut editable_presentation: Option<ChunkPresentation> = None;
-    let mut formula = String::new();
-    let mut is_heading = false;
-    let mut paragraph_started = false;
-    let mut paragraph_finished = false;
-    let mut ppr_depth = 0usize;
-    let mut run_depth = 0usize;
-    let mut run_style_depth = 0usize;
-    let mut in_text = false;
-    let mut math_depth = 0usize;
-    let mut math_text_depth = 0usize;
-    let mut hyperlink_depth = 0usize;
-    let mut current_run_style = RunStyle::default();
-    let mut current_run_property_events: Vec<Event<'static>> = Vec::new();
-    let mut current_hyperlink_target: Option<String> = None;
-    let mut current_hyperlink_signature: Option<String> = None;
-    let mut locked_inline_depth = 0usize;
-    let mut locked_inline_events: Vec<Event<'static>> = Vec::new();
-    let mut ignored_depth = 0usize;
-
-    for event in events {
-        if try_skip_ignored_paragraph_event(event, &mut ignored_depth) {
-            continue;
-        }
-        if try_capture_locked_inline_object_event(
-            event,
-            run_style_depth,
-            ppr_depth,
-            math_depth,
-            in_text,
-            &mut locked_inline_depth,
-            &mut locked_inline_events,
-            &mut editable,
-            &mut editable_presentation,
-            &mut regions,
-        )? {
-            continue;
-        }
-        match event {
-            Event::Start(e) => handle_paragraph_start(
-                e,
-                hyperlink_targets,
-                &mut paragraph_started,
-                &mut ppr_depth,
-                &mut run_depth,
-                &mut run_style_depth,
-                &mut in_text,
-                &mut math_depth,
-                &mut math_text_depth,
-                &mut hyperlink_depth,
-                &mut current_run_style,
-                &mut current_run_property_events,
-                &mut current_hyperlink_target,
-                &mut current_hyperlink_signature,
-                &mut is_heading,
-                &mut editable,
-                &mut editable_presentation,
-                &mut regions,
-            )?,
-            Event::Empty(e) => handle_paragraph_empty(
-                e,
-                &mut paragraph_started,
-                &mut paragraph_finished,
-                &mut ppr_depth,
-                &mut run_depth,
-                &mut run_style_depth,
-                &mut hyperlink_depth,
-                &mut current_run_style,
-                &mut current_run_property_events,
-                &mut current_hyperlink_target,
-                &mut current_hyperlink_signature,
-                &mut is_heading,
-                &mut editable,
-                &mut editable_presentation,
-                &mut regions,
-            )?,
-            Event::End(e) => handle_paragraph_end(
-                e,
-                &mut paragraph_finished,
-                &mut ppr_depth,
-                &mut run_depth,
-                &mut run_style_depth,
-                &mut in_text,
-                &mut math_depth,
-                &mut math_text_depth,
-                &mut formula,
-                &mut hyperlink_depth,
-                &mut current_hyperlink_target,
-                &mut current_hyperlink_signature,
-                &mut current_run_property_events,
-                &mut regions,
-            )?,
-            Event::Text(e) => append_paragraph_text(
-                e.decode()
-                    .map_err(|error| format!("解析 document.xml 文本失败：{error}"))?
-                    .as_ref(),
-                in_text,
-                math_text_depth > 0,
-                &mut editable,
-                &mut editable_presentation,
-                current_editable_presentation(
-                    &current_run_style,
-                    current_hyperlink_target.clone(),
-                    current_run_writeback_key(
-                        &current_run_property_events,
-                        current_hyperlink_signature.as_deref(),
-                    ),
-                ),
-                &mut formula,
-                &mut regions,
-            )?,
-            Event::CData(e) => append_paragraph_text(
-                e.decode()
-                    .map_err(|error| format!("解析 document.xml CDATA 失败：{error}"))?
-                    .as_ref(),
-                in_text,
-                math_text_depth > 0,
-                &mut editable,
-                &mut editable_presentation,
-                current_editable_presentation(
-                    &current_run_style,
-                    current_hyperlink_target.clone(),
-                    current_run_writeback_key(
-                        &current_run_property_events,
-                        current_hyperlink_signature.as_deref(),
-                    ),
-                ),
-                &mut formula,
-                &mut regions,
-            )?,
-            Event::Comment(_)
-            | Event::Decl(_)
-            | Event::PI(_)
-            | Event::DocType(_)
-            | Event::GeneralRef(_)
-            | Event::Eof => {}
-        }
-    }
-
-    if !paragraph_started || !paragraph_finished {
-        return Err("解析 docx 段落失败：段落未正常闭合。".to_string());
-    }
-
-    flush_editable_region(
-        &mut regions,
-        &mut editable,
-        &mut editable_presentation,
-        false,
-    );
-    flush_locked_region(&mut regions, &mut formula, "formula");
-    if regions.is_empty() {
-        regions.push(empty_region(is_heading && !rewrite_headings));
-    } else if is_heading && !rewrite_headings {
-        mark_all_regions_locked(&mut regions);
-    }
-
-    let text = regions
-        .iter()
-        .map(|region| region.body.as_str())
-        .collect::<String>();
-    Ok((regions, DocxParagraph { text, is_heading }))
-}
-
-fn try_skip_ignored_paragraph_event(event: &Event<'static>, ignored_depth: &mut usize) -> bool {
-    if *ignored_depth > 0 {
-        match event {
-            Event::Start(_) => *ignored_depth += 1,
-            Event::End(_) => *ignored_depth -= 1,
-            _ => {}
-        }
-        return true;
-    }
-
-    match event {
-        Event::Start(e) if is_ignorable_paragraph_name(local_name(e.name().as_ref())) => {
-            *ignored_depth = 1;
-            true
-        }
-        Event::Empty(e) if is_ignorable_paragraph_name(local_name(e.name().as_ref())) => true,
-        _ => false,
-    }
-}
-
 fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
     matches!(
         name,
         b"bookmarkStart"
             | b"bookmarkEnd"
             | b"proofErr"
-            | b"fldChar"
-            | b"instrText"
+            | b"permStart"
+            | b"permEnd"
+            | b"commentRangeStart"
+            | b"commentRangeEnd"
+            | b"moveFromRangeStart"
+            | b"moveFromRangeEnd"
+            | b"moveToRangeStart"
+            | b"moveToRangeEnd"
             | b"lastRenderedPageBreak"
     )
 }
 
-fn try_capture_locked_inline_object_event(
-    event: &Event<'static>,
-    run_style_depth: usize,
-    ppr_depth: usize,
-    math_depth: usize,
-    in_text: bool,
-    locked_inline_depth: &mut usize,
-    locked_inline_events: &mut Vec<Event<'static>>,
-    editable: &mut String,
-    editable_presentation: &mut Option<ChunkPresentation>,
-    regions: &mut Vec<TextRegion>,
-) -> Result<bool, String> {
-    if *locked_inline_depth > 0 {
-        locked_inline_events.push(event.clone());
-        match event {
-            Event::Start(_) => *locked_inline_depth += 1,
-            Event::End(_) => {
-                *locked_inline_depth -= 1;
-                if *locked_inline_depth == 0 {
-                    push_locked_inline_object_region(regions, locked_inline_events)?;
-                    locked_inline_events.clear();
-                }
-            }
-            _ => {}
-        }
-        return Ok(true);
-    }
-
-    if !should_capture_locked_inline_object(event, run_style_depth, ppr_depth, math_depth, in_text)
-    {
-        return Ok(false);
-    }
-
-    flush_editable_region(regions, editable, editable_presentation, false);
-    match event {
-        Event::Start(_) => {
-            *locked_inline_depth = 1;
-            locked_inline_events.clear();
-            locked_inline_events.push(event.clone());
-        }
-        Event::Empty(_) => push_locked_inline_object_region(regions, std::slice::from_ref(event))?,
-        _ => return Err("解析 docx 段落失败：非法的锁定对象起点。".to_string()),
-    }
-    Ok(true)
-}
-
-fn should_capture_locked_inline_object(
-    event: &Event<'static>,
-    run_style_depth: usize,
-    ppr_depth: usize,
-    math_depth: usize,
-    in_text: bool,
-) -> bool {
-    if in_text || run_style_depth > 0 || ppr_depth > 0 || math_depth > 0 {
-        return false;
-    }
-    match event {
-        Event::Start(e) | Event::Empty(e) => {
-            is_locked_inline_object_name(local_name(e.name().as_ref()))
-        }
-        _ => false,
-    }
-}
-
 fn is_locked_inline_object_name(name: &[u8]) -> bool {
     is_inline_special_name(name)
-}
-
-fn push_locked_inline_object_region(
-    regions: &mut Vec<TextRegion>,
-    events: &[Event<'static>],
-) -> Result<(), String> {
-    let special = classify_inline_special_region(events)?;
-    push_import_region(
-        regions,
-        special.text,
-        true,
-        placeholders::placeholder_presentation(special.kind),
-    );
-    Ok(())
 }
 
 fn writeback_locked_region_from_special(
@@ -923,351 +376,11 @@ fn writeback_locked_run_special_region(
     ))
 }
 
-fn is_fill_line_text(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains('\n')
-        && !text.contains('\t')
-        && text.chars().all(char::is_whitespace)
-}
-
-fn run_property_has_underline(run_property_events: &[Event<'static>]) -> bool {
-    let mut style = RunStyle::default();
-    for event in run_property_events {
-        if let Event::Start(e) | Event::Empty(e) = event {
-            update_run_style(&mut style, e);
-        }
-    }
-    style.underline
-}
-
 fn special_run_char(event: &BytesStart<'_>) -> Option<char> {
     match local_name(event.name().as_ref()) {
         b"noBreakHyphen" => Some('\u{2011}'),
         b"softHyphen" => Some('\u{00ad}'),
         _ => None,
-    }
-}
-
-fn handle_paragraph_start(
-    event: &BytesStart<'static>,
-    hyperlink_targets: &HashMap<String, String>,
-    paragraph_started: &mut bool,
-    ppr_depth: &mut usize,
-    run_depth: &mut usize,
-    run_style_depth: &mut usize,
-    in_text: &mut bool,
-    math_depth: &mut usize,
-    math_text_depth: &mut usize,
-    hyperlink_depth: &mut usize,
-    current_run_style: &mut RunStyle,
-    current_run_property_events: &mut Vec<Event<'static>>,
-    current_hyperlink_target: &mut Option<String>,
-    current_hyperlink_signature: &mut Option<String>,
-    is_heading: &mut bool,
-    editable: &mut String,
-    editable_presentation: &mut Option<ChunkPresentation>,
-    regions: &mut Vec<TextRegion>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if !*paragraph_started {
-        if name.as_slice() != b"p" {
-            return Err("解析 docx 段落失败：未找到段落起始标签。".to_string());
-        }
-        *paragraph_started = true;
-        return Ok(());
-    }
-    if *math_depth > 0 {
-        *math_depth += 1;
-        if name.as_slice() == b"t" {
-            *math_text_depth += 1;
-        }
-        return Ok(());
-    }
-    if *in_text {
-        return Err("当前 docx 段落中的文本节点存在嵌套结构。".to_string());
-    }
-    if *run_depth > 0 {
-        return handle_run_start(
-            event,
-            run_style_depth,
-            in_text,
-            current_run_style,
-            current_run_property_events,
-        );
-    }
-    if *hyperlink_depth > 0 {
-        return handle_hyperlink_start(
-            event,
-            hyperlink_targets,
-            hyperlink_depth,
-            run_depth,
-            math_depth,
-            current_run_style,
-            current_hyperlink_target,
-            current_hyperlink_signature,
-            current_run_property_events,
-            editable,
-            editable_presentation,
-            regions,
-        );
-    }
-    if *ppr_depth > 0 {
-        if name.as_slice() == b"pStyle" {
-            *is_heading = *is_heading
-                || attr_value(event, b"val").is_some_and(|value| is_heading_style_id(&value));
-        }
-        *ppr_depth += 1;
-        return Ok(());
-    }
-    match name.as_slice() {
-        b"pPr" => *ppr_depth = 1,
-        b"r" => {
-            *run_depth = 1;
-            *current_run_style = RunStyle::default();
-            current_run_property_events.clear();
-        }
-        b"hyperlink" => {
-            *hyperlink_depth = 1;
-            *current_hyperlink_target = hyperlink_target(event, hyperlink_targets);
-            *current_hyperlink_signature = Some(bytes_start_signature(event));
-        }
-        b"oMath" | b"oMathPara" => {
-            flush_editable_region(regions, editable, editable_presentation, false);
-            *math_depth = 1;
-        }
-        name if is_embedded_object_name(name) => return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string()),
-        _ => {
-            return Err(format!(
-                "当前 docx 段落内存在不支持的结构 <{}>。",
-                tag_name(name.as_slice())
-            ))
-        }
-    }
-    Ok(())
-}
-
-fn handle_run_start(
-    event: &BytesStart<'static>,
-    run_style_depth: &mut usize,
-    in_text: &mut bool,
-    current_run_style: &mut RunStyle,
-    current_run_property_events: &mut Vec<Event<'static>>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if *run_style_depth > 0 {
-        *run_style_depth += 1;
-        update_run_style(current_run_style, event);
-        current_run_property_events.push(Event::Start(event.clone()));
-        return Ok(());
-    }
-    match name.as_slice() {
-        b"t" => *in_text = true,
-        b"rPr" => {
-            *run_style_depth = 1;
-            current_run_property_events.clear();
-            current_run_property_events.push(Event::Start(event.clone()));
-        }
-        name if is_embedded_object_name(name) => return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string()),
-        _ => {
-            return Err(format!(
-                "当前 docx 运行节点内存在不支持的结构 <{}>。",
-                tag_name(name.as_slice())
-            ))
-        }
-    }
-    Ok(())
-}
-
-fn handle_hyperlink_start(
-    event: &BytesStart<'static>,
-    _hyperlink_targets: &HashMap<String, String>,
-    _hyperlink_depth: &mut usize,
-    run_depth: &mut usize,
-    _math_depth: &mut usize,
-    current_run_style: &mut RunStyle,
-    _current_hyperlink_target: &mut Option<String>,
-    _current_hyperlink_signature: &mut Option<String>,
-    current_run_property_events: &mut Vec<Event<'static>>,
-    _editable: &mut String,
-    _editable_presentation: &mut Option<ChunkPresentation>,
-    _regions: &mut Vec<TextRegion>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    match name.as_slice() {
-        b"r" => {
-            *run_depth = 1;
-            *current_run_style = RunStyle::default();
-            current_run_property_events.clear();
-            Ok(())
-        }
-        b"oMath" | b"oMathPara" => Err(
-            "当前不支持超链接内嵌公式的 docx：这类结构无法安全写回，请先在 Word 中调整后再导入。"
-                .to_string(),
-        ),
-        b"hyperlink" => Err("当前 docx 超链接中存在嵌套超链接结构，无法安全导入。".to_string()),
-        name if is_embedded_object_name(name) => Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string()),
-        _ => Err(format!(
-            "当前 docx 超链接内存在不支持的结构 <{}>。",
-            tag_name(name.as_slice())
-        )),
-    }
-}
-
-fn handle_paragraph_empty(
-    event: &BytesStart<'static>,
-    paragraph_started: &mut bool,
-    paragraph_finished: &mut bool,
-    ppr_depth: &mut usize,
-    run_depth: &mut usize,
-    run_style_depth: &mut usize,
-    hyperlink_depth: &mut usize,
-    current_run_style: &mut RunStyle,
-    current_run_property_events: &mut Vec<Event<'static>>,
-    current_hyperlink_target: &mut Option<String>,
-    current_hyperlink_signature: &mut Option<String>,
-    is_heading: &mut bool,
-    editable: &mut String,
-    editable_presentation: &mut Option<ChunkPresentation>,
-    regions: &mut Vec<TextRegion>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if !*paragraph_started {
-        if name.as_slice() != b"p" {
-            return Err("解析 docx 段落失败：未找到段落起始标签。".to_string());
-        }
-        *paragraph_started = true;
-        *paragraph_finished = true;
-        return Ok(());
-    }
-    if *run_depth > 0 {
-        return handle_run_empty(
-            event,
-            run_style_depth,
-            current_run_style,
-            current_run_property_events,
-            editable,
-            editable_presentation,
-            current_hyperlink_target.as_deref(),
-            current_hyperlink_signature.as_deref(),
-            regions,
-        );
-    }
-    if *hyperlink_depth > 0 {
-        return handle_hyperlink_empty(
-            event,
-            hyperlink_depth,
-            current_hyperlink_target,
-            current_hyperlink_signature,
-        );
-    }
-    if *ppr_depth > 0 {
-        if name.as_slice() == b"pStyle" {
-            *is_heading = *is_heading
-                || attr_value(event, b"val").is_some_and(|value| is_heading_style_id(&value));
-        }
-        return Ok(());
-    }
-    match name.as_slice() {
-        b"pPr" | b"r" => {}
-        b"oMath" | b"oMathPara" => push_import_region(
-            regions,
-            String::new(),
-            true,
-            placeholders::placeholder_presentation("formula"),
-        ),
-        name if is_embedded_object_name(name) => return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string()),
-        _ => {
-            return Err(format!(
-                "当前 docx 段落内存在不支持的结构 <{}>。",
-                tag_name(name.as_slice())
-            ))
-        }
-    }
-    Ok(())
-}
-
-fn handle_run_empty(
-    event: &BytesStart<'static>,
-    run_style_depth: &mut usize,
-    current_run_style: &mut RunStyle,
-    current_run_property_events: &mut Vec<Event<'static>>,
-    editable: &mut String,
-    editable_presentation: &mut Option<ChunkPresentation>,
-    current_hyperlink_target: Option<&str>,
-    current_hyperlink_signature: Option<&str>,
-    regions: &mut Vec<TextRegion>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if *run_style_depth > 0 {
-        update_run_style(current_run_style, event);
-        current_run_property_events.push(Event::Empty(event.clone()));
-        return Ok(());
-    }
-    match name.as_slice() {
-        b"t" => {}
-        b"tab" => append_editable_text(
-            regions,
-            editable,
-            editable_presentation,
-            current_editable_presentation(
-                current_run_style,
-                current_hyperlink_target.map(ToOwned::to_owned),
-                current_run_writeback_key(current_run_property_events, current_hyperlink_signature),
-            ),
-            "\t",
-        ),
-        b"br" if is_page_break(event) => {
-            if current_hyperlink_target.is_some() {
-                return Err(DOCX_HYPERLINK_PAGE_BREAK_ERROR.to_string());
-            }
-            flush_editable_region(regions, editable, editable_presentation, false);
-            push_import_region(
-                regions,
-                DOCX_PAGE_BREAK_PLACEHOLDER.to_string(),
-                true,
-                placeholders::placeholder_presentation("page-break"),
-            );
-        }
-        b"br" | b"cr" => append_editable_text(
-            regions,
-            editable,
-            editable_presentation,
-            current_editable_presentation(
-                current_run_style,
-                current_hyperlink_target.map(ToOwned::to_owned),
-                current_run_writeback_key(current_run_property_events, current_hyperlink_signature),
-            ),
-            "\n",
-        ),
-        b"rPr" => {
-            current_run_property_events.clear();
-            current_run_property_events.push(Event::Empty(event.clone()));
-        }
-        name if is_embedded_object_name(name) => return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string()),
-        _ => {
-            return Err(format!(
-                "当前 docx 运行节点内存在不支持的结构 <{}>。",
-                tag_name(name.as_slice())
-            ))
-        }
-    }
-    Ok(())
-}
-
-fn handle_hyperlink_empty(
-    event: &BytesStart<'static>,
-    _hyperlink_depth: &mut usize,
-    _current_hyperlink_target: &mut Option<String>,
-    _current_hyperlink_signature: &mut Option<String>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    match name.as_slice() {
-        b"r" => Ok(()),
-        name if is_embedded_object_name(name) => Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string()),
-        _ => Err(format!(
-            "当前 docx 超链接内存在不支持的结构 <{}>。",
-            tag_name(name.as_slice())
-        )),
     }
 }
 
@@ -1278,211 +391,6 @@ fn update_run_style(current_run_style: &mut RunStyle, event: &BytesStart<'_>) {
         b"u" => current_run_style.underline = underline_enabled(event),
         _ => {}
     }
-}
-
-fn handle_paragraph_end(
-    event: &BytesEnd<'static>,
-    paragraph_finished: &mut bool,
-    ppr_depth: &mut usize,
-    run_depth: &mut usize,
-    run_style_depth: &mut usize,
-    in_text: &mut bool,
-    math_depth: &mut usize,
-    math_text_depth: &mut usize,
-    formula: &mut String,
-    hyperlink_depth: &mut usize,
-    current_hyperlink_target: &mut Option<String>,
-    current_hyperlink_signature: &mut Option<String>,
-    current_run_property_events: &mut Vec<Event<'static>>,
-    regions: &mut Vec<TextRegion>,
-) -> Result<(), String> {
-    let name = local_name_owned(event.name().as_ref());
-    if *math_depth > 0 {
-        if name.as_slice() == b"t" && *math_text_depth > 0 {
-            *math_text_depth -= 1;
-        }
-        *math_depth -= 1;
-        if *math_depth == 0 {
-            flush_locked_region(regions, formula, "formula");
-        }
-        return Ok(());
-    }
-    if *in_text {
-        if name.as_slice() != b"t" {
-            return Err("解析 docx 段落失败：文本节点闭合异常。".to_string());
-        }
-        *in_text = false;
-        return Ok(());
-    }
-    if *run_style_depth > 0 {
-        current_run_property_events.push(Event::End(event.clone()));
-        *run_style_depth -= 1;
-        return Ok(());
-    }
-    if *run_depth > 0 {
-        if name.as_slice() == b"r" {
-            *run_depth -= 1;
-        }
-        return Ok(());
-    }
-    if *hyperlink_depth > 0 {
-        if name.as_slice() == b"hyperlink" {
-            *hyperlink_depth -= 1;
-            if *hyperlink_depth == 0 {
-                *current_hyperlink_target = None;
-                *current_hyperlink_signature = None;
-            }
-        }
-        return Ok(());
-    }
-    if *ppr_depth > 0 {
-        *ppr_depth -= 1;
-        return Ok(());
-    }
-    if name.as_slice() == b"p" {
-        *paragraph_finished = true;
-    }
-    Ok(())
-}
-
-fn append_paragraph_text(
-    text: &str,
-    in_text: bool,
-    in_math_text: bool,
-    editable: &mut String,
-    editable_presentation: &mut Option<ChunkPresentation>,
-    current_presentation: Option<ChunkPresentation>,
-    formula: &mut String,
-    regions: &mut Vec<TextRegion>,
-) -> Result<(), String> {
-    if in_math_text {
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
-            formula.push_str(trimmed);
-        }
-        return Ok(());
-    }
-    if in_text {
-        append_editable_text(
-            regions,
-            editable,
-            editable_presentation,
-            current_presentation,
-            text,
-        );
-        return Ok(());
-    }
-    if text.trim().is_empty() {
-        return Ok(());
-    }
-    Err("当前 docx 段落中存在游离文本节点，无法安全导入。".to_string())
-}
-
-fn flatten_import_blocks(blocks: Vec<Vec<TextRegion>>) -> Vec<TextRegion> {
-    let total = blocks.len();
-    let mut out: Vec<TextRegion> = Vec::new();
-    for (index, mut block) in blocks.into_iter().enumerate() {
-        if index + 1 < total {
-            append_block_separator(&mut block);
-        }
-        out.extend(block);
-    }
-    out
-}
-
-fn append_block_separator(block: &mut Vec<TextRegion>) {
-    if let Some(last) = block.last_mut() {
-        last.body.push_str(DOCX_BLOCK_SEPARATOR);
-        return;
-    }
-    block.push(TextRegion {
-        body: DOCX_BLOCK_SEPARATOR.to_string(),
-        skip_rewrite: false,
-        presentation: None,
-    });
-}
-
-fn flush_editable_region(
-    regions: &mut Vec<TextRegion>,
-    buffer: &mut String,
-    presentation: &mut Option<ChunkPresentation>,
-    skip_rewrite: bool,
-) {
-    if buffer.is_empty() {
-        return;
-    }
-    push_import_region(
-        regions,
-        std::mem::take(buffer),
-        skip_rewrite,
-        presentation.take(),
-    );
-}
-
-fn flush_locked_region(regions: &mut Vec<TextRegion>, buffer: &mut String, kind: &str) {
-    if buffer.is_empty() {
-        return;
-    }
-    push_import_region(
-        regions,
-        std::mem::take(buffer),
-        true,
-        placeholders::placeholder_presentation(kind),
-    );
-}
-
-fn push_import_region(
-    regions: &mut Vec<TextRegion>,
-    body: String,
-    skip_rewrite: bool,
-    presentation: Option<ChunkPresentation>,
-) {
-    if body.is_empty() && !regions.is_empty() {
-        return;
-    }
-    if let Some(last) = regions.last_mut() {
-        if last.skip_rewrite == skip_rewrite && last.presentation == presentation {
-            last.body.push_str(&body);
-            return;
-        }
-    }
-    regions.push(TextRegion {
-        body,
-        skip_rewrite,
-        presentation,
-    });
-}
-
-fn empty_region(skip_rewrite: bool) -> TextRegion {
-    TextRegion {
-        body: String::new(),
-        skip_rewrite,
-        presentation: None,
-    }
-}
-
-fn append_editable_text(
-    regions: &mut Vec<TextRegion>,
-    editable: &mut String,
-    editable_presentation: &mut Option<ChunkPresentation>,
-    current_presentation: Option<ChunkPresentation>,
-    text: &str,
-) {
-    if text.is_empty() {
-        return;
-    }
-    if editable.is_empty() {
-        *editable_presentation = current_presentation;
-        editable.push_str(text);
-        return;
-    }
-    if *editable_presentation == current_presentation {
-        editable.push_str(text);
-        return;
-    }
-    flush_editable_region(regions, editable, editable_presentation, false);
-    *editable_presentation = current_presentation;
-    editable.push_str(text);
 }
 
 fn append_start_signature(signature: &mut String, prefix: char, event: &BytesStart<'_>) {
@@ -1691,30 +599,6 @@ fn current_editable_presentation(
         protect_kind: None,
         writeback_key,
     })
-}
-
-fn mark_all_regions_locked(regions: &mut [TextRegion]) {
-    for region in regions {
-        region.skip_rewrite = true;
-    }
-}
-
-fn trim_paragraph_bom(paragraphs: &mut [DocxParagraph]) {
-    if let Some(first) = paragraphs.first_mut() {
-        first.text = first.text.trim_start_matches('\u{feff}').to_string();
-    }
-    if let Some(last) = paragraphs.last_mut() {
-        last.text = last.text.trim_end_matches('\u{feff}').to_string();
-    }
-}
-
-fn trim_region_bom(blocks: &mut [Vec<TextRegion>]) {
-    if let Some(first) = blocks.first_mut().and_then(|block| block.first_mut()) {
-        first.body = first.body.trim_start_matches('\u{feff}').to_string();
-    }
-    if let Some(last) = blocks.last_mut().and_then(|block| block.last_mut()) {
-        last.body = last.body.trim_end_matches('\u{feff}').to_string();
-    }
 }
 
 fn is_page_break(event: &BytesStart<'_>) -> bool {
@@ -2381,7 +1265,7 @@ fn can_merge_editable_writeback_regions(
     current: &EditableRegionTemplate,
     next: &EditableRegionTemplate,
 ) -> bool {
-    if current.presentation != next.presentation {
+    if current.allow_rewrite != next.allow_rewrite || current.presentation != next.presentation {
         return false;
     }
     match (&current.render, &next.render) {
@@ -2595,20 +1479,6 @@ fn parse_writeback_run_regions(
         hyperlink_start.cloned(),
         &run_property_events,
     );
-    if hyperlink_start.is_none()
-        && regions.len() == 1
-        && run_property_has_underline(&run_property_events)
-        && matches!(
-            regions.first(),
-            Some(WritebackRegionTemplate::Editable(region)) if is_fill_line_text(&region.text)
-        )
-    {
-        return Ok(vec![placeholders::raw_locked_region(
-            placeholders::DOCX_FILL_LINE_PLACEHOLDER,
-            "fill-line",
-            events,
-        )]);
-    }
     Ok(regions)
 }
 
@@ -2718,6 +1588,7 @@ fn flush_writeback_editable_region(
     };
     regions.push(WritebackRegionTemplate::Editable(EditableRegionTemplate {
         text: std::mem::take(buffer),
+        allow_rewrite: true,
         presentation,
         render,
     }));
@@ -2901,9 +1772,9 @@ fn build_plain_text_editor_paragraph_regions_from_template(
     match matches.len() {
         1 => Ok(matches.remove(0)),
         0 => Err(
-            "纯文本编辑器中的锁定内容已变化，或文本已越过原有样式边界，无法安全写回。".to_string(),
+            "写回内容越过原有样式或锁定边界，无法安全写回。".to_string(),
         ),
-        _ => Err("纯文本编辑器中的锁定内容定位存在歧义，无法安全写回。".to_string()),
+        _ => Err("写回内容在原有样式或锁定边界上的定位存在歧义，无法安全写回。".to_string()),
     }
 }
 
@@ -2932,40 +1803,37 @@ fn collect_plain_text_editor_paragraph_matches(
         return;
     }
 
-    match &template[region_index] {
-        WritebackRegionTemplate::Editable(_) => collect_plain_text_editor_editable_group_matches(
+    if template[region_index].skip_rewrite() {
+        let locked_text = template[region_index].text().to_string();
+        let Some(rest) = updated_text.get(cursor..) else {
+            return;
+        };
+        if !rest.starts_with(&locked_text) {
+            return;
+        }
+        let mut next = current;
+        next.push(logical_locked_text_region(&template[region_index]));
+        collect_plain_text_editor_paragraph_matches(
             template,
             updated_text,
-            region_index,
-            cursor,
-            current,
+            region_index + 1,
+            cursor + locked_text.len(),
+            next,
             matches,
             limit,
-        ),
-        WritebackRegionTemplate::Locked(region) => {
-            let Some(rest) = updated_text.get(cursor..) else {
-                return;
-            };
-            if !rest.starts_with(&region.text) {
-                return;
-            }
-            let mut next = current;
-            next.push(TextRegion {
-                body: region.text.clone(),
-                skip_rewrite: true,
-                presentation: region.presentation.clone(),
-            });
-            collect_plain_text_editor_paragraph_matches(
-                template,
-                updated_text,
-                region_index + 1,
-                cursor + region.text.len(),
-                next,
-                matches,
-                limit,
-            );
-        }
+        );
+        return;
     }
+
+    collect_plain_text_editor_editable_group_matches(
+        template,
+        updated_text,
+        region_index,
+        cursor,
+        current,
+        matches,
+        limit,
+    );
 }
 
 #[derive(Default)]
@@ -2987,58 +1855,71 @@ fn collect_plain_text_editor_editable_group_matches(
     let group_end = next_locked_region_index(template, region_index);
     let group = &template[region_index..group_end];
 
-    match template.get(group_end) {
-        Some(WritebackRegionTemplate::Locked(next_locked)) => {
-            if next_locked.text.is_empty() {
+    if let Some(next_locked) = template.get(group_end) {
+        let locked_text = next_locked.text();
+        if locked_text.is_empty() {
+            return;
+        }
+        let Some(rest) = updated_text.get(cursor..) else {
+            return;
+        };
+        for (relative_index, _) in rest.match_indices(locked_text) {
+            let next_cursor = cursor + relative_index;
+            let Some(mapped) =
+                map_editable_group_regions(group, &updated_text[cursor..next_cursor])
+            else {
+                continue;
+            };
+            let mut next = current.clone();
+            next.extend(mapped);
+            collect_plain_text_editor_paragraph_matches(
+                template,
+                updated_text,
+                group_end,
+                next_cursor,
+                next,
+                matches,
+                limit,
+            );
+            if matches.len() >= limit {
                 return;
             }
-            let Some(rest) = updated_text.get(cursor..) else {
-                return;
-            };
-            for (relative_index, _) in rest.match_indices(&next_locked.text) {
-                let next_cursor = cursor + relative_index;
-                let Some(mapped) =
-                    map_editable_group_regions(group, &updated_text[cursor..next_cursor])
-                else {
-                    continue;
-                };
-                let mut next = current.clone();
-                next.extend(mapped);
-                collect_plain_text_editor_paragraph_matches(
-                    template,
-                    updated_text,
-                    group_end,
-                    next_cursor,
-                    next,
-                    matches,
-                    limit,
-                );
-                if matches.len() >= limit {
-                    return;
-                }
-            }
         }
-        None => {
-            let Some(mapped) = map_editable_group_regions(group, &updated_text[cursor..]) else {
-                return;
-            };
-            let mut completed = current;
-            completed.extend(mapped);
-            matches.push(completed);
-        }
-        Some(WritebackRegionTemplate::Editable(_)) => {}
+        return;
     }
+
+    let Some(mapped) = map_editable_group_regions(group, &updated_text[cursor..]) else {
+        return;
+    };
+    let mut completed = current;
+    completed.extend(mapped);
+    matches.push(completed);
 }
 
 fn next_locked_region_index(template: &[WritebackRegionTemplate], start: usize) -> usize {
     let mut index = start;
     while index < template.len() {
-        if matches!(template[index], WritebackRegionTemplate::Locked(_)) {
+        if template[index].skip_rewrite() {
             return index;
         }
         index += 1;
     }
     template.len()
+}
+
+fn logical_locked_text_region(region: &WritebackRegionTemplate) -> TextRegion {
+    match region {
+        WritebackRegionTemplate::Editable(editable) => TextRegion {
+            body: editable.text.clone(),
+            skip_rewrite: true,
+            presentation: editable.presentation.clone(),
+        },
+        WritebackRegionTemplate::Locked(locked) => TextRegion {
+            body: locked.text.clone(),
+            skip_rewrite: true,
+            presentation: locked.presentation.clone(),
+        },
+    }
 }
 
 fn map_editable_group_regions(
@@ -3103,8 +1984,8 @@ fn editable_group_templates(
     group
         .iter()
         .map(|region| match region {
-            WritebackRegionTemplate::Editable(region) => Some(region),
-            WritebackRegionTemplate::Locked(_) => None,
+            WritebackRegionTemplate::Editable(region) if region.allow_rewrite => Some(region),
+            _ => None,
         })
         .collect()
 }
@@ -3267,7 +2148,7 @@ fn insertion_region_index(
 fn editable_region_text(region: &EditableRegionTemplate, body: String) -> TextRegion {
     TextRegion {
         body,
-        skip_rewrite: false,
+        skip_rewrite: !region.allow_rewrite,
         presentation: region.presentation.clone(),
     }
 }
@@ -3813,9 +2694,11 @@ fn paragraph_properties_indicate_heading(
     styles: &ParagraphStyles,
 ) -> bool {
     events.iter().any(|event| match event {
+        Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"outlineLvl" => {
+            true
+        }
         Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"pStyle" => {
-            attr_value(e, b"val")
-                .is_some_and(|value| is_heading_style_id(&value) || styles.is_heading(&value))
+            attr_value(e, b"val").is_some_and(|value| styles.is_heading(&value))
         }
         _ => false,
     })
@@ -3949,37 +2832,4 @@ fn replace_document_xml(docx_bytes: &[u8], updated_xml: &str) -> Result<Vec<u8>,
 
 fn tag_name(name: &[u8]) -> String {
     String::from_utf8_lossy(name).into_owned()
-}
-
-fn is_listish_paragraph(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    trimmed.starts_with("- ") || trimmed.starts_with("• ")
-}
-
-fn should_enable_softwrap_coalescing(paragraphs: &[DocxParagraph]) -> bool {
-    // 只在“明显是按行断开”的 docx 上启用合并：
-    // - PDF 转 Word 常把每一行都变成一个 <w:p>，导致段落级分块退化成“每行一个 chunk”；
-    // - 正常 Word 文档中，段落数量较少且长度分布更离散，盲目合并容易误伤。
-    let candidates = paragraphs
-        .iter()
-        .filter(|p| {
-            let body = p.text.trim();
-            !body.is_empty() && !p.is_heading && !is_listish_paragraph(body)
-        })
-        .collect::<Vec<_>>();
-    let total = candidates.len();
-    // 经验阈值：
-    // - 太少的段落很难判断是否“按行断开”，合并容易误伤；
-    // - 但现实里也会有只有几十行以内的短材料（作业/题目/通知）从 PDF 转 Word，
-    //   如果阈值过高会导致完全不合并，段落级分块退化为“每行一个块”。
-    if total < 8 {
-        return false;
-    }
-
-    let short = candidates
-        .iter()
-        .filter(|p| p.text.trim().chars().count() <= 80)
-        .count();
-
-    short * 100 / total >= 75
 }

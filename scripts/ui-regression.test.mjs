@@ -152,6 +152,10 @@ const documentActionBar = read("src/stages/workbench/document/DocumentActionBar.
 const documentPanel = read("src/stages/workbench/DocumentPanel.tsx");
 const documentFlow = read("src/stages/workbench/document/DocumentFlow.tsx");
 const workspaceBar = read("src/app/components/WorkspaceBar.tsx");
+const settingsTypes = read("src/lib/types.ts");
+const settingsConstants = read("src/lib/constants.ts");
+const rewriteStrategyPage = read("src/components/settings/RewriteStrategyPage.tsx");
+const settingsHandlers = read("src/app/hooks/useSettingsHandlers.ts");
 const { renderInlineProtectedText } = await loadProtectedTextModule();
 const {
   buildChunkGroups,
@@ -163,6 +167,11 @@ const { fragmentClassNames } = await loadDocumentFlowSharedModule();
 assertIncludes(workspaceBar, 'className="workspace-bar-status-row"');
 assertIncludes(workspaceBar, 'className="workspace-bar-path-line"');
 assertIncludes(workspaceBar, 'className="workspace-bar-path-text"');
+assertIncludes(settingsTypes, "chunksPerRequest: number;");
+assertIncludes(settingsConstants, "chunksPerRequest: 1");
+assertIncludes(rewriteStrategyPage, "单次请求处理块数");
+assertIncludes(rewriteStrategyPage, 'onUpdateNumberSetting("chunksPerRequest", event.target.value)');
+assertIncludes(settingsHandlers, '"chunksPerRequest"');
 assertNotIncludes(workspaceBar, 'className="workspace-bar-session"');
 assertNotIncludes(workspaceBar, "title={rawTitle}");
 assertNotIncludes(workspaceBar, 'className="workspace-bar-session-text"');

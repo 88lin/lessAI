@@ -52,9 +52,12 @@ export function useSettingsHandlers(options: {
   );
 
   const handleUpdateNumberSetting = useCallback(
-    (key: "timeoutMs" | "temperature" | "maxConcurrency", value: string) => {
+    (
+      key: "timeoutMs" | "temperature" | "maxConcurrency" | "chunksPerRequest",
+      value: string
+    ) => {
       const parsed =
-        key === "timeoutMs" || key === "maxConcurrency"
+        key === "timeoutMs" || key === "maxConcurrency" || key === "chunksPerRequest"
           ? Number.parseInt(value, 10)
           : Number.parseFloat(value);
 
@@ -70,6 +73,8 @@ export function useSettingsHandlers(options: {
             ? Math.max(1_000, parsed)
             : key === "maxConcurrency"
               ? Math.max(1, Math.min(8, parsed))
+              : key === "chunksPerRequest"
+                ? Math.max(1, parsed)
               : Math.max(0, Math.min(2, parsed))
       }));
     },

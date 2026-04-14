@@ -18,15 +18,15 @@ pub(crate) struct ParagraphStyles {
 
 #[derive(Debug, Clone)]
 struct ParagraphStyle {
-    name: Option<String>,
     based_on: Option<String>,
     numbering: PartialNumberingSpec,
+    outline_level: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct ResolvedStyle {
-    heading: bool,
     numbering: PartialNumberingSpec,
+    outline_level: Option<i32>,
 }
 
 pub(crate) fn parse_styles_xml(xml: &str) -> Result<ParagraphStyles, String> {
@@ -69,7 +69,7 @@ impl ParagraphStyles {
     }
 
     pub(crate) fn is_heading(&self, style_id: &str) -> bool {
-        self.resolve_style(style_id).heading
+        self.resolve_style(style_id).outline_level.is_some()
     }
 
     fn resolve_style(&self, style_id: &str) -> ResolvedStyle {
@@ -81,9 +81,9 @@ impl ParagraphStyles {
 impl Default for ParagraphStyle {
     fn default() -> Self {
         Self {
-            name: None,
             based_on: None,
             numbering: PartialNumberingSpec::default(),
+            outline_level: None,
         }
     }
 }
@@ -108,7 +108,7 @@ fn resolve_style_recursive(
 
 fn merge_style_with_base(
     styles_by_id: &HashMap<String, ParagraphStyle>,
-    style_id: &str,
+    _style_id: &str,
     style: &ParagraphStyle,
     visiting: &mut HashSet<String>,
 ) -> ResolvedStyle {
@@ -117,10 +117,8 @@ fn merge_style_with_base(
         .as_deref()
         .map(|base_style_id| resolve_style_recursive(styles_by_id, base_style_id, visiting))
         .unwrap_or_default();
-    resolved.heading = resolved.heading
-        || looks_like_heading(style_id)
-        || style.name.as_deref().is_some_and(looks_like_heading);
     resolved.numbering = merge_numbering(resolved.numbering, style.numbering.clone());
+    resolved.outline_level = style.outline_level.or(resolved.outline_level);
     resolved
 }
 
@@ -176,7 +174,7 @@ fn handle_style_start(
     if *ppr_depth > 0 && name == b"numPr" {
         *numpr_depth += 1;
     }
-    capture_style_fields(event, style, *numpr_depth > 0);
+    capture_style_fields(event, style, *ppr_depth > 0, *numpr_depth > 0);
 }
 
 fn handle_style_empty(
@@ -190,7 +188,7 @@ fn handle_style_empty(
     if name == b"pPr" || (ppr_depth > 0 && name == b"numPr") {
         return;
     }
-    capture_style_fields(event, style, numpr_depth > 0);
+    capture_style_fields(event, style, ppr_depth > 0, numpr_depth > 0);
 }
 
 fn handle_style_end(
@@ -205,13 +203,20 @@ fn handle_style_end(
     }
 }
 
-fn capture_style_fields(event: &BytesStart<'_>, style: &mut ParagraphStyle, in_numpr: bool) {
+fn capture_style_fields(
+    event: &BytesStart<'_>,
+    style: &mut ParagraphStyle,
+    in_ppr: bool,
+    in_numpr: bool,
+) {
     match local_name(event.name().as_ref()) {
-        b"name" => style.name = attr_value(event, b"val"),
         b"basedOn" => style.based_on = attr_value(event, b"val"),
         b"numId" if in_numpr => style.numbering.num_id = attr_value(event, b"val"),
         b"ilvl" if in_numpr => {
             style.numbering.ilvl = attr_value(event, b"val").and_then(|value| value.parse().ok());
+        }
+        b"outlineLvl" if in_ppr => {
+            style.outline_level = attr_value(event, b"val").and_then(|value| value.parse().ok());
         }
         _ => {}
     }
@@ -250,11 +255,6 @@ fn is_paragraph_style(event: &BytesStart<'_>) -> bool {
 
 fn style_id(event: &BytesStart<'_>) -> Option<String> {
     attr_value(event, b"styleId")
-}
-
-fn looks_like_heading(value: &str) -> bool {
-    let lowered = value.trim().to_ascii_lowercase();
-    lowered.starts_with("heading") || matches!(lowered.as_str(), "title" | "subtitle")
 }
 
 fn attr_value(event: &BytesStart<'_>, key: &[u8]) -> Option<String> {

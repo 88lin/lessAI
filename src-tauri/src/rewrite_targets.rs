@@ -42,6 +42,23 @@ pub fn find_next_manual_chunk(
         .map(|chunk| chunk.index)
 }
 
+pub fn find_next_manual_batch(
+    chunks: &[ChunkTask],
+    target_indices: Option<&HashSet<usize>>,
+    batch_size: usize,
+) -> Vec<usize> {
+    chunks
+        .iter()
+        .filter(|chunk| {
+            !chunk.skip_rewrite
+                && is_target_chunk(target_indices, chunk.index)
+                && matches!(chunk.status, ChunkStatus::Idle | ChunkStatus::Failed)
+        })
+        .take(batch_size.max(1))
+        .map(|chunk| chunk.index)
+        .collect()
+}
+
 pub fn build_auto_pending_queue(
     chunks: &[ChunkTask],
     target_indices: Option<&HashSet<usize>>,
@@ -55,6 +72,17 @@ pub fn build_auto_pending_queue(
         })
         .map(|chunk| chunk.index)
         .collect()
+}
+
+pub fn take_next_auto_batch(pending: &mut VecDeque<usize>, batch_size: usize) -> Vec<usize> {
+    let mut batch = Vec::new();
+    while batch.len() < batch_size.max(1) {
+        let Some(index) = pending.pop_front() else {
+            break;
+        };
+        batch.push(index);
+    }
+    batch
 }
 
 pub fn count_target_total_chunks(
@@ -90,9 +118,12 @@ fn is_target_chunk(target_indices: Option<&HashSet<usize>>, index: usize) -> boo
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::{
         build_auto_pending_queue, count_target_completed_chunks, count_target_total_chunks,
-        find_next_manual_chunk, resolve_target_indices,
+        find_next_manual_batch, find_next_manual_chunk, resolve_target_indices,
+        take_next_auto_batch,
     };
     use crate::models::{ChunkStatus, ChunkTask};
 
@@ -160,6 +191,30 @@ mod tests {
         let pending = build_auto_pending_queue(&chunks, selected.as_ref());
 
         assert_eq!(pending.into_iter().collect::<Vec<_>>(), vec![2]);
+    }
+
+    #[test]
+    fn find_next_manual_batch_respects_target_subset_and_batch_size() {
+        let chunks = vec![
+            chunk(0, ChunkStatus::Idle, false),
+            chunk(1, ChunkStatus::Failed, false),
+            chunk(2, ChunkStatus::Done, false),
+            chunk(3, ChunkStatus::Idle, true),
+            chunk(4, ChunkStatus::Idle, false),
+        ];
+        let selected = resolve_target_indices(&chunks, Some(vec![0, 1, 4])).unwrap();
+
+        let batch = find_next_manual_batch(&chunks, selected.as_ref(), 2);
+
+        assert_eq!(batch, vec![0, 1]);
+    }
+
+    #[test]
+    fn take_next_auto_batch_pops_pending_indices_in_order() {
+        let mut pending = VecDeque::from(vec![2, 4, 6]);
+
+        assert_eq!(take_next_auto_batch(&mut pending, 2), vec![2, 4]);
+        assert_eq!(pending.into_iter().collect::<Vec<_>>(), vec![6]);
     }
 
     #[test]

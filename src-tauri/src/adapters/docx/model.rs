@@ -8,15 +8,6 @@ pub(crate) enum WritebackBlockTemplate {
     Locked(LockedRegionTemplate),
 }
 
-impl WritebackBlockTemplate {
-    pub fn text(&self) -> String {
-        match self {
-            Self::Paragraph(paragraph) => paragraph.text(),
-            Self::Locked(region) => region.text.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct WritebackParagraphTemplate {
     pub paragraph_start: BytesStart<'static>,
@@ -50,7 +41,10 @@ impl WritebackRegionTemplate {
     }
 
     pub fn skip_rewrite(&self) -> bool {
-        matches!(self, Self::Locked(_))
+        match self {
+            Self::Editable(region) => !region.allow_rewrite,
+            Self::Locked(_) => true,
+        }
     }
 
     pub fn presentation(&self) -> Option<&ChunkPresentation> {
@@ -64,6 +58,7 @@ impl WritebackRegionTemplate {
 #[derive(Debug, Clone)]
 pub(crate) struct EditableRegionTemplate {
     pub text: String,
+    pub allow_rewrite: bool,
     pub presentation: Option<ChunkPresentation>,
     pub render: EditableRegionRender,
 }

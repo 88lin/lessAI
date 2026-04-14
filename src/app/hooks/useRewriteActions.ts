@@ -201,18 +201,25 @@ export function useRewriteActions(options: {
           startRewrite(session.id, mode, targetChunkIndices)
         );
         if (mode === "manual") {
-          const suggestion = getLatestSuggestion(updated);
-          const nextChunkIndex = suggestion?.chunkIndex ?? selectDefaultChunkIndex(updated);
+          const existingSuggestionIds = new Set(session.suggestions.map((item) => item.id));
+          const newSuggestions = updated.suggestions
+            .filter((item) => !existingSuggestionIds.has(item.id))
+            .sort((left, right) => left.sequence - right.sequence);
+          const preferredSuggestion = newSuggestions[0] ?? getLatestSuggestion(updated) ?? null;
+          const nextChunkIndex =
+            preferredSuggestion?.chunkIndex ?? selectDefaultChunkIndex(updated);
 
           applySessionState(updated, nextChunkIndex, {
-            preferredSuggestionId: suggestion?.id ?? null
+            preferredSuggestionId: preferredSuggestion?.id ?? null
           });
           setReviewView("diff");
           showNotice(
             "success",
-            suggestion
-              ? `已生成修改对 #${suggestion.sequence}，请在右侧审阅。`
-              : "已生成下一段，请在右侧审阅。"
+            newSuggestions.length > 1
+              ? `已生成 ${newSuggestions.length} 条修改对，请在右侧审阅。`
+              : preferredSuggestion
+                ? `已生成修改对 #${preferredSuggestion.sequence}，请在右侧审阅。`
+                : "已生成下一段，请在右侧审阅。"
           );
           return;
         }

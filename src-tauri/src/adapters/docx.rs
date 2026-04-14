@@ -15,5 +15,8 @@ mod styles;
 #[cfg(test)]
 #[path = "docx/tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "docx/tests_hardcoding.rs"]
+mod tests_hardcoding;
 
 pub use simple::DocxAdapter;

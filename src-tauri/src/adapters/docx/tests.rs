@@ -59,6 +59,16 @@ fn joined_region_text(regions: &[TextRegion]) -> String {
     regions.iter().map(|region| region.body.as_str()).collect()
 }
 
+fn assert_region_with_text_editable(regions: &[TextRegion], needle: &str) {
+    assert!(
+        regions
+            .iter()
+            .any(|region| !region.skip_rewrite && region.body.contains(needle)),
+        "expected editable region containing `{needle}`, got:\n{}",
+        joined_region_text(regions)
+    );
+}
+
 fn normalize_xml_layout(xml: &str) -> String {
     xml.lines().map(str::trim).collect::<String>()
 }
@@ -240,17 +250,26 @@ fn extracts_list_item_text_from_docx() {
 
 #[test]
 fn marks_heading_styles_as_skip_regions_by_default() {
-    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     <w:p>
-      <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+      <w:pPr><w:pStyle w:val="CustomHeading"/></w:pPr>
       <w:r><w:t>标题</w:t></w:r>
     </w:p>
     <w:p><w:r><w:t>正文</w:t></w:r></w:p>
   </w:body>
 </w:document>"#;
-    let bytes = build_minimal_docx(xml);
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="CustomHeading">
+    <w:pPr><w:outlineLvl w:val="0"/></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+    ]);
 
     let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
     assert!(regions
@@ -373,9 +392,12 @@ fn imports_report_template_with_locked_non_article_objects() {
 
     let regions = DocxAdapter::extract_regions(&bytes, false).expect("import template");
 
-    assert!(regions
-        .iter()
-        .any(|region| !region.skip_rewrite && region.body.contains("作品名称")));
+    assert_region_with_text_editable(&regions, "中国高校计算机专业学生");
+    assert_region_with_text_editable(&regions, "作品编号：");
+    assert_region_with_text_editable(&regions, "作品名：");
+    assert_region_with_text_editable(&regions, "填写说明：");
+    assert_region_with_text_editable(&regions, "建议不超过1页");
+    assert_region_with_text_editable(&regions, "本作品面向智算中心高耗能场景");
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("image")));
@@ -385,6 +407,47 @@ fn imports_report_template_with_locked_non_article_objects() {
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("table")));
+}
+
+#[test]
+fn does_not_lock_regular_body_paragraphs_just_because_text_mentions_instruction_words() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:pPr><w:pStyle w:val="1"/></w:pPr>
+      <w:r><w:t>第1章 系统背景</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:pStyle w:val="a0"/></w:pPr>
+      <w:r><w:t>系统建议不超过 5 秒完成重试，但这只是正文里的性能约束描述，请勿修改其业务含义。</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:pStyle w:val="a0"/></w:pPr>
+      <w:r><w:t>这是一段正常的正文说明，用于补充背景、目标和约束条件，确保系统能够正确识别文章主体内容。</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="1">
+    <w:name w:val="heading 1"/>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="a0">
+    <w:name w:val="正文段落"/>
+  </w:style>
+</w:styles>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+    ]);
+
+    let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+
+    assert_region_with_text_editable(
+        &regions,
+        "系统建议不超过 5 秒完成重试，但这只是正文里的性能约束描述，请勿修改其业务含义。",
+    );
 }
 
 #[test]
@@ -423,7 +486,7 @@ fn report_template_keeps_first_heading_numbered_as_chapter_one() {
 }
 
 #[test]
-fn imports_underlined_blank_runs_as_fill_line_placeholders() {
+fn imports_underlined_blank_runs_as_editable_underlined_text() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
@@ -440,11 +503,19 @@ fn imports_underlined_blank_runs_as_fill_line_placeholders() {
 
     let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
     let rebuilt = joined_region_text(&regions);
-
-    assert_eq!(rebuilt, "填写日期：[填写线]");
-    assert!(regions
+    let blank_region = regions
         .iter()
-        .any(|region| region.body == "[填写线]" && protect_kind_of(region) == Some("fill-line")));
+        .find(|region| region.body == "　　　　")
+        .expect("underlined blank region");
+    let presentation = blank_region
+        .presentation
+        .as_ref()
+        .expect("underlined blank presentation");
+
+    assert_eq!(rebuilt, "填写日期：　　　　");
+    assert!(!blank_region.skip_rewrite);
+    assert!(presentation.underline);
+    assert_eq!(presentation.protect_kind.as_deref(), None);
 }
 
 #[test]
@@ -818,7 +889,7 @@ fn marks_style_named_heading_regions_as_skip_regions_by_default() {
     let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:styleId="1">
-    <w:name w:val="heading 1"/>
+    <w:pPr><w:outlineLvl w:val="0"/></w:pPr>
   </w:style>
 </w:styles>"#;
     let bytes = build_docx_entries(&[
@@ -1196,9 +1267,12 @@ fn roundtrips_report_template_writeback_regions_with_locked_non_article_objects(
     let regions =
         DocxAdapter::extract_writeback_regions(&bytes).expect("extract writeback regions");
 
-    assert!(regions
-        .iter()
-        .any(|region| !region.skip_rewrite && region.body.contains("作品名称")));
+    assert_region_with_text_editable(&regions, "中国高校计算机专业学生");
+    assert_region_with_text_editable(&regions, "作品编号：");
+    assert_region_with_text_editable(&regions, "作品名：");
+    assert_region_with_text_editable(&regions, "填写说明：");
+    assert_region_with_text_editable(&regions, "建议不超过1页");
+    assert_region_with_text_editable(&regions, "本作品面向智算中心高耗能场景");
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("image")));
@@ -1207,7 +1281,7 @@ fn roundtrips_report_template_writeback_regions_with_locked_non_article_objects(
         .any(|region| protect_kind_of(region) == Some("textbox")));
     assert!(regions
         .iter()
-        .any(|region| protect_kind_of(region) == Some("toc")));
+        .any(|region| protect_kind_of(region) == Some("content-control")));
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("table")));
@@ -2438,17 +2512,26 @@ fn writes_back_docx_with_collapsed_empty_paragraph_separators() {
 
 #[test]
 fn writes_back_docx_with_locked_heading_regions() {
-    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     <w:p>
-      <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+      <w:pPr><w:pStyle w:val="CustomHeading"/></w:pPr>
       <w:r><w:t>标题</w:t></w:r>
     </w:p>
     <w:p><w:r><w:t>正文</w:t></w:r></w:p>
   </w:body>
 </w:document>"#;
-    let bytes = build_minimal_docx(xml);
+    let styles_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="CustomHeading">
+    <w:pPr><w:outlineLvl w:val="0"/></w:pPr>
+  </w:style>
+</w:styles>"#;
+    let bytes = build_docx_entries(&[
+        ("word/document.xml", document_xml),
+        ("word/styles.xml", styles_xml),
+    ]);
     let source = DocxAdapter::extract_text(&bytes).expect("extract text");
     let writeback_source =
         DocxAdapter::extract_writeback_source_text(&bytes).expect("extract writeback source");

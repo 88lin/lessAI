@@ -3,7 +3,9 @@ use crate::documents::RegionSegmentationStrategy;
 use crate::models::{ChunkPreset, DocumentFormat};
 
 use super::guards::{NoopBoundaryGuard, TexBraceBoundaryGuard};
-use super::postprocess::merge_left_binding_punctuation_chunks;
+use super::postprocess::{
+    merge_left_binding_punctuation_chunks, move_leading_whitespace_to_previous_separator,
+};
 use super::stream::{segment_region_stream, SegmentRegion};
 use super::SegmentedChunk;
 
@@ -30,7 +32,7 @@ pub fn segment_regions_with_strategy(
         }
         RegionSegmentationStrategy::FormatAware => segment_text_regions(regions, preset, format),
     };
-    merge_left_binding_punctuation_chunks(chunks)
+    move_leading_whitespace_to_previous_separator(merge_left_binding_punctuation_chunks(chunks))
 }
 
 fn segment_text_regions(

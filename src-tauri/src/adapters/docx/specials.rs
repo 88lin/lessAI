@@ -47,26 +47,11 @@ pub(crate) fn classify_block_sdt(events: &[Event<'static>]) -> (&'static str, &'
     classify_sdt_placeholder(events)
 }
 
-fn classify_sdt_placeholder(events: &[Event<'static>]) -> (&'static str, &'static str) {
-    if is_toc_sdt(events) {
-        return (placeholders::DOCX_TOC_PLACEHOLDER, "toc");
-    }
+fn classify_sdt_placeholder(_events: &[Event<'static>]) -> (&'static str, &'static str) {
     (
         placeholders::DOCX_CONTENT_CONTROL_PLACEHOLDER,
         "content-control",
     )
-}
-
-fn is_toc_sdt(events: &[Event<'static>]) -> bool {
-    events.iter().any(|event| match event {
-        Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"docPartGallery" => {
-            attr_value(e, b"val").is_some_and(|value| {
-                let lowered = value.trim().to_ascii_lowercase();
-                lowered == "table of contents" || lowered == "toc"
-            })
-        }
-        _ => false,
-    })
 }
 
 fn extract_field_display_text(events: &[Event<'static>]) -> Result<String, String> {
@@ -168,18 +153,6 @@ fn contains_local_tag(events: &[Event<'static>], tag: &[u8]) -> bool {
         Event::Start(e) | Event::Empty(e) => local_name(e.name().as_ref()) == tag,
         Event::End(e) => local_name(e.name().as_ref()) == tag,
         _ => false,
-    })
-}
-
-fn attr_value(event: &BytesStart<'_>, key: &[u8]) -> Option<String> {
-    event.attributes().flatten().find_map(|attr| {
-        if local_name(attr.key.as_ref()) != key {
-            return None;
-        }
-        attr.unescape_value()
-            .map(|value| value.into_owned())
-            .ok()
-            .or_else(|| String::from_utf8(attr.value.as_ref().to_vec()).ok())
     })
 }
 

@@ -12,7 +12,7 @@ interface RewriteStrategyPageProps {
   onUpdateRewriteHeadings: (value: boolean) => void;
   onUpdateRewriteMode: (value: AppSettings["rewriteMode"]) => void;
   onUpdateNumberSetting: (
-    key: "timeoutMs" | "temperature" | "maxConcurrency",
+    key: "timeoutMs" | "temperature" | "maxConcurrency" | "chunksPerRequest",
     value: string
   ) => void;
 }
@@ -142,7 +142,23 @@ export const RewriteStrategyPage = memo(function RewriteStrategyPage({
           并发越高速度越快，但更容易触发接口限速/失败（建议 1–4）。
         </span>
       </div>
+
+      <div className="field-block">
+        <div className="field-line">
+          <span>单次请求处理块数</span>
+          <strong>{settings.chunksPerRequest}</strong>
+        </div>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={settings.chunksPerRequest}
+          onChange={(event) => onUpdateNumberSetting("chunksPerRequest", event.target.value)}
+        />
+        <span className="workspace-hint">
+          该值表示一次模型请求里最多打包多少个块；它不同于并发数，并发数控制“同时发起多少个请求”。
+        </span>
+      </div>
     </div>
   );
 });
-
