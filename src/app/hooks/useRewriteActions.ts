@@ -48,6 +48,7 @@ export function useRewriteActions(options: {
   activeChunkIndexRef: React.MutableRefObject<number>;
   activeSuggestionIdRef: React.MutableRefObject<string | null>;
   selectedChunkIndicesRef: React.MutableRefObject<number[]>;
+  captureDocumentScrollPosition: () => number | null;
   editorDirtyRef: React.MutableRefObject<boolean>;
   requestConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
   applySessionState: ApplySessionState;
@@ -63,6 +64,7 @@ export function useRewriteActions(options: {
     activeChunkIndexRef,
     activeSuggestionIdRef,
     selectedChunkIndicesRef,
+    captureDocumentScrollPosition,
     editorDirtyRef,
     requestConfirm,
     applySessionState,
@@ -196,6 +198,7 @@ export function useRewriteActions(options: {
       }
 
       try {
+        const preservedScrollTop = captureDocumentScrollPosition();
         const updated = await withBusy(`start-${mode}`, () =>
           startRewrite(latestSession.id, mode, targetChunkIndices)
         );
@@ -209,7 +212,8 @@ export function useRewriteActions(options: {
             preferredSuggestion?.chunkIndex ?? selectDefaultChunkIndex(updated);
 
           applySessionState(updated, nextChunkIndex, {
-            preferredSuggestionId: preferredSuggestion?.id ?? null
+            preferredSuggestionId: preferredSuggestion?.id ?? null,
+            preservedScrollTop
           });
           setReviewView("diff");
           showNotice(
@@ -224,7 +228,8 @@ export function useRewriteActions(options: {
         }
 
         applySessionState(updated, activeChunkIndexRef.current, {
-          preferredSuggestionId: activeSuggestionIdRef.current
+          preferredSuggestionId: activeSuggestionIdRef.current,
+          preservedScrollTop
         });
         showNotice("info", "自动批处理已启动，系统会后台连续处理并自动应用结果。");
       } catch (error) {
@@ -248,6 +253,7 @@ export function useRewriteActions(options: {
       activeChunkIndexRef,
       activeSuggestionIdRef,
       applySessionState,
+      captureDocumentScrollPosition,
       confirmIfChunksTooLarge,
       currentSessionRef,
       editorDirtyRef,
@@ -264,9 +270,11 @@ export function useRewriteActions(options: {
     const session = currentSessionRef.current;
     if (!session) return;
     try {
+      const preservedScrollTop = captureDocumentScrollPosition();
       const updated = await withBusy("pause-rewrite", () => pauseRewrite(session.id));
       applySessionState(updated, activeChunkIndexRef.current, {
-        preferredSuggestionId: activeSuggestionIdRef.current
+        preferredSuggestionId: activeSuggestionIdRef.current,
+        preservedScrollTop
       });
       showNotice("warning", "自动任务已暂停，可继续或取消。");
     } catch (error) {
@@ -276,6 +284,7 @@ export function useRewriteActions(options: {
     activeChunkIndexRef,
     activeSuggestionIdRef,
     applySessionState,
+    captureDocumentScrollPosition,
     currentSessionRef,
     showNotice,
     withBusy
@@ -285,9 +294,11 @@ export function useRewriteActions(options: {
     const session = currentSessionRef.current;
     if (!session) return;
     try {
+      const preservedScrollTop = captureDocumentScrollPosition();
       const updated = await withBusy("resume-rewrite", () => resumeRewrite(session.id));
       applySessionState(updated, activeChunkIndexRef.current, {
-        preferredSuggestionId: activeSuggestionIdRef.current
+        preferredSuggestionId: activeSuggestionIdRef.current,
+        preservedScrollTop
       });
       showNotice("info", "自动任务已继续。");
     } catch (error) {
@@ -297,6 +308,7 @@ export function useRewriteActions(options: {
     activeChunkIndexRef,
     activeSuggestionIdRef,
     applySessionState,
+    captureDocumentScrollPosition,
     currentSessionRef,
     showNotice,
     withBusy
@@ -306,9 +318,11 @@ export function useRewriteActions(options: {
     const session = currentSessionRef.current;
     if (!session) return;
     try {
+      const preservedScrollTop = captureDocumentScrollPosition();
       const updated = await withBusy("cancel-rewrite", () => cancelRewrite(session.id));
       applySessionState(updated, activeChunkIndexRef.current, {
-        preferredSuggestionId: activeSuggestionIdRef.current
+        preferredSuggestionId: activeSuggestionIdRef.current,
+        preservedScrollTop
       });
       setLiveProgress(null);
       showNotice("warning", "自动任务已取消，已保留当前文档进度。");
@@ -319,6 +333,7 @@ export function useRewriteActions(options: {
     activeChunkIndexRef,
     activeSuggestionIdRef,
     applySessionState,
+    captureDocumentScrollPosition,
     currentSessionRef,
     setLiveProgress,
     showNotice,
@@ -349,13 +364,15 @@ export function useRewriteActions(options: {
       return;
     }
     try {
+      const preservedScrollTop = captureDocumentScrollPosition();
       const updated = await withBusy("retry-chunk", () =>
         retryChunk(latestSession.id, latestChunk.index)
       );
       const suggestion = getLatestSuggestion(updated);
       const nextChunkIndex = suggestion?.chunkIndex ?? latestChunk.index;
       applySessionState(updated, nextChunkIndex, {
-        preferredSuggestionId: suggestion?.id ?? null
+        preferredSuggestionId: suggestion?.id ?? null,
+        preservedScrollTop
       });
       setReviewView("diff");
       showNotice(
@@ -379,6 +396,7 @@ export function useRewriteActions(options: {
   }, [
     activeChunkIndexRef,
     applySessionState,
+    captureDocumentScrollPosition,
     currentSessionRef,
     refreshSessionState,
     setReviewView,

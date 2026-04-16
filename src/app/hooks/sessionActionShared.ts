@@ -13,7 +13,10 @@ export type WithBusy = <T>(action: string, fn: () => Promise<T>) => Promise<T>;
 export type ApplySessionState = (
   session: DocumentSession,
   nextChunkIndex: number,
-  options?: { preferredSuggestionId?: string | null }
+  options?: {
+    preferredSuggestionId?: string | null;
+    preservedScrollTop?: number | null;
+  }
 ) => void;
 
 export interface RefreshSessionOptions {
@@ -21,6 +24,7 @@ export interface RefreshSessionOptions {
   preferredChunkIndex?: number;
   preserveSuggestion?: boolean;
   preferredSuggestionId?: string | null;
+  preserveScroll?: boolean;
 }
 
 export type RefreshSessionState = (

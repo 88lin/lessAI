@@ -21,6 +21,7 @@ import {
 export function useSuggestionActions(options: {
   currentSessionRef: React.MutableRefObject<DocumentSession | null>;
   activeChunkIndexRef: React.MutableRefObject<number>;
+  captureDocumentScrollPosition: () => number | null;
   setActiveChunkIndex: React.Dispatch<React.SetStateAction<number>>;
   setActiveSuggestionId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedChunkIndices: React.Dispatch<React.SetStateAction<number[]>>;
@@ -33,6 +34,7 @@ export function useSuggestionActions(options: {
   const {
     currentSessionRef,
     activeChunkIndexRef,
+    captureDocumentScrollPosition,
     setActiveChunkIndex,
     setActiveSuggestionId,
     setSelectedChunkIndices,
@@ -120,6 +122,7 @@ export function useSuggestionActions(options: {
       }
 
       try {
+        const preservedScrollTop = captureDocumentScrollPosition();
         const updated = await withBusy(`apply-suggestion:${suggestionId}`, () =>
           applySuggestion(latestSession.id, suggestionId)
         );
@@ -128,7 +131,10 @@ export function useSuggestionActions(options: {
           getLatestSuggestion(updated);
         const chunkIndex = suggestion?.chunkIndex ?? activeChunkIndexRef.current;
 
-        applySessionState(updated, chunkIndex, { preferredSuggestionId: suggestionId });
+        applySessionState(updated, chunkIndex, {
+          preferredSuggestionId: suggestionId,
+          preservedScrollTop
+        });
 
         showNotice(
           "success",
@@ -149,6 +155,7 @@ export function useSuggestionActions(options: {
     [
       activeChunkIndexRef,
       applySessionState,
+      captureDocumentScrollPosition,
       currentSessionRef,
       refreshSessionState,
       showNotice,
@@ -162,6 +169,7 @@ export function useSuggestionActions(options: {
       if (!session) return;
 
       try {
+        const preservedScrollTop = captureDocumentScrollPosition();
         const updated = await withBusy(`dismiss-suggestion:${suggestionId}`, () =>
           dismissSuggestion(session.id, suggestionId)
         );
@@ -171,7 +179,8 @@ export function useSuggestionActions(options: {
         const chunkIndex = suggestion?.chunkIndex ?? activeChunkIndexRef.current;
 
         applySessionState(updated, chunkIndex, {
-          preferredSuggestionId: suggestion?.id ?? null
+          preferredSuggestionId: suggestion?.id ?? null,
+          preservedScrollTop
         });
 
         showNotice("warning", "已取消应用 / 忽略该修改对。");
@@ -182,6 +191,7 @@ export function useSuggestionActions(options: {
     [
       activeChunkIndexRef,
       applySessionState,
+      captureDocumentScrollPosition,
       currentSessionRef,
       showNotice,
       withBusy
@@ -197,6 +207,7 @@ export function useSuggestionActions(options: {
       const targetChunkIndex = target?.chunkIndex ?? activeChunkIndexRef.current;
 
       try {
+        const preservedScrollTop = captureDocumentScrollPosition();
         const updated = await withBusy(`delete-suggestion:${suggestionId}`, () =>
           deleteSuggestion(session.id, suggestionId)
         );
@@ -204,7 +215,7 @@ export function useSuggestionActions(options: {
           targetChunkIndex,
           Math.max(0, updated.chunks.length - 1)
         );
-        applySessionState(updated, nextChunkIndex);
+        applySessionState(updated, nextChunkIndex, { preservedScrollTop });
         showNotice("warning", "已删除该修改对。");
       } catch (error) {
         showNotice("error", `删除失败：${readableError(error)}`);
@@ -213,6 +224,7 @@ export function useSuggestionActions(options: {
     [
       activeChunkIndexRef,
       applySessionState,
+      captureDocumentScrollPosition,
       currentSessionRef,
       showNotice,
       withBusy

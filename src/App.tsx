@@ -49,6 +49,7 @@ import { useChunkStrategyLock } from "./app/hooks/useChunkStrategyLock";
 import { useDocumentActions } from "./app/hooks/useDocumentActions";
 import { useDocumentFinalizeActions } from "./app/hooks/useDocumentFinalizeActions";
 import { useDocumentScrollRestore } from "./app/hooks/useDocumentScrollRestore";
+import { logScrollRestore } from "./app/hooks/documentScrollRestoreDebug";
 import { useEditorSelectionRewrite } from "./app/hooks/useEditorSelectionRewrite";
 import { useSettingsHandlers } from "./app/hooks/useSettingsHandlers";
 import { useRewriteActions } from "./app/hooks/useRewriteActions";
@@ -212,7 +213,10 @@ export default function App() {
     (
       session: DocumentSession,
       nextChunkIndex: number,
-      options?: { preferredSuggestionId?: string | null }
+      options?: {
+        preferredSuggestionId?: string | null;
+        preservedScrollTop?: number | null;
+      }
     ) => {
       const suggestionId = pickActiveSuggestionId(
         session,
@@ -225,8 +229,16 @@ export default function App() {
         setActiveChunkIndex(nextChunkIndex);
         setActiveSuggestionId(suggestionId);
       });
+      if (options && "preservedScrollTop" in options) {
+        logScrollRestore("apply-session-state", {
+          sessionId: session.id,
+          nextChunkIndex,
+          preservedScrollTop: options.preservedScrollTop ?? null
+        });
+        restoreDocumentScrollPosition(options.preservedScrollTop ?? null);
+      }
     },
-    [pickActiveSuggestionId]
+    [pickActiveSuggestionId, restoreDocumentScrollPosition]
   );
 
   const refreshSessionState = useCallback(
@@ -237,8 +249,18 @@ export default function App() {
         preferredChunkIndex?: number;
         preserveSuggestion?: boolean;
         preferredSuggestionId?: string | null;
+        preserveScroll?: boolean;
       }
     ) => {
+      const preservedScrollTop =
+        options?.preserveScroll === false ? undefined : captureDocumentScrollPosition();
+      logScrollRestore("refresh-session-state-start", {
+        sessionId,
+        options: options ?? null,
+        preservedScrollTop,
+        activeChunkIndex: activeChunkIndexRef.current,
+        activeSuggestionId: activeSuggestionIdRef.current
+      });
       const session = await loadSession(sessionId);
       const chunkIdx = activeChunkIndexRef.current;
       const nextChunkIndex =
@@ -251,10 +273,20 @@ export default function App() {
         options?.preferredSuggestionId ??
         (options?.preserveSuggestion ? activeSuggestionIdRef.current : null);
 
-      applySessionState(session, nextChunkIndex, { preferredSuggestionId });
+      logScrollRestore("refresh-session-state-loaded", {
+        sessionId,
+        loadedSessionId: session.id,
+        nextChunkIndex,
+        preferredSuggestionId,
+        preservedScrollTop
+      });
+      applySessionState(session, nextChunkIndex, {
+        preferredSuggestionId,
+        preservedScrollTop
+      });
       return session;
     },
-    [applySessionState]
+    [applySessionState, captureDocumentScrollPosition]
   );
 
   // ── Settings Modal ───────────────────────────────────
@@ -307,6 +339,11 @@ export default function App() {
     onChunkCompleted: async (payload) => {
       const session = currentSessionRef.current;
       if (session && payload.sessionId === session.id) {
+        logScrollRestore("tauri-chunk-completed", {
+          sessionId: payload.sessionId,
+          chunkIndex: payload.index,
+          suggestionId: payload.suggestionId
+        });
         await refreshSessionState(payload.sessionId, {
           preferredChunkIndex: payload.index,
           preferredSuggestionId: payload.suggestionId
@@ -320,6 +357,9 @@ export default function App() {
       );
       const session = currentSessionRef.current;
       if (session && payload.sessionId === session.id) {
+        logScrollRestore("tauri-finished", {
+          sessionId: payload.sessionId
+        });
         const refreshed = await refreshSessionState(payload.sessionId, {
           preserveChunk: true,
           preserveSuggestion: true
@@ -336,6 +376,10 @@ export default function App() {
       showNotice("error", `改写失败：${payload.error}`);
       const session = currentSessionRef.current;
       if (session && payload.sessionId === session.id) {
+        logScrollRestore("tauri-failed", {
+          sessionId: payload.sessionId,
+          error: payload.error
+        });
         const refreshed = await refreshSessionState(payload.sessionId, {
           preserveChunk: true,
           preserveSuggestion: true
@@ -475,6 +519,7 @@ export default function App() {
     useDocumentFinalizeActions({
       stageRef,
       currentSessionRef,
+      activeChunkIndexRef,
       editorDirtyRef,
       captureDocumentScrollPosition,
       restoreDocumentScrollPosition,
@@ -503,6 +548,7 @@ export default function App() {
     activeChunkIndexRef,
     activeSuggestionIdRef,
     selectedChunkIndicesRef,
+    captureDocumentScrollPosition,
     editorDirtyRef,
     requestConfirm,
     applySessionState,
@@ -522,6 +568,7 @@ export default function App() {
   } = useSuggestionActions({
     currentSessionRef,
     activeChunkIndexRef,
+    captureDocumentScrollPosition,
     setActiveChunkIndex,
     setActiveSuggestionId,
     setSelectedChunkIndices,

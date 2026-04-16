@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from "react";
+import { logScrollRestore } from "../../../app/hooks/documentScrollRestoreDebug";
 import { summarizeChunkSuggestions } from "../../../lib/helpers";
 import { buildChunkGroups } from "../../../lib/chunkGroups";
 import { isChunkSelected } from "../../../lib/chunkSelection";
@@ -75,6 +76,12 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
 
     const activeGroup = groups.find((group) => group.chunkIndices.includes(activeChunkIndex));
     if (!activeGroup) return;
+    logScrollRestore("paragraph-scroll-into-view", {
+      sessionId,
+      previousActiveChunkIndex: previous.activeChunkIndex,
+      activeChunkIndex,
+      groupId: activeGroup.id
+    });
     groupNodesRef.current[activeGroup.id]?.scrollIntoView({
       block: "center",
       behavior: "smooth"

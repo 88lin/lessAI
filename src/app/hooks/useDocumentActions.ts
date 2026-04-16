@@ -17,6 +17,7 @@ import {
   type ShowNotice,
   type WithBusy
 } from "./sessionActionShared";
+import { logScrollRestore } from "./documentScrollRestoreDebug";
 
 export function useDocumentActions(options: {
   busyAction: string | null;
@@ -270,6 +271,12 @@ export function useDocumentActions(options: {
       const actionKey = returnToWorkbench ? "save-edits-and-back" : "save-edits";
       const content = editorTextRef.current;
       const preservedScrollTop = captureDocumentScrollPosition();
+      logScrollRestore("editor-save-start", {
+        sessionId: session.id,
+        actionKey,
+        returnToWorkbench,
+        preservedScrollTop
+      });
 
       try {
         const updated = await withBusy(actionKey, () => {
@@ -293,6 +300,11 @@ export function useDocumentActions(options: {
           Math.min(activeChunkIndexRef.current, Math.max(0, updated.chunks.length - 1))
         );
         editorBaseSnapshotRef.current = updated.sourceSnapshot ?? null;
+        logScrollRestore("editor-save-restoring", {
+          sessionId: session.id,
+          updatedSessionId: updated.id,
+          preservedScrollTop
+        });
         restoreDocumentScrollPosition(preservedScrollTop);
         setReviewView("diff");
         setLiveProgress(null);

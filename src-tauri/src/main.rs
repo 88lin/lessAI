@@ -45,7 +45,11 @@ fn build_log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Info)
         .timezone_strategy(TimezoneStrategy::UseLocal)
-        .target(Target::new(TargetKind::Webview))
+        .targets([
+            Target::new(TargetKind::LogDir { file_name: None }),
+            Target::new(TargetKind::Stdout),
+            Target::new(TargetKind::Webview),
+        ])
         .build()
 }
 

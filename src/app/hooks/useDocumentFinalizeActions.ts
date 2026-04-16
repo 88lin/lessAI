@@ -13,8 +13,7 @@ import {
   isDocxPath,
   isPdfPath,
   readableError,
-  sanitizeFileName,
-  selectDefaultChunkIndex
+  sanitizeFileName
 } from "../../lib/helpers";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
 import {
@@ -24,10 +23,12 @@ import {
   type ShowNotice,
   type WithBusy
 } from "./sessionActionShared";
+import { logScrollRestore } from "./documentScrollRestoreDebug";
 
 export function useDocumentFinalizeActions(options: {
   stageRef: React.MutableRefObject<"workbench" | "editor">;
   currentSessionRef: React.MutableRefObject<DocumentSession | null>;
+  activeChunkIndexRef: React.MutableRefObject<number>;
   editorDirtyRef: React.MutableRefObject<boolean>;
   captureDocumentScrollPosition: () => number | null;
   restoreDocumentScrollPosition: (scrollTop: number | null) => void;
@@ -46,6 +47,7 @@ export function useDocumentFinalizeActions(options: {
   const {
     stageRef,
     currentSessionRef,
+    activeChunkIndexRef,
     editorDirtyRef,
     captureDocumentScrollPosition,
     restoreDocumentScrollPosition,
@@ -162,14 +164,25 @@ export function useDocumentFinalizeActions(options: {
 
     let savedPath: string | null = null;
     const preservedScrollTop = captureDocumentScrollPosition();
+    logScrollRestore("finalize-start", {
+      sessionId: latestSession.id,
+      preservedScrollTop,
+      path: latestSession.documentPath
+    });
     try {
       const reopened = await withBusy("finalize-document", async () => {
         savedPath = await finalizeDocument(latestSession.id);
         return openDocument(savedPath);
       });
 
+      logScrollRestore("finalize-restoring", {
+        previousSessionId: latestSession.id,
+        reopenedSessionId: reopened.id,
+        preservedScrollTop,
+        savedPath
+      });
       restoreDocumentScrollPosition(preservedScrollTop);
-      applySessionState(reopened, selectDefaultChunkIndex(reopened));
+      applySessionState(reopened, Math.min(activeChunkIndexRef.current, Math.max(0, reopened.chunks.length - 1)));
       setReviewView("diff");
       setLiveProgress(null);
       closeSettings();
@@ -188,8 +201,14 @@ export function useDocumentFinalizeActions(options: {
       }
       try {
         const refreshed = await openDocument(session.documentPath);
+        logScrollRestore("finalize-recover-restoring", {
+          previousSessionId: session.id,
+          reopenedSessionId: refreshed.id,
+          preservedScrollTop,
+          path: session.documentPath
+        });
         restoreDocumentScrollPosition(preservedScrollTop);
-        applySessionState(refreshed, selectDefaultChunkIndex(refreshed));
+        applySessionState(refreshed, Math.min(activeChunkIndexRef.current, Math.max(0, refreshed.chunks.length - 1)));
         setReviewView("diff");
         setLiveProgress(null);
       } catch {
@@ -200,6 +219,7 @@ export function useDocumentFinalizeActions(options: {
     }
   }, [
     applySessionState,
+    activeChunkIndexRef,
     captureDocumentScrollPosition,
     closeSettings,
     currentSessionRef,
@@ -256,7 +276,7 @@ export function useDocumentFinalizeActions(options: {
       const preservedScrollTop = captureDocumentScrollPosition();
       const rebuilt = await withBusy("reset-session", () => resetSession(session.id));
       restoreDocumentScrollPosition(preservedScrollTop);
-      applySessionState(rebuilt, selectDefaultChunkIndex(rebuilt));
+      applySessionState(rebuilt, Math.min(activeChunkIndexRef.current, Math.max(0, rebuilt.chunks.length - 1)));
       setReviewView("diff");
       setLiveProgress(null);
       showNotice("success", "已重置记录，并重新从原文件创建会话。");
@@ -265,6 +285,7 @@ export function useDocumentFinalizeActions(options: {
     }
   }, [
     applySessionState,
+    activeChunkIndexRef,
     captureDocumentScrollPosition,
     currentSessionRef,
     requestConfirm,
