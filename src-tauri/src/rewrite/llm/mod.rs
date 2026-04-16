@@ -1,9 +1,10 @@
 use std::time::Duration;
 
 use crate::models::{AppSettings, DocumentFormat, ProviderCheckResult};
+use crate::settings_validation::validate_numeric_settings;
 
-mod markdown;
 mod batch;
+mod markdown;
 mod plain;
 mod plain_support;
 mod plans;
@@ -69,13 +70,9 @@ pub async fn rewrite_chunks_with_client(
         return Ok(Vec::new());
     }
     if source_texts.len() == 1 {
-        return Ok(vec![rewrite_chunk_with_client(
-            client,
-            settings,
-            &source_texts[0],
-            format,
-        )
-        .await?]);
+        return Ok(vec![
+            rewrite_chunk_with_client(client, settings, &source_texts[0], format).await?,
+        ]);
     }
 
     match format {
@@ -118,6 +115,7 @@ pub async fn rewrite_chunks(
 }
 
 fn validate_settings(settings: &AppSettings) -> Result<(), String> {
+    validate_numeric_settings(settings)?;
     if settings.base_url.trim().is_empty() {
         return Err("Base URL 不能为空。".to_string());
     }
@@ -129,4 +127,39 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_settings;
+    use crate::models::AppSettings;
+
+    #[test]
+    fn validate_settings_rejects_zero_chunks_per_request() {
+        let mut settings = valid_settings();
+        settings.chunks_per_request = 0;
+
+        let error = validate_settings(&settings).expect_err("expected invalid batch size");
+
+        assert_eq!(error, "单次请求处理块数必须大于等于 1。");
+    }
+
+    #[test]
+    fn validate_settings_rejects_max_concurrency_above_limit() {
+        let mut settings = valid_settings();
+        settings.max_concurrency = 9;
+
+        let error = validate_settings(&settings).expect_err("expected invalid max concurrency");
+
+        assert_eq!(error, "自动并发数必须在 1 到 8 之间。");
+    }
+
+    fn valid_settings() -> AppSettings {
+        AppSettings {
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key: "test-key".to_string(),
+            model: "gpt-4.1-mini".to_string(),
+            ..AppSettings::default()
+        }
+    }
 }

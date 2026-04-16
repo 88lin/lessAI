@@ -1,11 +1,15 @@
-use chrono::Utc;
 use tauri::{AppHandle, State};
 
 use crate::{
+    documents::WritebackMode,
     models::{ChunkStatus, DocumentSession, SuggestionDecision},
-    rewrite_jobs::validate_session_writeback,
-    state::{with_session_lock, AppState},
-    storage,
+    rewrite_projection::{
+        apply_suggestion_by_id, find_suggestion_index, SUGGESTION_NOT_FOUND_ERROR,
+    },
+    rewrite_writeback::execute_session_writeback,
+    session_access::CurrentSessionRequest,
+    session_edit::mutate_session_cloned_now,
+    state::AppState,
 };
 
 #[tauri::command]
@@ -15,40 +19,14 @@ pub fn apply_suggestion(
     session_id: String,
     suggestion_id: String,
 ) -> Result<DocumentSession, String> {
-    with_session_lock(state.inner(), &session_id, || {
-        let mut session = storage::load_session(&app, &session_id)?;
-        let now = Utc::now();
-
-        let (chunk_index, found) = session
-            .suggestions
-            .iter()
-            .find(|item| item.id == suggestion_id)
-            .map(|item| (item.chunk_index, true))
-            .unwrap_or((0, false));
-
-        if !found {
-            return Err("未找到对应的修改对。".to_string());
-        }
-
-        for suggestion in session.suggestions.iter_mut() {
-            if suggestion.chunk_index != chunk_index {
-                continue;
-            }
-
-            if suggestion.id == suggestion_id {
-                suggestion.decision = SuggestionDecision::Applied;
-                suggestion.updated_at = now;
-            } else if suggestion.decision == SuggestionDecision::Applied {
-                suggestion.decision = SuggestionDecision::Dismissed;
-                suggestion.updated_at = now;
-            }
-        }
-
-        validate_session_writeback(&session)?;
-        session.updated_at = now;
-        storage::save_session(&app, &session)?;
-        Ok(session)
-    })
+    mutate_session_cloned_now(
+        CurrentSessionRequest::refreshed(&app, state.inner(), &session_id),
+        |session, now| {
+            apply_suggestion_by_id(session, &suggestion_id, now)?;
+            execute_session_writeback(&session, WritebackMode::Validate)?;
+            Ok(())
+        },
+    )
 }
 
 #[tauri::command]
@@ -58,21 +36,20 @@ pub fn dismiss_suggestion(
     session_id: String,
     suggestion_id: String,
 ) -> Result<DocumentSession, String> {
-    with_session_lock(state.inner(), &session_id, || {
-        let mut session = storage::load_session(&app, &session_id)?;
-        let now = Utc::now();
-        let suggestion = session
-            .suggestions
-            .iter_mut()
-            .find(|item| item.id == suggestion_id)
-            .ok_or_else(|| "未找到对应的修改对。".to_string())?;
+    mutate_session_cloned_now(
+        CurrentSessionRequest::stored(&app, state.inner(), &session_id),
+        |session, now| {
+            let suggestion_index = find_suggestion_index(session, &suggestion_id)?;
+            let suggestion = session
+                .suggestions
+                .get_mut(suggestion_index)
+                .ok_or_else(|| SUGGESTION_NOT_FOUND_ERROR.to_string())?;
 
-        suggestion.decision = SuggestionDecision::Dismissed;
-        suggestion.updated_at = now;
-        session.updated_at = now;
-        storage::save_session(&app, &session)?;
-        Ok(session)
-    })
+            suggestion.decision = SuggestionDecision::Dismissed;
+            suggestion.updated_at = now;
+            Ok(())
+        },
+    )
 }
 
 #[tauri::command]
@@ -82,35 +59,32 @@ pub fn delete_suggestion(
     session_id: String,
     suggestion_id: String,
 ) -> Result<DocumentSession, String> {
-    with_session_lock(state.inner(), &session_id, || {
-        let mut session = storage::load_session(&app, &session_id)?;
-        let now = Utc::now();
+    mutate_session_cloned_now(
+        CurrentSessionRequest::stored(&app, state.inner(), &session_id),
+        |session, _| {
+            let suggestion_index = find_suggestion_index(session, &suggestion_id)?;
+            let removed = session
+                .suggestions
+                .get(suggestion_index)
+                .ok_or_else(|| SUGGESTION_NOT_FOUND_ERROR.to_string())?
+                .chunk_index;
 
-        let removed = session
-            .suggestions
-            .iter()
-            .find(|item| item.id == suggestion_id)
-            .map(|item| item.chunk_index);
+            session.suggestions.retain(|item| item.id != suggestion_id);
 
-        session.suggestions.retain(|item| item.id != suggestion_id);
-
-        if let Some(chunk_index) = removed {
             let still_has_any = session
                 .suggestions
                 .iter()
-                .any(|item| item.chunk_index == chunk_index);
+                .any(|item| item.chunk_index == removed);
 
             if !still_has_any {
-                if let Some(chunk) = session.chunks.get_mut(chunk_index) {
+                if let Some(chunk) = session.chunks.get_mut(removed) {
                     if chunk.status == ChunkStatus::Done {
                         chunk.status = ChunkStatus::Idle;
                     }
                 }
             }
-        }
 
-        session.updated_at = now;
-        storage::save_session(&app, &session)?;
-        Ok(session)
-    })
+            Ok(())
+        },
+    )
 }

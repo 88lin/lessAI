@@ -151,11 +151,17 @@ const part04 = read("src/styles/part-04.css");
 const documentActionBar = read("src/stages/workbench/document/DocumentActionBar.tsx");
 const documentPanel = read("src/stages/workbench/DocumentPanel.tsx");
 const documentFlow = read("src/stages/workbench/document/DocumentFlow.tsx");
+const paragraphDocumentFlow = read("src/stages/workbench/document/ParagraphDocumentFlow.tsx");
+const docxChunkEditor = read("src/stages/workbench/document/DocxChunkEditor.tsx");
 const workspaceBar = read("src/app/components/WorkspaceBar.tsx");
 const settingsTypes = read("src/lib/types.ts");
 const settingsConstants = read("src/lib/constants.ts");
 const rewriteStrategyPage = read("src/components/settings/RewriteStrategyPage.tsx");
 const settingsHandlers = read("src/app/hooks/useSettingsHandlers.ts");
+const documentActions = read("src/app/hooks/useDocumentActions.ts");
+const documentFinalizeActions = read("src/app/hooks/useDocumentFinalizeActions.ts");
+const documentScrollRestore = read("src/app/hooks/useDocumentScrollRestore.ts");
+const appSource = read("src/App.tsx");
 const { renderInlineProtectedText } = await loadProtectedTextModule();
 const {
   buildChunkGroups,
@@ -183,6 +189,37 @@ assertRule(part02, ".workspace-bar-path-line", "display", "flex");
 assertRule(part02, ".workspace-bar-path-text", "text-overflow", "ellipsis");
 assertRule(part04, ".docx-editor-chunk.is-editable.is-underline:focus", "text-decoration", "none");
 assertRule(part04, ".docx-editor-chunk.is-editable.is-link:focus", "text-decoration", "none");
+assertNotIncludes(
+  paragraphDocumentFlow,
+  "[activeChunkIndex, groups, sessionId]",
+  "写回刷新 session 时，不应因为 groups/sessionId 变化再次自动滚动到激活块"
+);
+assertNotIncludes(
+  docxChunkEditor,
+  "chunkNodesRef.current[firstEditable.index]?.focus();\n    }, [session.chunks]);",
+  "docx 编辑器写回后不应因为 chunks 变化重新聚焦首个可编辑块"
+);
+assertNotIncludes(
+  documentActions,
+  "applySessionState(updated, selectDefaultChunkIndex(updated));",
+  "编辑保存后应保留当前激活块，而不是重置到默认块"
+);
+assertIncludes(documentScrollRestore, "export function useDocumentScrollRestore()");
+assertIncludes(documentScrollRestore, "const documentScrollRef = useRef<HTMLDivElement | null>(null);");
+assertIncludes(documentScrollRestore, "const pendingScrollTopRef = useRef<number | null>(null);");
+assertIncludes(documentScrollRestore, "node.scrollTop = pending;");
+assertIncludes(documentPanel, "documentScrollRef: MutableRefObject<HTMLDivElement | null>;");
+assertIncludes(documentPanel, '<div ref={documentScrollRef} className="paper-content scroll-region">');
+assertIncludes(documentActions, "captureDocumentScrollPosition: () => number | null;");
+assertIncludes(documentActions, "restoreDocumentScrollPosition: (scrollTop: number | null) => void;");
+assertIncludes(documentActions, "const preservedScrollTop = captureDocumentScrollPosition();");
+assertIncludes(documentActions, "restoreDocumentScrollPosition(preservedScrollTop);");
+assertIncludes(documentFinalizeActions, "captureDocumentScrollPosition: () => number | null;");
+assertIncludes(documentFinalizeActions, "restoreDocumentScrollPosition: (scrollTop: number | null) => void;");
+assertIncludes(documentFinalizeActions, "const preservedScrollTop = captureDocumentScrollPosition();");
+assertIncludes(documentFinalizeActions, "restoreDocumentScrollPosition(preservedScrollTop);");
+assertIncludes(appSource, 'import { useDocumentScrollRestore } from "./app/hooks/useDocumentScrollRestore";');
+assertIncludes(appSource, "const { documentScrollRef, captureDocumentScrollPosition, restoreDocumentScrollPosition } =");
 
 const paragraphChunks = [
   {

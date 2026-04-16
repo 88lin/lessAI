@@ -54,15 +54,8 @@ pub(super) async fn call_chat_model(
     user_prompt: &str,
     temperature: f32,
 ) -> Result<String, String> {
-    let response = send_chat_request(
-        client,
-        settings,
-        system_prompt,
-        user_prompt,
-        temperature,
-        false,
-    )
-    .await?;
+    let response =
+        send_chat_request(client, settings, system_prompt, user_prompt, temperature).await?;
 
     let status = response.status();
     let content_type = response
@@ -76,66 +69,19 @@ pub(super) async fn call_chat_model(
         .await
         .map_err(|error| format_reqwest_error(error))?;
 
-    if status.is_success() {
-        let prefer_stream_parser = content_type.contains("text/event-stream")
-            || content_type.contains("ndjson")
-            || body_looks_like_sse(&body);
-
-        if prefer_stream_parser {
-            return parse_stream_chat_response_body(&body);
-        }
-
-        return match parse_json_chat_response_body(&body) {
-            Ok(text) => Ok(text),
-            Err(error) => {
-                // 兼容“强制流式输出但没有正确标 Content-Type”的上游：
-                // - 可能返回 NDJSON（多行 JSON）
-                // - 也可能直接返回 SSE 文本但首行不是 `data:`（极少见）
-                if body_looks_like_ndjson(&body) {
-                    parse_stream_chat_response_body(&body)
-                } else {
-                    Err(error)
-                }
-            }
-        };
-    }
-
-    if response_requires_stream(status, &body) {
-        return call_stream_chat_model(client, settings, system_prompt, user_prompt, temperature)
-            .await;
-    }
-
-    Err(format_chat_api_error(status, &body))
-}
-
-async fn call_stream_chat_model(
-    client: &reqwest::Client,
-    settings: &AppSettings,
-    system_prompt: &str,
-    user_prompt: &str,
-    temperature: f32,
-) -> Result<String, String> {
-    let response = send_chat_request(
-        client,
-        settings,
-        system_prompt,
-        user_prompt,
-        temperature,
-        true,
-    )
-    .await?;
-
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format_reqwest_error(error))?;
-
     if !status.is_success() {
         return Err(format_chat_api_error(status, &body));
     }
 
-    parse_stream_chat_response_body(&body)
+    parse_chat_response_body(&content_type, &body)
+}
+
+fn parse_chat_response_body(content_type: &str, body: &str) -> Result<String, String> {
+    if content_type.contains("text/event-stream") || content_type.contains("ndjson") {
+        return parse_stream_chat_response_body(body);
+    }
+
+    parse_json_chat_response_body(body)
 }
 
 async fn send_chat_request(
@@ -144,9 +90,8 @@ async fn send_chat_request(
     system_prompt: &str,
     user_prompt: &str,
     temperature: f32,
-    stream: bool,
 ) -> Result<reqwest::Response, String> {
-    let mut request_body = json!({
+    let request_body = json!({
         "model": settings.model,
         "temperature": temperature,
         "messages": [
@@ -160,9 +105,6 @@ async fn send_chat_request(
             }
         ]
     });
-    if stream {
-        request_body["stream"] = Value::Bool(true);
-    }
 
     client
         .post(chat_url(&settings.base_url))
@@ -170,11 +112,7 @@ async fn send_chat_request(
         .header(CONTENT_TYPE, "application/json")
         .header(
             ACCEPT,
-            if stream {
-                "text/event-stream"
-            } else {
-                "application/json"
-            },
+            "application/json, text/event-stream, application/x-ndjson",
         )
         .json(&request_body)
         .send()
@@ -198,52 +136,52 @@ pub(in crate::rewrite) fn parse_stream_chat_response_body(body: &str) -> Result<
         return Err("模型返回内容为空。".to_string());
     }
 
-    if trimmed.starts_with('{') {
-        if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-            return sanitize_completion_text(extract_content(&value));
+    if body_looks_like_ndjson(body) {
+        return parse_ndjson_chat_response_body(body);
+    }
+
+    parse_sse_chat_response_body(body)
+}
+
+fn parse_ndjson_chat_response_body(body: &str) -> Result<String, String> {
+    let mut merged = String::new();
+    let mut saw_json = false;
+
+    for raw_line in body.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if !line.starts_with('{') {
+            return Err("流式响应解析失败：NDJSON 行不是 JSON 对象。".to_string());
         }
 
-        // 兼容：上游返回“纯文本”但正文恰好以 `{` 开头（例如代码/配置片段）。
-        // 此时不应强行按 JSON/NDJSON 解析，否则会把合法文本误判为错误。
-        if !body_looks_like_ndjson(body) {
-            return sanitize_completion_text(Some(trimmed.to_string()));
+        let value: Value =
+            serde_json::from_str(line).map_err(|error| format!("流式响应解析失败：{error}"))?;
+        saw_json = true;
+        if let Some(delta) = extract_stream_content(&value).or_else(|| extract_content(&value)) {
+            merged.push_str(&delta);
         }
+    }
 
-        // 兼容少数上游用 NDJSON 进行流式输出：每行一个 JSON 对象。
-        let mut merged = String::new();
-        let mut saw_json = false;
-        for raw_line in body.lines() {
-            let line = raw_line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            if !line.starts_with('{') {
-                continue;
-            }
-            let value: Value =
-                serde_json::from_str(line).map_err(|error| format!("流式响应解析失败：{error}"))?;
-            saw_json = true;
-            if let Some(delta) = extract_stream_content(&value).or_else(|| extract_content(&value))
-            {
-                merged.push_str(&delta);
-            }
-        }
-        if saw_json && !merged.is_empty() {
-            return sanitize_completion_text(Some(merged));
-        }
+    if !saw_json {
         return Err("流式响应解析失败：无法识别 NDJSON 内容。".to_string());
     }
 
+    sanitize_completion_text(Some(merged))
+}
+
+fn parse_sse_chat_response_body(body: &str) -> Result<String, String> {
     let mut merged = String::new();
     let mut saw_data = false;
 
     for raw_line in body.lines() {
         let line = raw_line.trim();
-        if line.is_empty() || line.starts_with(':') {
+        if line.is_empty() || line.starts_with(':') || line.starts_with("event:") {
             continue;
         }
         if !line.starts_with("data:") {
-            continue;
+            return Err("流式响应解析失败：缺少 data 行。".to_string());
         }
 
         saw_data = true;
@@ -260,37 +198,10 @@ pub(in crate::rewrite) fn parse_stream_chat_response_body(body: &str) -> Result<
     }
 
     if !saw_data {
-        return sanitize_completion_text(Some(trimmed.to_string()));
+        return Err("流式响应解析失败：缺少 data 行。".to_string());
     }
 
     sanitize_completion_text(Some(merged))
-}
-
-pub(in crate::rewrite) fn response_requires_stream(
-    status: reqwest::StatusCode,
-    body: &str,
-) -> bool {
-    if status != reqwest::StatusCode::BAD_REQUEST
-        && status != reqwest::StatusCode::UNPROCESSABLE_ENTITY
-    {
-        return false;
-    }
-
-    let normalized = body.to_ascii_lowercase();
-    // 最明确的固定模板（兼容已有测试）。
-    normalized.contains("stream must be set to true")
-        || (normalized.contains("\"param\":\"stream\"")
-            && normalized.contains("must be set to true"))
-        || (normalized.contains("\"stream\"") && normalized.contains("set to true"))
-        // 更宽松的兜底：上游表述不同，但明确要求 stream=true。
-        || ((normalized.contains("stream") && normalized.contains("true"))
-            && (normalized.contains("must")
-                || normalized.contains("required")
-                || normalized.contains("only support")
-                || normalized.contains("only supports")
-                || normalized.contains("set to")))
-        // 中文表述：`stream 必须为 true` / `stream=true`
-        || (normalized.contains("stream") && normalized.contains("true") && body.contains("必须"))
 }
 
 fn format_chat_api_error(status: reqwest::StatusCode, body: &str) -> String {
@@ -323,24 +234,12 @@ fn sanitize_completion_text(content: Option<String>) -> Result<String, String> {
         return Err("模型没有返回有效文本。".to_string());
     };
 
-    let sanitized = sanitize_response(&content);
+    let sanitized = content.trim().to_string();
     if sanitized.is_empty() {
         return Err("模型返回内容为空。".to_string());
     }
 
     Ok(sanitized)
-}
-
-fn body_looks_like_sse(body: &str) -> bool {
-    // SSE 通常以 `data:`（或 `event:`/`:` 注释）为行前缀。
-    for raw_line in body.lines() {
-        let line = raw_line.trim_start();
-        if line.is_empty() {
-            continue;
-        }
-        return line.starts_with("data:") || line.starts_with("event:") || line.starts_with(':');
-    }
-    false
 }
 
 fn body_looks_like_ndjson(body: &str) -> bool {
@@ -428,47 +327,4 @@ fn extract_text_field(value: &Value) -> Option<String> {
     }
 
     None
-}
-
-fn sanitize_response(content: &str) -> String {
-    let trimmed = content.trim();
-    let without_fences = if trimmed.starts_with("```") {
-        trimmed
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("```"))
-            .collect::<Vec<_>>()
-            .join("\n")
-            .trim()
-            .to_string()
-    } else {
-        trimmed.to_string()
-    };
-
-    // 一些提示词会诱导模型输出“修改后：...”或类似标签；这里做一次轻量清理，
-    // 避免影响 diff 与导出。
-    let mut cleaned = without_fences.trim().to_string();
-    for prefix in [
-        "修改后：",
-        "修改后:",
-        "改写后：",
-        "改写后:",
-        "润色后：",
-        "润色后:",
-    ] {
-        if cleaned.starts_with(prefix) {
-            cleaned = cleaned[prefix.len()..].trim_start().to_string();
-        }
-    }
-    if cleaned.starts_with("修改后") {
-        let after = cleaned["修改后".len()..].trim_start();
-        if let Some(first) = after.chars().next() {
-            if matches!(first, ':' | '：' | '-' | '—') {
-                cleaned = after[first.len_utf8()..].trim_start().to_string();
-            } else if first == '\n' {
-                cleaned = after.trim_start().to_string();
-            }
-        }
-    }
-
-    cleaned
 }

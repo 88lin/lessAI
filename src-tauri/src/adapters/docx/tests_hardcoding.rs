@@ -1,21 +1,7 @@
-use std::{fs, io::Write, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use super::DocxAdapter;
-use zip::{write::FileOptions, ZipWriter};
-
-fn build_docx_entries(entries: &[(&str, &str)]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let cursor = std::io::Cursor::new(&mut out);
-    let mut zip = ZipWriter::new(cursor);
-    let options = FileOptions::<()>::default();
-
-    for (name, contents) in entries {
-        zip.start_file(*name, options).expect("start file");
-        zip.write_all(contents.as_bytes()).expect("write xml");
-    }
-    zip.finish().expect("finish zip");
-    out
-}
+use crate::test_support::build_docx_entries;
 
 fn assert_locked(regions: &[crate::adapters::TextRegion], needle: &str) {
     assert!(

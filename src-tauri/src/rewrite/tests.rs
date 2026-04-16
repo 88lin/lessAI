@@ -1049,34 +1049,6 @@ fn tex_double_blank_lines_split_paragraph_chunks() {
 }
 
 #[test]
-fn detects_stream_required_api_errors() {
-    let body = r#"{"error":{"message":"Stream must be set to true","type":"bad_response_status_code","param":"stream"}}"#;
-    assert!(super::llm::transport::response_requires_stream(
-        reqwest::StatusCode::BAD_REQUEST,
-        body
-    ));
-    assert!(!super::llm::transport::response_requires_stream(
-        reqwest::StatusCode::SERVICE_UNAVAILABLE,
-        body
-    ));
-}
-
-#[test]
-fn detects_stream_required_api_errors_with_different_wording() {
-    let body = r#"{"error":{"message":"This endpoint only supports stream=true"}}"#;
-    assert!(super::llm::transport::response_requires_stream(
-        reqwest::StatusCode::BAD_REQUEST,
-        body
-    ));
-
-    let body_zh = r#"{"error":{"message":"stream 必须为 true"}}"#;
-    assert!(super::llm::transport::response_requires_stream(
-        reqwest::StatusCode::UNPROCESSABLE_ENTITY,
-        body_zh
-    ));
-}
-
-#[test]
 fn extracts_compact_api_error_message() {
     let body = r#"{"error":{"message":"Service temporarily unavailable","type":"api_error"}}"#;
     assert_eq!(
@@ -1111,12 +1083,19 @@ fn parses_ndjson_stream_chat_response_body() {
 }
 
 #[test]
-fn parses_plain_text_stream_body_starting_with_brace() {
-    // 一些上游会返回“纯文本”但 Content-Type 仍然是流式/非标准；
-    // 当正文刚好以 `{` 开头（例如代码/配置片段）时，不应被误判为 JSON/NDJSON 而失败。
+fn stream_parser_rejects_plain_text_body_starting_with_brace() {
     let body = "{not json}";
     assert_eq!(
-        super::llm::transport::parse_stream_chat_response_body(body).unwrap(),
-        "{not json}".to_string()
+        super::llm::transport::parse_stream_chat_response_body(body).unwrap_err(),
+        "流式响应解析失败：缺少 data 行。".to_string()
+    );
+}
+
+#[test]
+fn stream_parser_rejects_plain_text_body_without_data_lines() {
+    let body = "plain text body";
+    assert_eq!(
+        super::llm::transport::parse_stream_chat_response_body(body).unwrap_err(),
+        "流式响应解析失败：缺少 data 行。".to_string()
     );
 }

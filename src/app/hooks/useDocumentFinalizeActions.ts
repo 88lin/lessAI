@@ -17,28 +17,23 @@ import {
   selectDefaultChunkIndex
 } from "../../lib/helpers";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
-import type { NoticeTone } from "../../lib/constants";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
-
-type WithBusy = <T>(action: string, fn: () => Promise<T>) => Promise<T>;
-
-type ApplySessionState = (
-  session: DocumentSession,
-  nextChunkIndex: number,
-  options?: { preferredSuggestionId?: string | null }
-) => void;
+import {
+  refreshAllowedSessionOrNotify,
+  type ApplySessionState,
+  type RefreshSessionState,
+  type ShowNotice,
+  type WithBusy
+} from "./sessionActionShared";
 
 export function useDocumentFinalizeActions(options: {
   stageRef: React.MutableRefObject<"workbench" | "editor">;
   currentSessionRef: React.MutableRefObject<DocumentSession | null>;
   editorDirtyRef: React.MutableRefObject<boolean>;
+  captureDocumentScrollPosition: () => number | null;
+  restoreDocumentScrollPosition: (scrollTop: number | null) => void;
   requestConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
   applySessionState: ApplySessionState;
+  refreshSessionState: RefreshSessionState;
   setCurrentSession: React.Dispatch<React.SetStateAction<DocumentSession | null>>;
   setActiveChunkIndex: React.Dispatch<React.SetStateAction<number>>;
   setActiveSuggestionId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -52,8 +47,11 @@ export function useDocumentFinalizeActions(options: {
     stageRef,
     currentSessionRef,
     editorDirtyRef,
+    captureDocumentScrollPosition,
+    restoreDocumentScrollPosition,
     requestConfirm,
     applySessionState,
+    refreshSessionState,
     setCurrentSession,
     setActiveChunkIndex,
     setActiveSuggestionId,
@@ -103,37 +101,46 @@ export function useDocumentFinalizeActions(options: {
       showNotice("warning", "当前没有可写回的文档。");
       return;
     }
-
-    if (isPdfPath(session.documentPath)) {
+    const latestSession = await refreshAllowedSessionOrNotify({
+      session,
+      refreshSessionState,
+      options: {
+        preserveChunk: true,
+        preserveSuggestion: true
+      },
+      showNotice,
+      errorPrefix: "写回失败",
+      formatError: readableError,
+      allowed: (current) => current.writeBackSupported,
+      blockedMessage: (current) => current.writeBackBlockReason,
+      fallbackMessage: "当前文档暂不支持安全写回覆盖。"
+    });
+    if (!latestSession) {
+      return;
+    }
+    if (isPdfPath(latestSession.documentPath)) {
       showNotice(
         "warning",
         "pdf 暂不支持写回覆盖（PDF 不是纯文本格式）。请先“导出”为 .txt 再进行后续排版。"
       );
       return;
     }
-    if (!session.writeBackSupported) {
-      showNotice(
-        "warning",
-        session.writeBackBlockReason ?? "当前文档暂不支持安全写回覆盖。"
-      );
-      return;
-    }
 
-    if (session.status === "running" || session.status === "paused") {
+    if (latestSession.status === "running" || latestSession.status === "paused") {
       showNotice("warning", "文档正在执行自动任务，请先取消后再写回原文件。");
       return;
     }
 
-    const stats = getSessionStats(session);
+    const stats = getSessionStats(latestSession);
     const hints = [
       "该操作会把【已应用】的修改覆盖写回原文件，并删除该文档的全部历史记录（修改对、进度）。",
       "不可撤销，建议你先“导出”做一份备份。",
       "写回成功后会自动重新打开该文件（以全新会话展示）。",
-      isDocxPath(session.documentPath)
+      isDocxPath(latestSession.documentPath)
         ? "简单 docx 会按原段落结构写回；如果原文件已在外部变化，系统会直接报错并拒绝覆盖。"
         : "",
       "",
-      `文件：${formatDisplayPath(session.documentPath)}`,
+      `文件：${formatDisplayPath(latestSession.documentPath)}`,
       `已应用：${stats.chunksApplied}/${stats.total}`,
       stats.suggestionsProposed > 0
         ? `注意：仍有 ${stats.suggestionsProposed} 条待审阅修改对，不会写入文件。`
@@ -154,12 +161,14 @@ export function useDocumentFinalizeActions(options: {
     if (!ok) return;
 
     let savedPath: string | null = null;
+    const preservedScrollTop = captureDocumentScrollPosition();
     try {
       const reopened = await withBusy("finalize-document", async () => {
-        savedPath = await finalizeDocument(session.id);
+        savedPath = await finalizeDocument(latestSession.id);
         return openDocument(savedPath);
       });
 
+      restoreDocumentScrollPosition(preservedScrollTop);
       applySessionState(reopened, selectDefaultChunkIndex(reopened));
       setReviewView("diff");
       setLiveProgress(null);
@@ -177,14 +186,26 @@ export function useDocumentFinalizeActions(options: {
         showNotice("warning", `已覆盖并清理，但重新打开失败：${readableError(error)}`);
         return;
       }
+      try {
+        const refreshed = await openDocument(session.documentPath);
+        restoreDocumentScrollPosition(preservedScrollTop);
+        applySessionState(refreshed, selectDefaultChunkIndex(refreshed));
+        setReviewView("diff");
+        setLiveProgress(null);
+      } catch {
+        // 保留原始错误提示，避免二次异常覆盖主错误。
+      }
 
       showNotice("error", `写回失败：${readableError(error)}`);
     }
   }, [
     applySessionState,
+    captureDocumentScrollPosition,
     closeSettings,
     currentSessionRef,
+    refreshSessionState,
     requestConfirm,
+    restoreDocumentScrollPosition,
     setActiveChunkIndex,
     setActiveSuggestionId,
     setCurrentSession,
@@ -232,7 +253,9 @@ export function useDocumentFinalizeActions(options: {
     if (!ok) return;
 
     try {
+      const preservedScrollTop = captureDocumentScrollPosition();
       const rebuilt = await withBusy("reset-session", () => resetSession(session.id));
+      restoreDocumentScrollPosition(preservedScrollTop);
       applySessionState(rebuilt, selectDefaultChunkIndex(rebuilt));
       setReviewView("diff");
       setLiveProgress(null);
@@ -240,7 +263,17 @@ export function useDocumentFinalizeActions(options: {
     } catch (error) {
       showNotice("error", `重置失败：${readableError(error)}`);
     }
-  }, [applySessionState, currentSessionRef, requestConfirm, setLiveProgress, setReviewView, showNotice, withBusy]);
+  }, [
+    applySessionState,
+    captureDocumentScrollPosition,
+    currentSessionRef,
+    requestConfirm,
+    restoreDocumentScrollPosition,
+    setLiveProgress,
+    setReviewView,
+    showNotice,
+    withBusy
+  ]);
 
   return { handleExport, handleFinalizeDocument, handleResetSession } as const;
 }

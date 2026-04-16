@@ -4,6 +4,11 @@ mod display;
 mod model;
 #[path = "docx/numbering.rs"]
 mod numbering;
+#[path = "docx/package.rs"]
+mod package;
+#[cfg(test)]
+#[path = "docx/package_tests.rs"]
+mod package_tests;
 #[path = "docx/placeholders.rs"]
 mod placeholders;
 #[path = "docx/simple.rs"]
@@ -18,5 +23,10 @@ mod tests;
 #[cfg(test)]
 #[path = "docx/tests_hardcoding.rs"]
 mod tests_hardcoding;
+#[path = "docx/xml.rs"]
+mod xml;
+#[cfg(test)]
+#[path = "docx/xml_tests.rs"]
+mod xml_tests;
 
 pub use simple::DocxAdapter;

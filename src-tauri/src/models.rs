@@ -7,21 +7,15 @@ pub struct AppSettings {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
-    #[serde(default)]
     pub update_proxy: String,
     pub timeout_ms: u64,
     pub temperature: f32,
     pub chunk_preset: ChunkPreset,
-    #[serde(default)]
     pub rewrite_headings: bool,
     pub rewrite_mode: RewriteMode,
-    #[serde(default = "default_max_concurrency")]
     pub max_concurrency: usize,
-    #[serde(default = "default_chunks_per_request")]
     pub chunks_per_request: usize,
-    #[serde(default = "default_prompt_preset_id")]
     pub prompt_preset_id: String,
-    #[serde(default)]
     pub custom_prompts: Vec<PromptTemplate>,
 }
 
@@ -132,6 +126,12 @@ pub enum RunningState {
     Failed,
 }
 
+impl RunningState {
+    pub(crate) fn is_active_job(self) -> bool {
+        matches!(self, Self::Running | Self::Paused)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiffSpan {
@@ -225,6 +225,20 @@ pub struct DocumentSession {
     pub status: RunningState,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl DocumentSession {
+    pub(crate) fn has_active_job(&self) -> bool {
+        self.status.is_active_job()
+    }
+
+    pub(crate) fn downgrade_active_job_to_cancelled(&mut self) -> bool {
+        if !self.has_active_job() {
+            return false;
+        }
+        self.status = RunningState::Cancelled;
+        true
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

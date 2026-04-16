@@ -10,6 +10,7 @@ import { loadSession, loadSettings } from "./lib/api";
 import type {
   AppSettings,
   DocumentSession,
+  DocumentSnapshot,
   PromptTemplate,
   ProviderCheckResult,
   RewriteProgress,
@@ -47,6 +48,7 @@ import { useUpdateChecker } from "./app/hooks/useUpdateChecker";
 import { useChunkStrategyLock } from "./app/hooks/useChunkStrategyLock";
 import { useDocumentActions } from "./app/hooks/useDocumentActions";
 import { useDocumentFinalizeActions } from "./app/hooks/useDocumentFinalizeActions";
+import { useDocumentScrollRestore } from "./app/hooks/useDocumentScrollRestore";
 import { useEditorSelectionRewrite } from "./app/hooks/useEditorSelectionRewrite";
 import { useSettingsHandlers } from "./app/hooks/useSettingsHandlers";
 import { useRewriteActions } from "./app/hooks/useRewriteActions";
@@ -79,6 +81,8 @@ export default function App() {
   const { notice, showNotice, dismissNotice } = useNotice();
   const { busyAction, withBusy } = useBusyAction();
   const { confirmDialog, requestConfirm, handleConfirmResult } = useConfirmDialog();
+  const { documentScrollRef, captureDocumentScrollPosition, restoreDocumentScrollPosition } =
+    useDocumentScrollRestore();
   const {
     windowMaximized,
     handleMinimizeWindow,
@@ -109,6 +113,7 @@ export default function App() {
   editorTextRef.current = editorText;
   const editorBaselineTextRef = useRef(editorBaselineText);
   editorBaselineTextRef.current = editorBaselineText;
+  const editorBaseSnapshotRef = useRef<DocumentSnapshot | null>(null);
   const editorChunkOverridesRef = useRef(editorChunkOverrides);
   editorChunkOverridesRef.current = editorChunkOverrides;
   const editorRef = useRef<DocumentEditorHandle | null>(null);
@@ -434,11 +439,16 @@ export default function App() {
     busyAction,
     stageRef,
     currentSessionRef,
+    activeChunkIndexRef,
+    captureDocumentScrollPosition,
+    restoreDocumentScrollPosition,
     editorDirtyRef,
     editorTextRef,
     editorBaselineTextRef,
+    editorBaseSnapshotRef,
     editorChunkOverridesRef,
     applySessionState,
+    refreshSessionState,
     setStage,
     setReviewView,
     setEditorBaselineText,
@@ -454,6 +464,7 @@ export default function App() {
   const { handleRewriteSelection } = useEditorSelectionRewrite({
     stageRef,
     currentSessionRef,
+    editorBaseSnapshotRef,
     editorRef,
     requestConfirm,
     showNotice,
@@ -465,11 +476,14 @@ export default function App() {
       stageRef,
       currentSessionRef,
       editorDirtyRef,
-      requestConfirm,
-      applySessionState,
-      setCurrentSession,
-      setActiveChunkIndex,
-      setActiveSuggestionId,
+      captureDocumentScrollPosition,
+      restoreDocumentScrollPosition,
+    requestConfirm,
+    applySessionState,
+    refreshSessionState,
+    setCurrentSession,
+    setActiveChunkIndex,
+    setActiveSuggestionId,
       setReviewView,
       setLiveProgress,
       closeSettings,
@@ -513,6 +527,7 @@ export default function App() {
     setSelectedChunkIndices,
     setReviewView,
     applySessionState,
+    refreshSessionState,
     showNotice,
     withBusy
   });
@@ -564,6 +579,7 @@ export default function App() {
               editorDirty={editorDirty}
               editorHasSelection={editorHasSelection}
               editorRef={editorRef}
+              documentScrollRef={documentScrollRef}
               onOpenDocument={handleOpenDocument}
               onSelectChunk={handleSelectChunk}
               onSelectSuggestion={handleSelectSuggestion}

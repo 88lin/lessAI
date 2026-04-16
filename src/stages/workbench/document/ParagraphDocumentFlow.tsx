@@ -60,17 +60,26 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
   onSelectSuggestion
 }: ParagraphDocumentFlowProps) {
   const groupNodesRef = useRef<Record<string, HTMLSpanElement | null>>({});
+  const previousActiveTargetRef = useRef<{ sessionId: string; activeChunkIndex: number } | null>(
+    null
+  );
 
   const groups = useMemo(() => buildChunkGroups(chunks, chunkPreset), [chunkPreset, chunks]);
 
   useEffect(() => {
+    const previous = previousActiveTargetRef.current;
+    previousActiveTargetRef.current = { sessionId, activeChunkIndex };
+    if (!previous) return;
+    if (previous.sessionId !== sessionId) return;
+    if (previous.activeChunkIndex === activeChunkIndex) return;
+
     const activeGroup = groups.find((group) => group.chunkIndices.includes(activeChunkIndex));
     if (!activeGroup) return;
     groupNodesRef.current[activeGroup.id]?.scrollIntoView({
       block: "center",
       behavior: "smooth"
     });
-  }, [activeChunkIndex, groups, sessionId]);
+  }, [sessionId, activeChunkIndex, groups]);
 
   const computed = useMemo(
     () =>

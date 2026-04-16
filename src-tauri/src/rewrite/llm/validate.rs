@@ -222,9 +222,30 @@ fn find_unwanted_preface(source: &str, candidate: &str) -> Option<&'static str> 
     None
 }
 
+fn find_unwanted_rewrite_label(source: &str, candidate: &str) -> Option<&'static str> {
+    let source_line_raw = first_nonempty_line(source.trim_start());
+    let candidate_line_raw = first_nonempty_line(candidate.trim_start());
+    let source_line = normalize_line_for_preface_detection(source_line_raw);
+    let candidate_line = normalize_line_for_preface_detection(candidate_line_raw);
+
+    const LABELS: &[&str] = &["修改后", "改写后", "润色后"];
+    let source_has_label = starts_with_any_phrase(&source_line, LABELS).is_some();
+    let candidate_label = starts_with_any_phrase(&candidate_line, LABELS);
+
+    if !source_has_label {
+        return candidate_label;
+    }
+
+    None
+}
+
 pub(super) fn validate_rewrite_output(source: &str, candidate: &str) -> Result<(), String> {
     if candidate.trim().is_empty() {
         return Err("模型输出为空。".to_string());
+    }
+
+    if candidate.trim_start().starts_with("```") {
+        return Err("模型输出包含代码块围栏。".to_string());
     }
 
     if let Some(pattern) = find_unwanted_meta_pattern(candidate) {
@@ -241,6 +262,10 @@ pub(super) fn validate_rewrite_output(source: &str, candidate: &str) -> Result<(
 
     if let Some(pattern) = find_unwanted_preface(source, candidate) {
         return Err(format!("模型输出疑似客套/问候开场（命中：{pattern}）。"));
+    }
+
+    if let Some(pattern) = find_unwanted_rewrite_label(source, candidate) {
+        return Err(format!("模型输出包含额外改写标签（命中：{pattern}）。"));
     }
 
     let source_stats = script_stats(source);
@@ -292,6 +317,20 @@ mod tests {
     fn rejects_preface_inserted_after_ordered_list_prefix() {
         let source = "1. 第一行是正文。";
         let candidate = "1. 当然可以，第一行是正文。";
+        assert!(validate_rewrite_output(source, candidate).is_err());
+    }
+
+    #[test]
+    fn rejects_rewrite_label_when_source_has_no_label() {
+        let source = "第一句话是正文。";
+        let candidate = "改写后：第一句话是正文。";
+        assert!(validate_rewrite_output(source, candidate).is_err());
+    }
+
+    #[test]
+    fn rejects_code_fence_when_source_has_no_fence() {
+        let source = "第一句话是正文。";
+        let candidate = "```text\n第一句话是正文。\n```";
         assert!(validate_rewrite_output(source, candidate).is_err());
     }
 }

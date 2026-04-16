@@ -15,10 +15,7 @@ pub(super) async fn rewrite_markdown_chunk_with_client(
     execute_chunk_plan_serially(client, settings, &plan).await
 }
 
-pub(super) fn plan_markdown_chunk(
-    source_text: &str,
-    settings: &AppSettings,
-) -> ChunkRewritePlan {
+pub(super) fn plan_markdown_chunk(source_text: &str, settings: &AppSettings) -> ChunkRewritePlan {
     let regions = MarkdownAdapter::split_regions(source_text, settings.rewrite_headings);
     if regions.iter().all(|region| !region.skip_rewrite) {
         return ChunkRewritePlan::plain(source_text);

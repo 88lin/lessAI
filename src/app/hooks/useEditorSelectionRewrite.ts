@@ -5,19 +5,11 @@ import {
   validateDocumentChunkEdits,
   validateDocumentEdits
 } from "../../lib/api";
-import type { DocumentSession } from "../../lib/types";
+import type { DocumentSession, DocumentSnapshot } from "../../lib/types";
 import { countCharacters, readableError } from "../../lib/helpers";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
-import type { NoticeTone } from "../../lib/constants";
 import type { DocumentEditorHandle } from "../../stages/workbench/document/DocumentEditor";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
-
-type WithBusy = <T>(action: string, fn: () => Promise<T>) => Promise<T>;
+import type { ShowNotice, WithBusy } from "./sessionActionShared";
 
 const SELECTION_RISK_WARNING_NON_WHITESPACE_CHARS = 6000;
 
@@ -31,13 +23,21 @@ function selectionSizeSummary(text: string) {
 export function useEditorSelectionRewrite(options: {
   stageRef: MutableRefObject<"workbench" | "editor">;
   currentSessionRef: MutableRefObject<DocumentSession | null>;
+  editorBaseSnapshotRef: MutableRefObject<DocumentSnapshot | null>;
   editorRef: MutableRefObject<DocumentEditorHandle | null>;
   requestConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
   showNotice: ShowNotice;
   withBusy: WithBusy;
 }) {
-  const { stageRef, currentSessionRef, editorRef, requestConfirm, showNotice, withBusy } =
-    options;
+  const {
+    stageRef,
+    currentSessionRef,
+    editorBaseSnapshotRef,
+    editorRef,
+    requestConfirm,
+    showNotice,
+    withBusy
+  } = options;
 
   const confirmIfSelectionTooLarge = useCallback(
     async (text: string) => {
@@ -98,7 +98,7 @@ export function useEditorSelectionRewrite(options: {
 
     try {
       const rewritten = await withBusy("rewrite-selection", () =>
-        rewriteSnippet(session.id, snapshot.text)
+        rewriteSnippet(session.id, snapshot.text, editorBaseSnapshotRef.current)
       );
       const preview = editor.previewSelectionReplacement(snapshot, rewritten);
       if (!preview.ok) {
@@ -108,9 +108,13 @@ export function useEditorSelectionRewrite(options: {
 
       await withBusy("validate-document-edits", () => {
         if (preview.chunkEdits) {
-          return validateDocumentChunkEdits(session.id, preview.chunkEdits);
+          return validateDocumentChunkEdits(
+            session.id,
+            preview.chunkEdits,
+            editorBaseSnapshotRef.current
+          );
         }
-        return validateDocumentEdits(session.id, preview.value);
+        return validateDocumentEdits(session.id, preview.value, editorBaseSnapshotRef.current);
       });
 
       const applied = editor.applySelectionReplacement(snapshot, rewritten);
@@ -126,6 +130,7 @@ export function useEditorSelectionRewrite(options: {
   }, [
     confirmIfSelectionTooLarge,
     currentSessionRef,
+    editorBaseSnapshotRef,
     editorRef,
     showNotice,
     stageRef,

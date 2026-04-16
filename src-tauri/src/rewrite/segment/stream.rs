@@ -1,9 +1,10 @@
 use crate::models::{ChunkPresentation, ChunkPreset};
 
 use super::guards::BoundaryGuard;
-pub(crate) use super::guards::NoopBoundaryGuard;
 use super::masked::{append_segmented_masked_text, append_segmented_text};
 use super::{append_separator_to_last, split_trailing_whitespace, SegmentedChunk};
+
+const BLOCK_SEPARATOR: &str = "\n\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SegmentRegionRole {
@@ -47,6 +48,7 @@ impl SegmentRegion {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn separator(body: impl Into<String>) -> Self {
         Self {
             body: body.into(),
@@ -123,21 +125,27 @@ impl<G: BoundaryGuard> RegionStreamSegmenter<G> {
 
     fn push_isolated_region(&mut self, region: SegmentRegion) {
         self.flush_flow();
-        if region.skip_rewrite {
-            append_raw_chunk(
-                &mut self.chunks,
-                &region.body,
-                true,
-                region.presentation.clone(),
-            );
+        let (body, separator_after) = split_preserved_region_separator(&region.body);
+        if body.is_empty() {
+            append_separator_to_last(&mut self.chunks, separator_after);
             return;
         }
-        append_segmented_text::<G>(
-            &mut self.chunks,
-            &region.body,
-            self.preset,
-            region.presentation,
-        );
+        if body.chars().all(|ch| ch.is_whitespace()) {
+            self.chunks.push(SegmentedChunk {
+                text: body,
+                separator_after,
+                skip_rewrite: region.skip_rewrite,
+                presentation: region.presentation,
+            });
+            return;
+        }
+        if region.skip_rewrite {
+            append_raw_chunk(&mut self.chunks, &body, true, region.presentation.clone());
+            append_separator_to_last(&mut self.chunks, separator_after);
+            return;
+        }
+        append_segmented_text::<G>(&mut self.chunks, &body, self.preset, region.presentation);
+        append_separator_to_last(&mut self.chunks, separator_after);
     }
 
     fn push_separator_region(&mut self, body: String) {
@@ -184,4 +192,11 @@ fn append_raw_chunk(
         skip_rewrite,
         presentation,
     });
+}
+
+fn split_preserved_region_separator(text: &str) -> (String, String) {
+    match text.strip_suffix(BLOCK_SEPARATOR) {
+        Some(body) => (body.to_string(), BLOCK_SEPARATOR.to_string()),
+        None => (text.to_string(), String::new()),
+    }
 }

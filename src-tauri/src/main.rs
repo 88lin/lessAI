@@ -3,18 +3,33 @@
 mod adapters;
 mod atomic_write;
 mod commands;
-mod document_edit_validation;
 mod document_snapshot;
 mod documents;
+mod editor_session;
 mod editor_writeback;
 mod models;
+mod observability;
+mod persist;
+mod result_flow;
 mod rewrite;
+mod rewrite_batch_commit;
+mod rewrite_job_state;
 mod rewrite_jobs;
+mod rewrite_permissions;
+mod rewrite_projection;
 mod rewrite_targets;
+mod rewrite_writeback;
+mod session_access;
+mod session_builder;
+mod session_edit;
+mod session_flow;
+mod session_loader;
 mod session_refresh;
-mod session_repair;
+mod settings_validation;
 mod state;
 mod storage;
+#[cfg(test)]
+mod test_support;
 
 use commands::{
     apply_suggestion, cancel_rewrite, delete_suggestion, dismiss_suggestion, export_document,
@@ -24,10 +39,20 @@ use commands::{
     validate_document_edits,
 };
 use state::AppState;
+use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
+
+fn build_log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri_plugin_log::Builder::new()
+        .level(log::LevelFilter::Info)
+        .timezone_strategy(TimezoneStrategy::UseLocal)
+        .target(Target::new(TargetKind::Webview))
+        .build()
+}
 
 fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .plugin(build_log_plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
@@ -37,7 +62,7 @@ fn main() {
                     .handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())
                 {
-                    eprintln!("[WARN] Updater plugin init failed: {error}");
+                    log::warn!("updater plugin init failed: error={error}");
                 }
             }
             Ok(())

@@ -11,10 +11,12 @@ pub use llm::{
 pub use segment::segment_regions_with_strategy;
 pub use text::{
     collapse_line_breaks_to_spaces, convert_line_endings, detect_line_ending,
-    has_trailing_spaces_per_line, normalize_text, strip_trailing_spaces_per_line, LineEnding,
+    has_trailing_spaces_per_line, normalize_text, strip_trailing_spaces_per_line,
 };
 pub use types::SegmentedChunk;
 
+#[cfg(test)]
+mod llm_regression_tests;
 #[cfg(test)]
 mod region_stream_tests;
 #[cfg(test)]

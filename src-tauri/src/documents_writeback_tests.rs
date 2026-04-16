@@ -1,42 +1,6 @@
-use std::{
-    env, fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
-
-use uuid::Uuid;
-use zip::{write::FileOptions, ZipWriter};
-
-use super::{load_document_source, write_document_content};
-
-fn unique_test_dir(name: &str) -> PathBuf {
-    env::temp_dir().join(format!("lessai-doc-writeback-{name}-{}", Uuid::new_v4()))
-}
-
-fn cleanup_dir(path: &Path) {
-    let _ = fs::remove_dir_all(path);
-}
-
-fn write_temp_file(name: &str, ext: &str, contents: &[u8]) -> (PathBuf, PathBuf) {
-    let root = unique_test_dir(name);
-    fs::create_dir_all(&root).expect("create root");
-    let target = root.join(format!("sample.{ext}"));
-    fs::write(&target, contents).expect("write temp file");
-    (root, target)
-}
-
-fn build_minimal_docx(document_xml: &str) -> Vec<u8> {
-    let mut out = Vec::new();
-    let cursor = std::io::Cursor::new(&mut out);
-    let mut zip = ZipWriter::new(cursor);
-    let options = FileOptions::<()>::default();
-    zip.start_file("word/document.xml", options)
-        .expect("start document.xml");
-    zip.write_all(document_xml.as_bytes())
-        .expect("write document.xml");
-    zip.finish().expect("finish docx");
-    out
-}
+use super::{execute_document_writeback, load_document_source, DocumentWriteback, WritebackMode};
+use crate::test_support::{build_minimal_docx, cleanup_dir, write_temp_file};
+use crate::{adapters::docx::DocxAdapter, document_snapshot::capture_document_snapshot};
 
 #[test]
 fn write_document_content_allows_docx_when_styled_prefix_becomes_empty() {
@@ -48,12 +12,19 @@ fn write_document_content_allows_docx_when_styled_prefix_becomes_empty() {
       <w:r><w:t>正文</w:t></w:r>
     </w:p>
   </w:body>
-</w:document>"#;
+    </w:document>"#;
     let bytes = build_minimal_docx(document_xml);
     let (root, target) = write_temp_file("docx-empty-styled-prefix", "docx", &bytes);
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
 
-    write_document_content(&target, "标题正文", None, "正文")
-        .expect("docx write should preserve empty styled boundary safely");
+    execute_document_writeback(
+        &target,
+        "标题正文",
+        Some(&snapshot),
+        DocumentWriteback::Text("正文"),
+        WritebackMode::Write,
+    )
+    .expect("docx write should preserve empty styled boundary safely");
 
     let loaded = load_document_source(&target, false).expect("reload docx");
     assert_eq!(loaded.source_text, "正文");
@@ -84,15 +55,104 @@ fn write_document_content_allows_docx_with_paragraph_level_drawing_placeholder()
       <w:r><w:t>后文</w:t></w:r>
     </w:p>
   </w:body>
-</w:document>"#;
+    </w:document>"#;
     let bytes = build_minimal_docx(document_xml);
     let (root, target) = write_temp_file("docx-paragraph-level-drawing", "docx", &bytes);
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
 
-    write_document_content(&target, "前文[图表]后文", None, "新前文[图表]新后文")
-        .expect("docx write should preserve paragraph-level drawing placeholder safely");
+    execute_document_writeback(
+        &target,
+        "前文[图表]后文",
+        Some(&snapshot),
+        DocumentWriteback::Text("新前文[图表]新后文"),
+        WritebackMode::Write,
+    )
+    .expect("docx write should preserve paragraph-level drawing placeholder safely");
 
     let loaded = load_document_source(&target, false).expect("reload docx");
     assert_eq!(loaded.source_text, "新前文[图表]新后文");
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_rejects_docx_when_paragraph_count_changes() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>第一段</w:t></w:r></w:p>
+    <w:p><w:r><w:t>第二段</w:t></w:r></w:p>
+  </w:body>
+    </w:document>"#;
+    let bytes = build_minimal_docx(document_xml);
+    let (root, target) = write_temp_file("paragraph-count-fail", "docx", &bytes);
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+
+    let error = execute_document_writeback(
+        &target,
+        "第一段\n\n第二段",
+        Some(&snapshot),
+        DocumentWriteback::Text("第一段\n\n新增段\n\n第二段"),
+        WritebackMode::Validate,
+    )
+    .expect_err("expected paragraph count validation failure");
+
+    assert!(error.contains("段落数量保持不变") || error.contains("简单 docx"));
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_allows_docx_when_structure_stays_compatible() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>第一段</w:t></w:r></w:p>
+    <w:p><w:r><w:t>第二段</w:t></w:r></w:p>
+  </w:body>
+    </w:document>"#;
+    let bytes = build_minimal_docx(document_xml);
+    let (root, target) = write_temp_file("paragraph-count-pass", "docx", &bytes);
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+
+    execute_document_writeback(
+        &target,
+        "第一段\n\n第二段",
+        Some(&snapshot),
+        DocumentWriteback::Text("改写第一段\n\n改写第二段"),
+        WritebackMode::Validate,
+    )
+    .expect("expected structure-compatible edit to validate");
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_allows_docx_regions_with_adjacent_styles() {
+    let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:rPr><w:b/></w:rPr><w:t>前文</w:t></w:r>
+      <w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>后文</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(document_xml);
+    let (root, target) = write_temp_file("adjacent-styled-region-pass", "docx", &bytes);
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+    let mut regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
+    regions[0].body = "新前文".to_string();
+    regions[1].body = "新后文".to_string();
+
+    execute_document_writeback(
+        &target,
+        "前文后文",
+        Some(&snapshot),
+        DocumentWriteback::Regions(&regions),
+        WritebackMode::Validate,
+    )
+    .expect("expected region validation to preserve real adapter metadata");
 
     cleanup_dir(&root);
 }

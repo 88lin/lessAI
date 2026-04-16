@@ -3,24 +3,18 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import { BundleType, getBundleType, getVersion } from "@tauri-apps/api/app";
 import { formatBytes, readableError } from "../../lib/helpers";
-import type { NoticeTone } from "../../lib/constants";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
+import type { ShowNotice, WithBusy } from "./sessionActionShared";
 
 const UPDATE_MANIFEST_URL =
   "https://github.com/GTJasonMK/lessAI/releases/latest/download/latest.json";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
 
 export function useUpdateChecker(options: {
   updateProxy: string;
   showNotice: ShowNotice;
   dismissNotice: () => void;
   requestConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
-  withBusy: <T>(action: string, fn: () => Promise<T>) => Promise<T>;
+  withBusy: WithBusy;
 }) {
   const { updateProxy, showNotice, dismissNotice, requestConfirm, withBusy } = options;
 
@@ -181,4 +175,3 @@ export function useUpdateChecker(options: {
 
   return { handleCheckUpdate } as const;
 }
-

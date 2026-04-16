@@ -9,7 +9,11 @@ pub(crate) mod stream;
 mod tex;
 
 use super::SegmentedChunk;
+#[cfg(test)]
+pub(super) use guards::NoopBoundaryGuard;
 pub use regions::segment_regions_with_strategy;
+#[cfg(test)]
+pub(super) use stream::{segment_region_stream, SegmentRegion};
 
 fn split_trailing_whitespace(text: &str) -> (String, String) {
     let trimmed = text.trim_end_matches(|ch: char| ch.is_whitespace());

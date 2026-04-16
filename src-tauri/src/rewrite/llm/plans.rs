@@ -64,7 +64,9 @@ impl ChunkRewritePlan {
     }
 
     fn requires_placeholder_rule(&self) -> bool {
-        self.segments.iter().any(ChunkPlanSegment::requires_placeholder_rule)
+        self.segments
+            .iter()
+            .any(ChunkPlanSegment::requires_placeholder_rule)
     }
 
     fn collect_editable_sources(&self, out: &mut Vec<String>) {
@@ -76,7 +78,10 @@ impl ChunkRewritePlan {
     }
 
     fn editable_count(&self) -> usize {
-        self.segments.iter().filter(|segment| segment.is_editable()).count()
+        self.segments
+            .iter()
+            .filter(|segment| segment.is_editable())
+            .count()
     }
 
     fn rebuild(&self, candidates: &[String]) -> Result<String, String> {
@@ -125,7 +130,9 @@ impl EditableUnit {
     fn restore(&self, candidate: &str) -> Result<String, String> {
         match &self.restore {
             RestoreStrategy::Identity => Ok(candidate.to_string()),
-            RestoreStrategy::Placeholder(placeholders) => restore_placeholders(candidate, placeholders),
+            RestoreStrategy::Placeholder(placeholders) => {
+                restore_placeholders(candidate, placeholders)
+            }
         }
     }
 }
@@ -160,12 +167,17 @@ pub(super) async fn execute_chunk_plans_batched(
     plans: &[ChunkRewritePlan],
 ) -> Result<Vec<String>, String> {
     let mut sources = Vec::new();
-    let requires_placeholder_rule = plans.iter().any(ChunkRewritePlan::requires_placeholder_rule);
+    let requires_placeholder_rule = plans
+        .iter()
+        .any(ChunkRewritePlan::requires_placeholder_rule);
     for plan in plans.iter() {
         plan.collect_editable_sources(&mut sources);
     }
     if sources.is_empty() {
-        return Ok(plans.iter().map(|plan| plan.rebuild(&[])).collect::<Result<_, _>>()?);
+        return Ok(plans
+            .iter()
+            .map(|plan| plan.rebuild(&[]))
+            .collect::<Result<_, _>>()?);
     }
 
     let rewritten = super::batch::rewrite_plain_chunks_with_client(
@@ -205,7 +217,9 @@ pub(super) fn has_multiline_skip_region(regions: &[TextRegion]) -> bool {
     })
 }
 
-pub(super) fn mask_regions_with_placeholders(regions: &[TextRegion]) -> (String, Vec<(String, String)>) {
+pub(super) fn mask_regions_with_placeholders(
+    regions: &[TextRegion],
+) -> (String, Vec<(String, String)>) {
     let mut masked = String::new();
     let mut placeholders = Vec::new();
     let mut seq = 1usize;
@@ -281,6 +295,9 @@ mod tests {
         ]);
 
         assert_eq!(masked, "前文⟦LESSAI_LOCK_1⟧");
-        assert_eq!(placeholders, vec![("⟦LESSAI_LOCK_1⟧".to_string(), "[锁定]".to_string())]);
+        assert_eq!(
+            placeholders,
+            vec![("⟦LESSAI_LOCK_1⟧".to_string(), "[锁定]".to_string())]
+        );
     }
 }

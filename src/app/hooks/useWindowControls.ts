@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { readableError } from "../../lib/helpers";
-import type { NoticeTone } from "../../lib/constants";
+import type { ShowNotice } from "./sessionActionShared";
 
 export type ResizeDirection =
   | "East"
@@ -12,8 +12,6 @@ export type ResizeDirection =
   | "SouthEast"
   | "SouthWest"
   | "West";
-
-type ShowNotice = (tone: NoticeTone, message: string) => void;
 
 export function useWindowControls(showNotice: ShowNotice) {
   const [windowMaximized, setWindowMaximized] = useState(false);
@@ -76,4 +74,3 @@ export function useWindowControls(showNotice: ShowNotice) {
     handleResizeWindow
   } as const;
 }
-

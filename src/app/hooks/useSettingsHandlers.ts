@@ -2,13 +2,11 @@ import { useCallback } from "react";
 import type { AppSettings, DocumentSession, PromptTemplate, ProviderCheckResult } from "../../lib/types";
 import { isSettingsReady, readableError } from "../../lib/helpers";
 import { saveSettings, testProvider } from "../../lib/api";
-import type { NoticeTone } from "../../lib/constants";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
+import type {
+  RefreshSessionState,
+  ShowNotice,
+  WithBusy
+} from "./sessionActionShared";
 
 export function useSettingsHandlers(options: {
   settings: AppSettings;
@@ -16,18 +14,10 @@ export function useSettingsHandlers(options: {
   setProviderStatus: React.Dispatch<React.SetStateAction<ProviderCheckResult | null>>;
   currentSession: DocumentSession | null;
   showNotice: ShowNotice;
-  withBusy: <T>(action: string, fn: () => Promise<T>) => Promise<T>;
+  withBusy: WithBusy;
   closeSettings: () => void;
   readChunkStrategyLockedReason: () => string | null;
-  refreshSessionState: (
-    sessionId: string,
-    options?: {
-      preserveChunk?: boolean;
-      preferredChunkIndex?: number;
-      preserveSuggestion?: boolean;
-      preferredSuggestionId?: string | null;
-    }
-  ) => Promise<DocumentSession>;
+  refreshSessionState: RefreshSessionState;
 }) {
   const {
     settings,

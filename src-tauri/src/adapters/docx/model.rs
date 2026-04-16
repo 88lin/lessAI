@@ -17,15 +17,6 @@ pub(crate) struct WritebackParagraphTemplate {
     pub regions: Vec<WritebackRegionTemplate>,
 }
 
-impl WritebackParagraphTemplate {
-    pub fn text(&self) -> String {
-        self.regions
-            .iter()
-            .map(WritebackRegionTemplate::text)
-            .collect::<String>()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) enum WritebackRegionTemplate {
     Editable(EditableRegionTemplate),

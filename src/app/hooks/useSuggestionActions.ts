@@ -1,26 +1,22 @@
 import { useCallback } from "react";
 import { applySuggestion, deleteSuggestion, dismissSuggestion } from "../../lib/api";
 import type { DocumentSession } from "../../lib/types";
-import { canRewriteSession, getLatestSuggestion, readableError } from "../../lib/helpers";
+import {
+  canRewriteSession,
+  getLatestSuggestion,
+  readableError
+} from "../../lib/helpers";
 import {
   resolveSelectionTargetChunkIndices,
   toggleSelectedChunkIndices
 } from "../../lib/chunkSelection";
-import type { NoticeTone } from "../../lib/constants";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
-
-type WithBusy = <T>(action: string, fn: () => Promise<T>) => Promise<T>;
-
-type ApplySessionState = (
-  session: DocumentSession,
-  nextChunkIndex: number,
-  options?: { preferredSuggestionId?: string | null }
-) => void;
+import {
+  refreshRewriteableSessionOrNotify,
+  type ApplySessionState,
+  type RefreshSessionState,
+  type ShowNotice,
+  type WithBusy
+} from "./sessionActionShared";
 
 export function useSuggestionActions(options: {
   currentSessionRef: React.MutableRefObject<DocumentSession | null>;
@@ -30,6 +26,7 @@ export function useSuggestionActions(options: {
   setSelectedChunkIndices: React.Dispatch<React.SetStateAction<number[]>>;
   setReviewView: React.Dispatch<React.SetStateAction<"diff" | "source" | "candidate">>;
   applySessionState: ApplySessionState;
+  refreshSessionState: RefreshSessionState;
   showNotice: ShowNotice;
   withBusy: WithBusy;
 }) {
@@ -41,6 +38,7 @@ export function useSuggestionActions(options: {
     setSelectedChunkIndices,
     setReviewView,
     applySessionState,
+    refreshSessionState,
     showNotice,
     withBusy
   } = options;
@@ -106,10 +104,24 @@ export function useSuggestionActions(options: {
     async (suggestionId: string) => {
       const session = currentSessionRef.current;
       if (!session) return;
+      const latestSession = await refreshRewriteableSessionOrNotify({
+        session,
+        refreshSessionState,
+        options: {
+          preserveChunk: true,
+          preserveSuggestion: true
+        },
+        showNotice,
+        errorPrefix: "应用失败",
+        formatError: readableError
+      });
+      if (!latestSession) {
+        return;
+      }
 
       try {
         const updated = await withBusy(`apply-suggestion:${suggestionId}`, () =>
-          applySuggestion(session.id, suggestionId)
+          applySuggestion(latestSession.id, suggestionId)
         );
         const suggestion =
           updated.suggestions.find((item) => item.id === suggestionId) ??
@@ -123,6 +135,14 @@ export function useSuggestionActions(options: {
           suggestion ? `已应用修改对 #${suggestion.sequence}。` : "已应用修改对。"
         );
       } catch (error) {
+        try {
+          await refreshSessionState(session.id, {
+            preserveChunk: true,
+            preserveSuggestion: true
+          });
+        } catch {
+          // 保留原始错误提示，避免二次异常覆盖主错误。
+        }
         showNotice("error", `应用失败：${readableError(error)}`);
       }
     },
@@ -130,6 +150,7 @@ export function useSuggestionActions(options: {
       activeChunkIndexRef,
       applySessionState,
       currentSessionRef,
+      refreshSessionState,
       showNotice,
       withBusy
     ]

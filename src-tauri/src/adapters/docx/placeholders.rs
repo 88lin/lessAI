@@ -4,7 +4,7 @@ use super::model::{
     LockedDisplayMode, LockedRegionRender, LockedRegionTemplate, WritebackBlockTemplate,
     WritebackRegionTemplate,
 };
-use crate::{adapters::TextRegion, models::ChunkPresentation};
+use crate::models::ChunkPresentation;
 
 pub(super) const DOCX_IMAGE_PLACEHOLDER: &str = "[图片]";
 pub(super) const DOCX_TEXTBOX_PLACEHOLDER: &str = "[文本框]";
@@ -25,14 +25,6 @@ pub(super) fn placeholder_presentation(kind: &str) -> Option<ChunkPresentation> 
         protect_kind: Some(kind.to_string()),
         writeback_key: None,
     })
-}
-
-pub(super) fn locked_region(text: &str, kind: &str) -> TextRegion {
-    TextRegion {
-        body: text.to_string(),
-        skip_rewrite: true,
-        presentation: placeholder_presentation(kind),
-    }
 }
 
 pub(super) fn raw_locked_block(

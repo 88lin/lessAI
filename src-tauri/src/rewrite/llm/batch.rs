@@ -3,7 +3,6 @@ use crate::models::AppSettings;
 use super::plain_support::{build_numbered_multiline_template, finalize_plain_candidate};
 use super::prompt::{
     merge_extra_constraints, resolve_system_prompt, EXTRA_CONSTRAINT_NO_MODEL_META,
-    EXTRA_CONSTRAINT_NO_MODEL_META_RETRY,
 };
 
 const BATCH_MARKER_PREFIX: &str = "<<<LESSAI_ITEM_";
@@ -19,50 +18,29 @@ pub(super) async fn rewrite_plain_chunks_with_client(
         return Ok(Vec::new());
     }
     if source_texts.len() == 1 {
-        return Ok(vec![super::plain::rewrite_plain_chunk_with_client(
-            client,
-            settings,
-            &source_texts[0],
-            extra_constraint,
-        )
-        .await?]);
+        return Ok(vec![
+            super::plain::rewrite_plain_chunk_with_client(
+                client,
+                settings,
+                &source_texts[0],
+                extra_constraint,
+            )
+            .await?,
+        ]);
     }
 
     let system_prompt = resolve_system_prompt(settings);
-    let base_constraint =
-        merge_extra_constraints(extra_constraint, &[EXTRA_CONSTRAINT_NO_MODEL_META]);
-    let retry_constraint = merge_extra_constraints(
-        base_constraint.as_deref(),
-        &[EXTRA_CONSTRAINT_NO_MODEL_META_RETRY],
-    );
-    let mut last_error: Option<String> = None;
+    let constraint = merge_extra_constraints(extra_constraint, &[EXTRA_CONSTRAINT_NO_MODEL_META]);
 
-    for (attempt, temperature, constraint) in [
-        (1usize, settings.temperature, base_constraint.as_deref()),
-        (2usize, 0.0, retry_constraint.as_deref()),
-    ] {
-        let result = rewrite_plain_chunks_with_client_once(
-            client,
-            settings,
-            &system_prompt,
-            source_texts,
-            constraint,
-            temperature,
-        )
-        .await;
-
-        match result {
-            Ok(candidate) => return Ok(candidate),
-            Err(error) => {
-                last_error = Some(error);
-                if attempt >= 2 {
-                    break;
-                }
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| "模型批量改写失败。".to_string()))
+    rewrite_plain_chunks_with_client_once(
+        client,
+        settings,
+        &system_prompt,
+        source_texts,
+        constraint.as_deref(),
+        settings.temperature,
+    )
+    .await
 }
 
 async fn rewrite_plain_chunks_with_client_once(
@@ -182,6 +160,9 @@ mod tests {
 
         let parsed = parse_batch_response(output, 2).unwrap();
 
-        assert_eq!(parsed, vec!["第一项".to_string(), "第二项\n第二行".to_string()]);
+        assert_eq!(
+            parsed,
+            vec!["第一项".to_string(), "第二项\n第二行".to_string()]
+        );
     }
 }

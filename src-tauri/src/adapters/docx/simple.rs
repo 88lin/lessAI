@@ -16,12 +16,15 @@ use super::{
         LockedRegionTemplate, WritebackBlockTemplate, WritebackParagraphTemplate,
         WritebackRegionTemplate,
     },
-    numbering::{
-        list_marker_for_paragraph, parse_numbering_xml, NumberingDefinitions, NumberingTracker,
-    },
+    numbering::{list_marker_for_paragraph, NumberingTracker},
+    package::{load_docx_document, DocxSupportData},
     placeholders,
     specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
-    styles::{parse_styles_xml, ParagraphStyles},
+    styles::ParagraphStyles,
+    xml::{
+        attr_value, hyperlink_target, local_name, local_name_owned, toggle_attr_enabled,
+        underline_enabled,
+    },
 };
 use crate::{
     adapters::TextRegion,
@@ -39,9 +42,9 @@ pub struct DocxAdapter;
 impl DocxAdapter {
     #[cfg(test)]
     pub fn extract_text(docx_bytes: &[u8]) -> Result<String, String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        let regions = extract_regions_from_document_xml(&xml, &support, true)?;
+        let loaded = load_docx_document(docx_bytes)?;
+        let regions =
+            extract_regions_from_document_xml(&loaded.document_xml, &loaded.support, true)?;
         Ok(regions
             .into_iter()
             .map(|region| region.body)
@@ -50,18 +53,17 @@ impl DocxAdapter {
             .to_string())
     }
 
+    #[cfg(test)]
     pub(crate) fn extract_writeback_source_text(docx_bytes: &[u8]) -> Result<String, String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&xml, &support)?;
+        let loaded = load_docx_document(docx_bytes)?;
+        let blocks = extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
         Ok(build_writeback_source_text(&blocks))
     }
 
     #[cfg(test)]
     pub fn extract_writeback_regions(docx_bytes: &[u8]) -> Result<Vec<TextRegion>, String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&xml, &support)?;
+        let loaded = load_docx_document(docx_bytes)?;
+        let blocks = extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
         Ok(flatten_writeback_blocks_for_test(&blocks))
     }
 
@@ -69,9 +71,8 @@ impl DocxAdapter {
         docx_bytes: &[u8],
         rewrite_headings: bool,
     ) -> Result<Vec<TextRegion>, String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        extract_regions_from_document_xml(&xml, &support, rewrite_headings)
+        let loaded = load_docx_document(docx_bytes)?;
+        extract_regions_from_document_xml(&loaded.document_xml, &loaded.support, rewrite_headings)
     }
 
     pub fn write_updated_text(
@@ -79,9 +80,8 @@ impl DocxAdapter {
         expected_source_text: &str,
         updated_text: &str,
     ) -> Result<Vec<u8>, String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&xml, &support)?;
+        let loaded = load_docx_document(docx_bytes)?;
+        let blocks = extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
         let current_source_text = build_writeback_source_text(&blocks);
         if current_source_text != expected_source_text {
             return Err(
@@ -91,7 +91,8 @@ impl DocxAdapter {
         }
 
         let updated_regions = build_plain_text_editor_updated_regions(&blocks, updated_text)?;
-        let updated_xml = rewrite_document_xml_with_regions(&xml, &blocks, &updated_regions)?;
+        let updated_xml =
+            rewrite_document_xml_with_regions(&loaded.document_xml, &blocks, &updated_regions)?;
         replace_document_xml(docx_bytes, &updated_xml)
     }
 
@@ -100,9 +101,9 @@ impl DocxAdapter {
         expected_source_text: &str,
         updated_regions: &[TextRegion],
     ) -> Result<Vec<u8>, String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        let paragraphs = extract_writeback_paragraph_templates(&xml, &support)?;
+        let loaded = load_docx_document(docx_bytes)?;
+        let paragraphs =
+            extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
         let current_source_text = build_writeback_source_text(&paragraphs);
         if current_source_text != expected_source_text {
             return Err(
@@ -111,154 +112,20 @@ impl DocxAdapter {
             );
         }
 
-        let updated_xml = rewrite_document_xml_with_regions(&xml, &paragraphs, updated_regions)?;
+        let updated_xml =
+            rewrite_document_xml_with_regions(&loaded.document_xml, &paragraphs, updated_regions)?;
         replace_document_xml(docx_bytes, &updated_xml)
     }
 
     pub fn validate_writeback(docx_bytes: &[u8]) -> Result<(), String> {
-        let xml = read_document_xml(docx_bytes)?;
-        let support = read_docx_support_data(docx_bytes)?;
-        extract_writeback_paragraph_templates(&xml, &support).map(|_| ())
+        let loaded = load_docx_document(docx_bytes)?;
+        extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support).map(|_| ())
     }
 
+    #[cfg(test)]
     pub fn validate_plain_text_editor(docx_bytes: &[u8]) -> Result<(), String> {
         Self::validate_writeback(docx_bytes)
     }
-}
-
-#[derive(Debug, Default)]
-struct DocxSupportData {
-    hyperlink_targets: HashMap<String, String>,
-    numbering: NumberingDefinitions,
-    styles: ParagraphStyles,
-}
-
-fn read_docx_support_data(docx_bytes: &[u8]) -> Result<DocxSupportData, String> {
-    Ok(DocxSupportData {
-        hyperlink_targets: read_document_relationships(docx_bytes)?,
-        numbering: read_numbering_definitions(docx_bytes)?,
-        styles: read_styles(docx_bytes)?,
-    })
-}
-
-fn read_document_xml(docx_bytes: &[u8]) -> Result<String, String> {
-    if docx_bytes.is_empty() {
-        return Err("docx 文件为空。".to_string());
-    }
-
-    let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
-
-    let mut file = archive
-        .by_name("word/document.xml")
-        .map_err(|_| "docx 缺少 word/document.xml，无法读取正文。".to_string())?;
-
-    let mut xml = String::new();
-    file.read_to_string(&mut xml)
-        .map_err(|error| format!("读取 document.xml 失败：{error}"))?;
-
-    Ok(xml)
-}
-
-fn read_document_relationships(docx_bytes: &[u8]) -> Result<HashMap<String, String>, String> {
-    let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
-    let mut file = match archive.by_name("word/_rels/document.xml.rels") {
-        Ok(file) => file,
-        Err(_) => return Ok(HashMap::new()),
-    };
-
-    let mut xml = String::new();
-    file.read_to_string(&mut xml)
-        .map_err(|error| format!("读取 document.xml.rels 失败：{error}"))?;
-    parse_relationship_targets(&xml)
-}
-
-fn read_numbering_definitions(docx_bytes: &[u8]) -> Result<NumberingDefinitions, String> {
-    let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
-    let mut file = match archive.by_name("word/numbering.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(NumberingDefinitions::default()),
-    };
-
-    let mut xml = String::new();
-    file.read_to_string(&mut xml)
-        .map_err(|error| format!("读取 numbering.xml 失败：{error}"))?;
-    parse_numbering_xml(&xml)
-}
-
-fn read_styles(docx_bytes: &[u8]) -> Result<ParagraphStyles, String> {
-    let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
-    let mut file = match archive.by_name("word/styles.xml") {
-        Ok(file) => file,
-        Err(_) => return Ok(ParagraphStyles::default()),
-    };
-
-    let mut xml = String::new();
-    file.read_to_string(&mut xml)
-        .map_err(|error| format!("读取 styles.xml 失败：{error}"))?;
-    parse_styles_xml(&xml)
-}
-
-fn parse_relationship_targets(xml: &str) -> Result<HashMap<String, String>, String> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut targets = HashMap::new();
-
-    loop {
-        let event = match reader.read_event_into(&mut buf) {
-            Ok(event) => event.into_owned(),
-            Err(error) => return Err(format!("解析 document.xml.rels 失败：{error}")),
-        };
-
-        match event {
-            Event::Start(e) | Event::Empty(e) => {
-                if local_name(e.name().as_ref()) != b"Relationship" {
-                    buf.clear();
-                    continue;
-                }
-                let relationship_type = attr_value(&e, b"Type");
-                if !relationship_type
-                    .as_deref()
-                    .is_some_and(|value| value.ends_with("/hyperlink"))
-                {
-                    buf.clear();
-                    continue;
-                }
-                let id = attr_value(&e, b"Id")
-                    .ok_or_else(|| "document.xml.rels 中的超链接关系缺少 Id。".to_string())?;
-                let target = attr_value(&e, b"Target").ok_or_else(|| {
-                    format!("document.xml.rels 中的超链接关系 {id} 缺少 Target。")
-                })?;
-                targets.insert(id, target);
-            }
-            Event::Eof => break,
-            _ => {}
-        }
-
-        buf.clear();
-    }
-
-    Ok(targets)
-}
-
-fn local_name(name: &[u8]) -> &[u8] {
-    match name.iter().rposition(|b| *b == b':') {
-        Some(pos) if pos + 1 < name.len() => &name[pos + 1..],
-        _ => name,
-    }
-}
-
-fn local_name_owned(name: &[u8]) -> Vec<u8> {
-    local_name(name).to_vec()
 }
 
 const DOCX_BLOCK_SEPARATOR: &str = "\n\n";
@@ -282,48 +149,6 @@ fn extract_regions_from_document_xml(
 ) -> Result<Vec<TextRegion>, String> {
     let blocks = extract_writeback_paragraph_templates(xml, support)?;
     Ok(flatten_writeback_blocks(&blocks, rewrite_headings))
-}
-
-fn attr_value(bytes: &quick_xml::events::BytesStart<'_>, key: &[u8]) -> Option<String> {
-    for attr in bytes.attributes().flatten() {
-        if local_name(attr.key.as_ref()) != key {
-            continue;
-        }
-        if let Ok(value) = attr.unescape_value() {
-            return Some(value.into_owned());
-        }
-        if let Ok(value) = std::str::from_utf8(attr.value.as_ref()) {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
-fn toggle_attr_enabled(event: &BytesStart<'_>) -> bool {
-    !matches!(
-        attr_value(event, b"val")
-            .as_deref()
-            .map(|value| value.trim().to_ascii_lowercase()),
-        Some(value) if matches!(value.as_str(), "0" | "false" | "off" | "none")
-    )
-}
-
-fn underline_enabled(event: &BytesStart<'_>) -> bool {
-    !matches!(
-        attr_value(event, b"val")
-            .as_deref()
-            .map(|value| value.trim().to_ascii_lowercase()),
-        Some(value) if value == "none"
-    )
-}
-
-fn hyperlink_target(
-    event: &BytesStart<'_>,
-    hyperlink_targets: &HashMap<String, String>,
-) -> Option<String> {
-    attr_value(event, b"id")
-        .and_then(|id| hyperlink_targets.get(&id).cloned())
-        .or_else(|| attr_value(event, b"anchor").map(|anchor| format!("#{anchor}")))
 }
 
 fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
@@ -1771,9 +1596,7 @@ fn build_plain_text_editor_paragraph_regions_from_template(
 
     match matches.len() {
         1 => Ok(matches.remove(0)),
-        0 => Err(
-            "写回内容越过原有样式或锁定边界，无法安全写回。".to_string(),
-        ),
+        0 => Err("写回内容越过原有样式或锁定边界，无法安全写回。".to_string()),
         _ => Err("写回内容在原有样式或锁定边界上的定位存在歧义，无法安全写回。".to_string()),
     }
 }
@@ -2694,9 +2517,7 @@ fn paragraph_properties_indicate_heading(
     styles: &ParagraphStyles,
 ) -> bool {
     events.iter().any(|event| match event {
-        Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"outlineLvl" => {
-            true
-        }
+        Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"outlineLvl" => true,
         Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == b"pStyle" => {
             attr_value(e, b"val").is_some_and(|value| styles.is_heading(&value))
         }

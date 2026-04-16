@@ -27,7 +27,7 @@ pub(super) fn move_leading_whitespace_to_previous_separator(
 
     for mut chunk in chunks {
         let (leading_ws, text) = split_leading_whitespace(&chunk.text);
-        if normalized.is_empty() || leading_ws.is_empty() {
+        if normalized.is_empty() || leading_ws.is_empty() || text.is_empty() {
             normalized.push(chunk);
             continue;
         }

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   DocumentSession,
+  DocumentSnapshot,
   EditorChunkEdit,
   ProviderCheckResult,
   RewriteMode
@@ -79,22 +80,62 @@ export async function finalizeDocument(sessionId: string) {
   return invoke<string>("finalize_document", { sessionId });
 }
 
-export async function saveDocumentEdits(sessionId: string, content: string) {
-  return invoke<DocumentSession>("save_document_edits", { sessionId, content });
+export async function saveDocumentEdits(
+  sessionId: string,
+  content: string,
+  editorBaseSnapshot: DocumentSnapshot | null
+) {
+  return invoke<DocumentSession>("save_document_edits", {
+    sessionId,
+    content,
+    editorBaseSnapshot
+  });
 }
 
-export async function validateDocumentEdits(sessionId: string, content: string) {
-  return invoke<void>("validate_document_edits", { sessionId, content });
+export async function validateDocumentEdits(
+  sessionId: string,
+  content: string,
+  editorBaseSnapshot: DocumentSnapshot | null
+) {
+  return invoke<void>("validate_document_edits", {
+    sessionId,
+    content,
+    editorBaseSnapshot
+  });
 }
 
-export async function validateDocumentChunkEdits(sessionId: string, edits: EditorChunkEdit[]) {
-  return invoke<void>("validate_document_chunk_edits", { sessionId, edits });
+export async function validateDocumentChunkEdits(
+  sessionId: string,
+  edits: EditorChunkEdit[],
+  editorBaseSnapshot: DocumentSnapshot | null
+) {
+  return invoke<void>("validate_document_chunk_edits", {
+    sessionId,
+    edits,
+    editorBaseSnapshot
+  });
 }
 
-export async function saveDocumentChunkEdits(sessionId: string, edits: EditorChunkEdit[]) {
-  return invoke<DocumentSession>("save_document_chunk_edits", { sessionId, edits });
+export async function saveDocumentChunkEdits(
+  sessionId: string,
+  edits: EditorChunkEdit[],
+  editorBaseSnapshot: DocumentSnapshot | null
+) {
+  return invoke<DocumentSession>("save_document_chunk_edits", {
+    sessionId,
+    edits,
+    editorBaseSnapshot
+  });
 }
 
-export async function rewriteSnippet(sessionId: string, text: string) {
-  return invoke<string>("rewrite_snippet", { sessionId, text });
+export async function rewriteSnippet(
+  sessionId: string,
+  text: string,
+  editorBaseSnapshot: DocumentSnapshot | null
+) {
+  return invoke<string>("rewrite_snippet", {
+    sessionId,
+    text,
+    editorBaseSnapshot
+  });
 }

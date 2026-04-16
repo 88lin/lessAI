@@ -1,19 +1,10 @@
 use crate::models::AppSettings;
 
+use super::super::text::split_line_skeleton;
+use super::plain_support::{build_numbered_multiline_template, finalize_plain_candidate};
 use super::prompt::{
     merge_extra_constraints, resolve_system_prompt, EXTRA_CONSTRAINT_NO_MODEL_META,
-    EXTRA_CONSTRAINT_NO_MODEL_META_RETRY,
 };
-use super::plain_support::{
-    blank_pattern_matches, build_numbered_multiline_template, split_lines_keep_empty,
-    try_parse_multiline_rewrite_response,
-};
-use super::super::text::{
-    collapse_line_breaks_to_spaces, enforce_line_skeleton, split_line_skeleton,
-    strip_redundant_prefix,
-    trim_ascii_spaces_tabs_start,
-};
-use super::validate::validate_rewrite_output;
 
 async fn call_rewrite_model(
     client: &reqwest::Client,
@@ -34,87 +25,23 @@ async fn rewrite_plain_chunk_with_client_once(
     extra_constraint: Option<&str>,
     temperature: f32,
 ) -> Result<String, String> {
-    let multiline = source_text.contains('\n') || source_text.contains('\r');
-    if multiline {
-        let source_lines = split_lines_keep_empty(source_text);
-        if source_lines.iter().all(|line| line.trim().is_empty()) {
-            // 纯空白/纯缩进：不走模型，直接原样返回。
-            return Ok(source_text.to_string());
-        }
+    if source_text.trim().is_empty() {
+        return Ok(source_text.to_string());
+    }
 
-        let (user_prompt, expected_lines) =
-            build_multiline_rewrite_prompt(source_text, extra_constraint);
-        let sanitized =
-            call_rewrite_model(client, settings, system_prompt, &user_prompt, temperature).await?;
-
-        let expected = source_lines.len().max(expected_lines).max(1);
-        let rewritten_lines =
-            if let Some(lines) = try_parse_multiline_rewrite_response(&sanitized, expected) {
-                if blank_pattern_matches(&source_lines, &lines) {
-                    lines
-                } else {
-                    split_lines_keep_empty(
-                        &rewrite_multiline_fallback_per_line(
-                            client,
-                            settings,
-                            system_prompt,
-                            &source_lines,
-                            extra_constraint,
-                            temperature,
-                        )
-                        .await?,
-                    )
-                }
-            } else {
-                // 如果模型不按模板输出（没有 @@@ 序号），宁可走逐行兜底，也不要冒险接收未知格式。
-                let candidate_lines = split_lines_keep_empty(&sanitized);
-                if candidate_lines.len() == expected
-                    && blank_pattern_matches(&source_lines, &candidate_lines)
-                    && candidate_lines
-                        .iter()
-                        .all(|line| !trim_ascii_spaces_tabs_start(line).starts_with("@@@"))
-                {
-                    candidate_lines
-                } else {
-                    split_lines_keep_empty(
-                        &rewrite_multiline_fallback_per_line(
-                            client,
-                            settings,
-                            system_prompt,
-                            &source_lines,
-                            extra_constraint,
-                            temperature,
-                        )
-                        .await?,
-                    )
-                }
-            };
-
-        // ✅ 最关键的一步：对每一行做“格式骨架锁定”，把缩进/列表符号/编号/行尾空格等强制恢复到源文本。
-        let mut enforced = Vec::with_capacity(source_lines.len());
-        for (source, candidate) in source_lines.iter().zip(rewritten_lines.iter()) {
-            enforced.push(enforce_line_skeleton(source, candidate));
-        }
-
-        Ok(enforced.join("\n"))
+    let user_prompt = if source_text.contains('\n') || source_text.contains('\r') {
+        build_multiline_rewrite_prompt(source_text, extra_constraint).0
     } else {
-        let (prefix, core, suffix) = split_line_skeleton(source_text);
+        let (_, core, _) = split_line_skeleton(source_text);
         if core.trim().is_empty() {
             return Ok(source_text.to_string());
         }
+        build_singleline_rewrite_prompt(&core, extra_constraint)
+    };
+    let candidate =
+        call_rewrite_model(client, settings, system_prompt, &user_prompt, temperature).await?;
 
-        let user_prompt = build_singleline_rewrite_prompt(&core, extra_constraint);
-        let sanitized =
-            call_rewrite_model(client, settings, system_prompt, &user_prompt, temperature).await?;
-        let rewritten = collapse_line_breaks_to_spaces(&sanitized);
-
-        let body = strip_redundant_prefix(&rewritten, &prefix);
-        if body.trim().is_empty() {
-            return Ok(source_text.to_string());
-        }
-
-        Ok(format!("{prefix}{body}{suffix}"))
-    }
+    finalize_plain_candidate(source_text, &candidate)
 }
 
 pub(super) async fn rewrite_plain_chunk_with_client(
@@ -126,105 +53,17 @@ pub(super) async fn rewrite_plain_chunk_with_client(
     super::validate_settings(settings)?;
 
     let system_prompt = resolve_system_prompt(settings);
-    let base_constraint =
-        merge_extra_constraints(extra_constraint, &[EXTRA_CONSTRAINT_NO_MODEL_META]);
-    let retry_constraint = merge_extra_constraints(
-        base_constraint.as_deref(),
-        &[EXTRA_CONSTRAINT_NO_MODEL_META_RETRY],
-    );
+    let constraint = merge_extra_constraints(extra_constraint, &[EXTRA_CONSTRAINT_NO_MODEL_META]);
 
-    let mut last_error: Option<String> = None;
-
-    for (attempt, temperature, constraint) in [
-        (1usize, settings.temperature, base_constraint.as_deref()),
-        (2usize, 0.0, retry_constraint.as_deref()),
-    ] {
-        let result = rewrite_plain_chunk_with_client_once(
-            client,
-            settings,
-            &system_prompt,
-            source_text,
-            constraint,
-            temperature,
-        )
-        .await;
-
-        match result {
-            Ok(candidate) => match validate_rewrite_output(source_text, &candidate) {
-                Ok(()) => return Ok(candidate),
-                Err(error) => {
-                    last_error = Some(error);
-                    if attempt >= 2 {
-                        break;
-                    }
-                }
-            },
-            Err(error) => {
-                last_error = Some(error);
-                if attempt >= 2 {
-                    break;
-                }
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| "模型改写失败。".to_string()))
-}
-
-async fn rewrite_single_line_with_client(
-    client: &reqwest::Client,
-    settings: &AppSettings,
-    system_prompt: &str,
-    source_text: &str,
-    extra_constraint: Option<&str>,
-    temperature: f32,
-) -> Result<String, String> {
-    let (prefix, core, suffix) = split_line_skeleton(source_text);
-    if core.trim().is_empty() {
-        return Ok(source_text.to_string());
-    }
-
-    let user_prompt = build_singleline_rewrite_prompt(&core, extra_constraint);
-    let sanitized =
-        call_rewrite_model(client, settings, system_prompt, &user_prompt, temperature).await?;
-    let rewritten = collapse_line_breaks_to_spaces(&sanitized);
-    let body = strip_redundant_prefix(&rewritten, &prefix);
-    if body.trim().is_empty() {
-        return Ok(source_text.to_string());
-    }
-
-    Ok(format!("{prefix}{body}{suffix}"))
-}
-
-async fn rewrite_multiline_fallback_per_line(
-    client: &reqwest::Client,
-    settings: &AppSettings,
-    system_prompt: &str,
-    source_lines: &[String],
-    extra_constraint: Option<&str>,
-    temperature: f32,
-) -> Result<String, String> {
-    let mut rebuilt = Vec::with_capacity(source_lines.len());
-    for line in source_lines.iter() {
-        if line.trim().is_empty() {
-            // 空行/仅空白的行属于格式骨架：原样保留（包括可能存在的空格缩进）。
-            rebuilt.push(line.to_string());
-            continue;
-        }
-
-        let rewritten_line = rewrite_single_line_with_client(
-            client,
-            settings,
-            system_prompt,
-            line,
-            extra_constraint,
-            temperature,
-        )
-        .await?;
-        rebuilt.push(rewritten_line);
-    }
-
-    Ok(rebuilt.join("\n"))
+    rewrite_plain_chunk_with_client_once(
+        client,
+        settings,
+        &system_prompt,
+        source_text,
+        constraint.as_deref(),
+        settings.temperature,
+    )
+    .await
 }
 
 fn build_singleline_rewrite_prompt(source_body: &str, extra_constraint: Option<&str>) -> String {

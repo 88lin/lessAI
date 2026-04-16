@@ -46,6 +46,7 @@ interface DocumentPanelProps {
   editorDirty: boolean;
   editorHasSelection: boolean;
   editorRef: MutableRefObject<DocumentEditorHandle | null>;
+  documentScrollRef: MutableRefObject<HTMLDivElement | null>;
   onOpenDocument: () => void;
   onOpenSettings: () => void;
   onSelectChunk: (index: number, options?: { multiSelect?: boolean }) => void;
@@ -86,6 +87,7 @@ export const DocumentPanel = memo(function DocumentPanel({
   editorDirty,
   editorHasSelection,
   editorRef,
+  documentScrollRef,
   onOpenDocument,
   onOpenSettings,
   onSelectChunk,
@@ -415,7 +417,7 @@ export const DocumentPanel = memo(function DocumentPanel({
     >
       {currentSession ? (
         <article className="editor-paper workbench-editor-paper">
-          <div className="paper-content scroll-region">
+          <div ref={documentScrollRef} className="paper-content scroll-region">
             {editorMode ? (
               <DocumentEditor
                 ref={editorRef}

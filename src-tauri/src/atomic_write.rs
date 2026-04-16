@@ -168,22 +168,11 @@ extern "system" {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        env, fs,
-        path::{Path, PathBuf},
-    };
+    use std::{fs, path::Path};
 
     use super::format_atomic_write_error;
     use super::write_bytes_atomically;
-    use uuid::Uuid;
-
-    fn unique_test_dir(name: &str) -> PathBuf {
-        env::temp_dir().join(format!("lessai-{name}-{}", Uuid::new_v4()))
-    }
-
-    fn cleanup_dir(path: &Path) {
-        let _ = fs::remove_dir_all(path);
-    }
+    use crate::test_support::{cleanup_dir, unique_test_dir};
 
     #[test]
     fn atomic_write_creates_parent_dirs_and_new_file() {

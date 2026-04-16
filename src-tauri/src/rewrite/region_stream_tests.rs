@@ -3,7 +3,6 @@ use crate::adapters::TextRegion;
 use crate::documents::RegionSegmentationStrategy;
 use crate::models::{ChunkPreset, DocumentFormat};
 
-use super::segment::stream::NoopBoundaryGuard;
 use super::*;
 
 fn segment_text(text: &str, preset: ChunkPreset) -> Vec<SegmentedChunk> {
@@ -36,12 +35,12 @@ fn tex_par_command_splits_paragraph_chunks_without_emitting_separator_chunk() {
 #[test]
 fn region_stream_keeps_inline_locked_regions_inside_same_sentence_chunk() {
     let regions = vec![
-        super::segment::stream::SegmentRegion::flow("前文 ", false, None),
-        super::segment::stream::SegmentRegion::flow("`let x = 1`", true, None),
-        super::segment::stream::SegmentRegion::flow(" 后文。下一句。", false, None),
+        super::segment::SegmentRegion::flow("前文 ", false, None),
+        super::segment::SegmentRegion::flow("`let x = 1`", true, None),
+        super::segment::SegmentRegion::flow(" 后文。下一句。", false, None),
     ];
 
-    let chunks = super::segment::stream::segment_region_stream::<NoopBoundaryGuard>(
+    let chunks = super::segment::segment_region_stream::<super::segment::NoopBoundaryGuard>(
         regions,
         ChunkPreset::Sentence,
     );
@@ -61,12 +60,12 @@ fn region_stream_keeps_inline_locked_regions_inside_same_sentence_chunk() {
 #[test]
 fn region_stream_outputs_isolated_skip_regions_as_standalone_chunks() {
     let regions = vec![
-        super::segment::stream::SegmentRegion::flow("前文。\n\n", false, None),
-        super::segment::stream::SegmentRegion::isolated("```rust\nfn main() {}\n```", true, None),
-        super::segment::stream::SegmentRegion::flow("\n\n后文。", false, None),
+        super::segment::SegmentRegion::flow("前文。\n\n", false, None),
+        super::segment::SegmentRegion::isolated("```rust\nfn main() {}\n```", true, None),
+        super::segment::SegmentRegion::flow("\n\n后文。", false, None),
     ];
 
-    let chunks = super::segment::stream::segment_region_stream::<NoopBoundaryGuard>(
+    let chunks = super::segment::segment_region_stream::<super::segment::NoopBoundaryGuard>(
         regions,
         ChunkPreset::Sentence,
     );
@@ -84,12 +83,12 @@ fn region_stream_outputs_isolated_skip_regions_as_standalone_chunks() {
 #[test]
 fn region_stream_uses_separator_regions_as_boundaries_without_emitting_separator_chunks() {
     let regions = vec![
-        super::segment::stream::SegmentRegion::flow("第一句。", false, None),
-        super::segment::stream::SegmentRegion::separator("\\par\n"),
-        super::segment::stream::SegmentRegion::flow("第二句。", false, None),
+        super::segment::SegmentRegion::flow("第一句。", false, None),
+        super::segment::SegmentRegion::separator("\\par\n"),
+        super::segment::SegmentRegion::flow("第二句。", false, None),
     ];
 
-    let chunks = super::segment::stream::segment_region_stream::<NoopBoundaryGuard>(
+    let chunks = super::segment::segment_region_stream::<super::segment::NoopBoundaryGuard>(
         regions,
         ChunkPreset::Paragraph,
     );
@@ -160,7 +159,7 @@ fn preserve_boundaries_keeps_docx_like_locked_regions_isolated() {
             .filter(|chunk| !chunk.skip_rewrite)
             .map(|chunk| chunk.text.as_str())
             .collect::<Vec<_>>(),
-        vec!["前文", "后文。"]
+        vec!["前文", " 后文。"]
     );
 
     let format_aware_editable = format_aware
@@ -250,4 +249,42 @@ fn preserve_boundaries_keeps_standalone_colon_chunk_when_presentation_differs() 
         .map(|chunk| chunk.text.as_str())
         .collect::<Vec<_>>();
     assert_eq!(editable, vec!["硬件部署", "：", "认知节点部署于 Dell。"]);
+}
+
+#[test]
+fn preserve_boundaries_keeps_whitespace_only_editable_regions_as_chunks() {
+    let underline = Some(crate::models::ChunkPresentation {
+        bold: false,
+        italic: false,
+        underline: true,
+        href: None,
+        protect_kind: None,
+        writeback_key: Some("r:underline".to_string()),
+    });
+    let regions = vec![
+        TextRegion {
+            body: "作品编号：".to_string(),
+            skip_rewrite: false,
+            presentation: None,
+        },
+        TextRegion {
+            body: "　　　\n\n".to_string(),
+            skip_rewrite: false,
+            presentation: underline.clone(),
+        },
+    ];
+
+    let chunks = segment_regions_with_strategy(
+        regions,
+        ChunkPreset::Paragraph,
+        DocumentFormat::PlainText,
+        RegionSegmentationStrategy::PreserveBoundaries,
+    );
+
+    assert_eq!(chunks.len(), 2);
+    assert_eq!(chunks[0].text, "作品编号：");
+    assert_eq!(chunks[1].text, "　　　");
+    assert_eq!(chunks[1].separator_after, "\n\n");
+    assert_eq!(chunks[1].presentation, underline);
+    assert!(!chunks[1].skip_rewrite);
 }

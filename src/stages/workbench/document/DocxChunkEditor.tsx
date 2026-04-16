@@ -204,7 +204,7 @@ export const DocxChunkEditor = memo(
       const firstEditable = session.chunks.find((chunk) => !chunk.skipRewrite);
       if (!firstEditable) return;
       chunkNodesRef.current[firstEditable.index]?.focus();
-    }, [session.chunks]);
+    }, [session.id]);
 
     useEffect(() => {
       if (!onSelectionChange) return;

@@ -4,9 +4,9 @@ use sha2::{Digest, Sha256};
 
 use crate::models::DocumentSnapshot;
 
-const SNAPSHOT_MISSING_ERROR: &str =
+pub(crate) const SNAPSHOT_MISSING_ERROR: &str =
     "当前会话缺少原文件快照，无法确认写回安全性。请重新导入文档后再写回。";
-const SNAPSHOT_MISMATCH_ERROR: &str = "原文件已在外部发生变化。为避免误写，请重新导入。";
+pub(crate) const SNAPSHOT_MISMATCH_ERROR: &str = "原文件已在外部发生变化。为避免误写，请重新导入。";
 
 pub(crate) fn capture_document_snapshot(path: &Path) -> Result<DocumentSnapshot, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;

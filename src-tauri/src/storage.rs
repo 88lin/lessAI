@@ -1,20 +1,18 @@
 use std::{
     fs,
-    io::Write,
     path::{Path, PathBuf},
 };
 
 use tauri::{AppHandle, Manager};
 
-use crate::models::{AppSettings, DocumentSession};
+use crate::{
+    atomic_write::write_bytes_atomically,
+    models::{AppSettings, DocumentSession},
+    settings_validation::validate_numeric_settings,
+};
 
 const SETTINGS_FILE: &str = "settings.json";
 const SESSIONS_DIR: &str = "sessions";
-
-fn normalize_settings(mut settings: AppSettings) -> AppSettings {
-    settings.chunks_per_request = settings.chunks_per_request.max(1);
-    settings
-}
 
 fn app_root(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
@@ -42,53 +40,25 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
 
 fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let content = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    write_json_bytes(path, &content)
+}
 
-    let filename = path
-        .file_name()
-        .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|| "data".to_string());
-    let tmp_path = parent.join(format!(".{filename}.tmp-{}", std::process::id()));
+fn write_json_bytes(path: &Path, payload: &[u8]) -> Result<(), String> {
+    write_bytes_atomically(path, payload)?;
+    restrict_json_file_permissions(path);
+    Ok(())
+}
 
+fn restrict_json_file_permissions(path: &Path) {
+    #[cfg(unix)]
     {
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&tmp_path)
-            .map_err(|error| error.to_string())?;
-        file.write_all(&content)
-            .map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
+        use std::os::unix::fs::PermissionsExt;
+        // settings/session 可能包含敏感信息（例如 API Key、草稿内容），尽量限制文件权限。
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
     }
-
-    match fs::rename(&tmp_path, path) {
-        Ok(()) => {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                // settings/session 可能包含敏感信息（例如 API Key、草稿内容），尽量限制文件权限。
-                let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
-            }
-            Ok(())
-        }
-        Err(first_error) => {
-            // Windows 上 rename 覆盖现有文件会失败，这里做一次兼容处理。
-            if path.exists() {
-                fs::remove_file(path).map_err(|error| error.to_string())?;
-                fs::rename(&tmp_path, path).map_err(|error| error.to_string())?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
-                }
-                return Ok(());
-            }
-
-            let _ = fs::remove_file(&tmp_path);
-            Err(first_error.to_string())
-        }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
     }
 }
 
@@ -98,13 +68,15 @@ pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
         return Ok(AppSettings::default());
     }
 
-    read_json(&path).map(normalize_settings)
+    let settings = read_json(&path)?;
+    validate_numeric_settings(&settings)?;
+    Ok(settings)
 }
 
 pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<AppSettings, String> {
     let path = app_root(app)?.join(SETTINGS_FILE);
-    let normalized = normalize_settings(settings.clone());
-    write_json(&path, &normalized)?;
+    validate_numeric_settings(settings)?;
+    write_json(&path, settings)?;
     load_settings(app)
 }
 
@@ -146,16 +118,49 @@ pub fn delete_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_settings;
-    use crate::models::AppSettings;
+    use std::fs;
+
+    use super::validate_numeric_settings;
+    use crate::{
+        models::AppSettings,
+        test_support::{cleanup_dir, unique_test_dir},
+    };
 
     #[test]
-    fn normalize_settings_clamps_chunks_per_request_to_at_least_one() {
+    fn write_json_bytes_creates_parent_dirs_and_writes_payload() {
+        let root = unique_test_dir("json-bytes-create");
+        let target = root.join("nested").join("data.json");
+
+        super::write_json_bytes(&target, br#"{"key":"value"}"#)
+            .expect("expected json bytes helper to write payload");
+
+        let stored = fs::read(&target).expect("read written json");
+        assert_eq!(stored, br#"{"key":"value"}"#);
+        cleanup_dir(&root);
+    }
+
+    #[test]
+    fn write_json_bytes_replaces_existing_payload() {
+        let root = unique_test_dir("json-bytes-replace");
+        fs::create_dir_all(&root).expect("create root");
+        let target = root.join("data.json");
+        fs::write(&target, br#"{"old":true}"#).expect("seed old json");
+
+        super::write_json_bytes(&target, br#"{"new":true}"#)
+            .expect("expected json bytes helper to replace payload");
+
+        let stored = fs::read(&target).expect("read replaced json");
+        assert_eq!(stored, br#"{"new":true}"#);
+        cleanup_dir(&root);
+    }
+
+    #[test]
+    fn validate_numeric_settings_rejects_zero_chunks_per_request() {
         let mut settings = AppSettings::default();
         settings.chunks_per_request = 0;
 
-        let normalized = normalize_settings(settings);
+        let error = validate_numeric_settings(&settings).expect_err("expected invalid batch size");
 
-        assert_eq!(normalized.chunks_per_request, 1);
+        assert_eq!(error, "单次请求处理块数必须大于等于 1。");
     }
 }

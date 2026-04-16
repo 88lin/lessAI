@@ -4,13 +4,19 @@ use std::{
 };
 
 use crate::{
-    documents::{ensure_document_can_write_back, is_docx_path},
+    adapters::TextRegion,
+    documents::{
+        ensure_document_can_write_back, execute_document_writeback, is_docx_path,
+        normalize_text_against_source_layout, OwnedDocumentWriteback, WritebackMode,
+    },
     models::{ChunkStatus, DocumentSession, EditorChunkEdit, RunningState},
-    rewrite,
+    rewrite_projection::build_merged_regions,
 };
 
 const EDITOR_WRITEBACK_CONFLICT_ERROR: &str =
     "该文档存在修订记录或进度，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑。";
+
+pub(crate) type EditorWritebackPayload = OwnedDocumentWriteback;
 
 pub(crate) fn ensure_session_can_use_plain_text_editor(
     session: &DocumentSession,
@@ -28,7 +34,7 @@ pub(crate) fn ensure_session_can_use_plain_text_editor(
     Ok(())
 }
 
-pub(crate) fn normalize_editor_writeback_content(
+fn normalize_editor_writeback_content(
     document_path: &str,
     source_text: &str,
     content: &str,
@@ -36,32 +42,59 @@ pub(crate) fn normalize_editor_writeback_content(
     if is_docx_path(Path::new(document_path)) {
         return content.to_string();
     }
-
-    let mut processed = content.to_string();
-    let line_ending = rewrite::detect_line_ending(source_text);
-    if !rewrite::has_trailing_spaces_per_line(source_text) {
-        processed = rewrite::strip_trailing_spaces_per_line(&processed);
-    }
-    rewrite::convert_line_endings(&processed, line_ending)
+    normalize_text_against_source_layout(source_text, content)
 }
 
-pub(crate) fn build_updated_text_from_chunk_edits(
+pub(crate) fn build_plain_text_editor_writeback(
+    session: &DocumentSession,
+    content: &str,
+) -> Result<EditorWritebackPayload, String> {
+    if content.trim().is_empty() {
+        return Err("文档内容为空，无法保存。".to_string());
+    }
+    ensure_session_can_use_plain_text_editor(session)?;
+    if is_docx_path(Path::new(&session.document_path)) {
+        return Err("docx 编辑模式必须按片段保存，不能再走整篇纯文本写回。".to_string());
+    }
+
+    Ok(EditorWritebackPayload::Text(
+        normalize_editor_writeback_content(&session.document_path, &session.source_text, content),
+    ))
+}
+
+pub(crate) fn build_chunk_editor_writeback(
     session: &DocumentSession,
     edits: &[EditorChunkEdit],
-) -> Result<String, String> {
-    ensure_session_can_use_plain_text_editor(session)?;
-    let overrides = collect_chunk_edit_overrides(session, edits)?;
-    Ok(session
-        .chunks
-        .iter()
-        .map(|chunk| {
-            let body = overrides
-                .get(&chunk.index)
-                .cloned()
-                .unwrap_or_else(|| chunk.source_text.clone());
-            format!("{body}{}", chunk.separator_after)
-        })
-        .collect::<String>())
+) -> Result<EditorWritebackPayload, String> {
+    Ok(EditorWritebackPayload::Regions(
+        build_updated_regions_from_chunk_edits(session, edits)?,
+    ))
+}
+
+pub(crate) fn execute_editor_writeback(
+    session: &DocumentSession,
+    payload: &EditorWritebackPayload,
+    mode: WritebackMode,
+) -> Result<(), String> {
+    execute_document_writeback(
+        Path::new(&session.document_path),
+        &session.source_text,
+        session.source_snapshot.as_ref(),
+        payload.as_document_writeback(),
+        mode,
+    )
+}
+
+fn build_updated_regions_from_chunk_edits(
+    session: &DocumentSession,
+    edits: &[EditorChunkEdit],
+) -> Result<Vec<TextRegion>, String> {
+    with_chunk_edit_overrides(session, edits, |session, overrides| {
+        if !is_docx_path(Path::new(&session.document_path)) {
+            return Err("当前仅 docx 支持按片段编辑写回。".to_string());
+        }
+        Ok(build_merged_regions(session, Some(overrides)))
+    })
 }
 
 fn plain_text_editor_session_is_clean(session: &DocumentSession) -> bool {
@@ -104,6 +137,19 @@ fn collect_chunk_edit_overrides(
     }
 
     Ok(overrides)
+}
+
+fn with_chunk_edit_overrides<T, Apply>(
+    session: &DocumentSession,
+    edits: &[EditorChunkEdit],
+    apply: Apply,
+) -> Result<T, String>
+where
+    Apply: FnOnce(&DocumentSession, &HashMap<usize, String>) -> Result<T, String>,
+{
+    ensure_session_can_use_plain_text_editor(session)?;
+    let overrides = collect_chunk_edit_overrides(session, edits)?;
+    apply(session, &overrides)
 }
 
 #[cfg(test)]

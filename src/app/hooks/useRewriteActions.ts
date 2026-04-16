@@ -13,44 +13,25 @@ import type {
   RewriteProgress
 } from "../../lib/types";
 import {
-  canRewriteSession,
   countCharacters,
   getLatestSuggestion,
   readableError,
-  rewriteBlockedReason,
   selectDefaultChunkIndex
 } from "../../lib/helpers";
 import {
   findAutoPendingTargetChunks,
   findNextManualTargetChunk,
-  hasSelectedChunks
+  hasSelectedChunks,
+  normalizeSelectedChunkIndices
 } from "../../lib/chunkSelection";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
-import type { NoticeTone } from "../../lib/constants";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
-
-type WithBusy = <T>(action: string, fn: () => Promise<T>) => Promise<T>;
-
-type ApplySessionState = (
-  session: DocumentSession,
-  nextChunkIndex: number,
-  options?: { preferredSuggestionId?: string | null }
-) => void;
-
-type RefreshSessionState = (
-  sessionId: string,
-  options?: {
-    preserveChunk?: boolean;
-    preferredChunkIndex?: number;
-    preserveSuggestion?: boolean;
-    preferredSuggestionId?: string | null;
-  }
-) => Promise<DocumentSession>;
+import {
+  refreshRewriteableSessionOrNotify,
+  type ApplySessionState,
+  type RefreshSessionState,
+  type ShowNotice,
+  type WithBusy
+} from "./sessionActionShared";
 
 const CHUNK_RISK_WARNING_NON_WHITESPACE_CHARS = 6000;
 
@@ -93,8 +74,11 @@ export function useRewriteActions(options: {
   } = options;
 
   const confirmIfChunksTooLarge = useCallback(
-    async (mode: RewriteMode, session: DocumentSession) => {
-      const selectedChunkIndices = selectedChunkIndicesRef.current;
+    async (
+      mode: RewriteMode,
+      session: DocumentSession,
+      selectedChunkIndices: readonly number[]
+    ) => {
       const pending =
         mode === "manual"
           ? [findNextManualTargetChunk(session.chunks, selectedChunkIndices)].filter(
@@ -157,7 +141,7 @@ export function useRewriteActions(options: {
       });
       return ok;
     },
-    [requestConfirm, selectedChunkIndicesRef]
+    [requestConfirm]
   );
 
   const handleStartRewrite = useCallback(
@@ -177,20 +161,35 @@ export function useRewriteActions(options: {
         showNotice("warning", "请先打开一个文档。");
         return;
       }
-      if (!canRewriteSession(session)) {
-        showNotice(
-          "warning",
-          rewriteBlockedReason(session) ??
-            "当前文档暂不支持安全写回覆盖，因此不允许继续 AI 改写。"
-        );
+      const latestSession = await refreshRewriteableSessionOrNotify({
+        session,
+        refreshSessionState,
+        options: {
+          preserveChunk: true,
+          preserveSuggestion: true
+        },
+        showNotice,
+        errorPrefix: "执行失败",
+        formatError: readableError
+      });
+      if (!latestSession) {
         return;
       }
 
-      const targetChunkIndices = hasSelectedChunks(selectedChunkIndicesRef.current)
-        ? selectedChunkIndicesRef.current
+      const normalizedSelectedChunkIndices = normalizeSelectedChunkIndices(
+        latestSession.chunks,
+        selectedChunkIndicesRef.current,
+        latestSession.chunkPreset
+      );
+      const targetChunkIndices = hasSelectedChunks(normalizedSelectedChunkIndices)
+        ? normalizedSelectedChunkIndices
         : undefined;
 
-      const ok = await confirmIfChunksTooLarge(mode, session);
+      const ok = await confirmIfChunksTooLarge(
+        mode,
+        latestSession,
+        normalizedSelectedChunkIndices
+      );
       if (!ok) {
         showNotice("info", "已取消执行，请调整切段策略或拆分文本后再重试。");
         return;
@@ -198,10 +197,10 @@ export function useRewriteActions(options: {
 
       try {
         const updated = await withBusy(`start-${mode}`, () =>
-          startRewrite(session.id, mode, targetChunkIndices)
+          startRewrite(latestSession.id, mode, targetChunkIndices)
         );
         if (mode === "manual") {
-          const existingSuggestionIds = new Set(session.suggestions.map((item) => item.id));
+          const existingSuggestionIds = new Set(latestSession.suggestions.map((item) => item.id));
           const newSuggestions = updated.suggestions
             .filter((item) => !existingSuggestionIds.has(item.id))
             .sort((left, right) => left.sequence - right.sequence);
@@ -229,16 +228,18 @@ export function useRewriteActions(options: {
         });
         showNotice("info", "自动批处理已启动，系统会后台连续处理并自动应用结果。");
       } catch (error) {
-        if (mode === "manual" && session) {
+        if (session) {
           try {
             await refreshSessionState(session.id, {
               preserveChunk: true,
               preserveSuggestion: true
             });
-            setReviewView("diff");
           } catch {
             // 保留原始错误提示，避免二次异常覆盖主错误。
           }
+        }
+        if (mode === "manual") {
+          setReviewView("diff");
         }
         showNotice("error", `执行失败：${readableError(error)}`);
       }
@@ -328,18 +329,31 @@ export function useRewriteActions(options: {
     const session = currentSessionRef.current;
     const chunk = session?.chunks[activeChunkIndexRef.current];
     if (!session || !chunk) return;
-    if (!canRewriteSession(session)) {
-      showNotice(
-        "warning",
-        rewriteBlockedReason(session) ??
-          "当前文档暂不支持安全写回覆盖，因此不允许继续 AI 改写。"
-      );
+    const latestSession = await refreshRewriteableSessionOrNotify({
+      session,
+      refreshSessionState,
+      options: {
+        preferredChunkIndex: chunk.index,
+        preserveSuggestion: true
+      },
+      showNotice,
+      errorPrefix: "重试失败",
+      formatError: readableError
+    });
+    if (!latestSession) {
+      return;
+    }
+    const latestChunk = latestSession.chunks[chunk.index];
+    if (!latestChunk) {
+      showNotice("warning", "当前片段已不存在，请刷新后重试。");
       return;
     }
     try {
-      const updated = await withBusy("retry-chunk", () => retryChunk(session.id, chunk.index));
+      const updated = await withBusy("retry-chunk", () =>
+        retryChunk(latestSession.id, latestChunk.index)
+      );
       const suggestion = getLatestSuggestion(updated);
-      const nextChunkIndex = suggestion?.chunkIndex ?? chunk.index;
+      const nextChunkIndex = suggestion?.chunkIndex ?? latestChunk.index;
       applySessionState(updated, nextChunkIndex, {
         preferredSuggestionId: suggestion?.id ?? null
       });
@@ -347,13 +361,13 @@ export function useRewriteActions(options: {
       showNotice(
         "info",
         suggestion
-          ? `已重新生成修改对 #${suggestion.sequence}（第 ${chunk.index + 1} 段）。`
-          : `第 ${chunk.index + 1} 段已重新生成。`
+          ? `已重新生成修改对 #${suggestion.sequence}（第 ${latestChunk.index + 1} 段）。`
+          : `第 ${latestChunk.index + 1} 段已重新生成。`
       );
     } catch (error) {
       try {
-        await refreshSessionState(session.id, {
-          preferredChunkIndex: chunk.index,
+        await refreshSessionState(latestSession.id, {
+          preferredChunkIndex: latestChunk.index,
           preserveSuggestion: true
         });
         setReviewView("diff");

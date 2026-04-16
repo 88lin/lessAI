@@ -1,53 +1,12 @@
-use std::{
-    env, fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
-
-use uuid::Uuid;
-use zip::{write::FileOptions, ZipWriter};
+use std::{fs, path::Path};
 
 use super::{
-    decode_text_file, ensure_document_can_ai_rewrite, ensure_document_can_write_back,
-    ensure_document_source_matches_session, load_document_source, write_document_content,
-    RegionSegmentationStrategy,
+    ensure_document_can_write_back, ensure_document_source_matches_session,
+    execute_document_writeback, load_document_source, normalize_text_against_source_layout,
+    DocumentWriteback, RegionSegmentationStrategy, WritebackMode,
 };
-use crate::document_snapshot::capture_document_snapshot;
-
-fn unique_test_dir(name: &str) -> PathBuf {
-    env::temp_dir().join(format!("lessai-{name}-{}", Uuid::new_v4()))
-}
-
-fn cleanup_dir(path: &Path) {
-    let _ = fs::remove_dir_all(path);
-}
-
-fn write_temp_file(name: &str, ext: &str, contents: &[u8]) -> (PathBuf, PathBuf) {
-    let root = unique_test_dir(name);
-    fs::create_dir_all(&root).expect("create root");
-    let target = root.join(format!("sample.{ext}"));
-    fs::write(&target, contents).expect("write temp file");
-    (root, target)
-}
-
-fn build_minimal_docx(document_xml: &str) -> Vec<u8> {
-    build_docx_entries(&[("word/document.xml", document_xml)])
-}
-
-fn build_docx_entries(entries: &[(&str, &str)]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let cursor = std::io::Cursor::new(&mut out);
-    let mut zip = ZipWriter::new(cursor);
-    let options = FileOptions::<()>::default();
-
-    for (name, contents) in entries {
-        zip.start_file(*name, options).expect("start zip entry");
-        zip.write_all(contents.as_bytes()).expect("write zip entry");
-    }
-
-    zip.finish().expect("finish docx");
-    out
-}
+use crate::document_snapshot::{capture_document_snapshot, SNAPSHOT_MISSING_ERROR};
+use crate::test_support::{build_docx_entries, build_minimal_docx, cleanup_dir, write_temp_file};
 
 fn rebuild_regions_text(loaded: &super::LoadedDocumentSource) -> String {
     loaded
@@ -60,25 +19,25 @@ fn rebuild_regions_text(loaded: &super::LoadedDocumentSource) -> String {
 #[test]
 fn decode_utf8_bom_text_file() {
     let bytes = [0xEF, 0xBB, 0xBF, b'a', b'b', b'c'];
-    assert_eq!(decode_text_file(&bytes).unwrap(), "abc");
+    assert_eq!(super::source::decode_text_file(&bytes).unwrap(), "abc");
 }
 
 #[test]
 fn decode_utf16_le_bom_text_file() {
     let bytes = [0xFF, 0xFE, b'A', 0x00, b'\n', 0x00];
-    assert_eq!(decode_text_file(&bytes).unwrap(), "A\n");
+    assert_eq!(super::source::decode_text_file(&bytes).unwrap(), "A\n");
 }
 
 #[test]
 fn decode_utf16_be_bom_text_file() {
     let bytes = [0xFE, 0xFF, 0x00, b'A', 0x00, b'\n'];
-    assert_eq!(decode_text_file(&bytes).unwrap(), "A\n");
+    assert_eq!(super::source::decode_text_file(&bytes).unwrap(), "A\n");
 }
 
 #[test]
 fn decode_invalid_text_file_returns_error() {
     let bytes = [0xFF, 0xFF, 0xFF];
-    assert!(decode_text_file(&bytes).is_err());
+    assert!(super::source::decode_text_file(&bytes).is_err());
 }
 
 #[test]
@@ -94,31 +53,48 @@ fn pdf_is_not_allowed_to_write_back() {
 #[test]
 fn pdf_is_allowed_to_continue_ai_rewrite_without_writeback() {
     let path = Path::new("/tmp/demo.pdf");
-    assert!(ensure_document_can_ai_rewrite(path, false, Some("pdf 不支持写回")).is_ok());
+    assert!(
+        super::writeback::ensure_document_can_ai_rewrite(path, false, Some("pdf 不支持写回"))
+            .is_ok()
+    );
 }
 
 #[test]
 fn docx_without_writeback_support_is_not_allowed_to_continue_ai_rewrite() {
     let path = Path::new("/tmp/demo.docx");
-    let error =
-        ensure_document_can_ai_rewrite(path, false, Some("当前 docx 暂不支持安全写回覆盖。"))
-            .expect_err("expected rewrite guard");
+    let error = super::writeback::ensure_document_can_ai_rewrite(
+        path,
+        false,
+        Some("当前 docx 暂不支持安全写回覆盖。"),
+    )
+    .expect_err("expected rewrite guard");
 
     assert!(error.contains("docx") || error.contains("写回"));
 }
 
 #[test]
+fn normalize_text_against_source_layout_reuses_plain_text_layout_rules() {
+    let normalized =
+        normalize_text_against_source_layout("原文  \r\n下一行\r\n", "新文  \n下一行  \n");
+
+    assert_eq!(normalized, "新文  \r\n下一行  \r\n");
+}
+
+#[test]
 fn write_document_content_rejects_external_change_for_plain_text() {
-    let root = unique_test_dir("plain-writeback-mismatch");
-    fs::create_dir_all(&root).expect("create root");
-    let target = root.join("draft.txt");
-    fs::write(&target, "原始内容").expect("seed text file");
+    let (root, target) = write_temp_file("plain-writeback-mismatch", "txt", "原始内容".as_bytes());
     let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
 
     fs::write(&target, "外部修改").expect("simulate external change");
 
-    let error = write_document_content(&target, "原始内容", Some(&snapshot), "新的内容")
-        .expect_err("expected mismatch error");
+    let error = execute_document_writeback(
+        &target,
+        "原始内容",
+        Some(&snapshot),
+        DocumentWriteback::Text("新的内容"),
+        WritebackMode::Write,
+    )
+    .expect_err("expected mismatch error");
     assert!(error.contains("原文件已在外部发生变化"));
 
     cleanup_dir(&root);
@@ -126,15 +102,13 @@ fn write_document_content_rejects_external_change_for_plain_text() {
 
 #[test]
 fn ensure_document_source_matches_session_rejects_external_change_for_plain_text() {
-    let root = unique_test_dir("plain-source-guard-mismatch");
-    fs::create_dir_all(&root).expect("create root");
-    let target = root.join("draft.txt");
-    fs::write(&target, "原始内容").expect("seed text file");
+    let (root, target) =
+        write_temp_file("plain-source-guard-mismatch", "txt", "原始内容".as_bytes());
     let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
 
     fs::write(&target, "外部修改").expect("simulate external change");
 
-    let error = ensure_document_source_matches_session(&target, "原始内容", Some(&snapshot))
+    let error = ensure_document_source_matches_session(&target, Some(&snapshot))
         .expect_err("expected mismatch error");
     assert!(error.contains("原文件已在外部发生变化"));
 
@@ -142,23 +116,29 @@ fn ensure_document_source_matches_session_rejects_external_change_for_plain_text
 }
 
 #[test]
-fn write_document_content_allows_plain_text_without_snapshot_when_source_matches() {
-    let root = unique_test_dir("plain-writeback-without-snapshot");
-    fs::create_dir_all(&root).expect("create root");
-    let target = root.join("draft.txt");
-    fs::write(&target, "原始内容").expect("seed text file");
+fn write_document_content_rejects_plain_text_without_snapshot_even_when_source_matches() {
+    let (root, target) = write_temp_file(
+        "plain-writeback-without-snapshot",
+        "txt",
+        "原始内容".as_bytes(),
+    );
 
-    write_document_content(&target, "原始内容", None, "新的内容")
-        .expect("write without snapshot when source matches");
+    let error = execute_document_writeback(
+        &target,
+        "原始内容",
+        None,
+        DocumentWriteback::Text("新的内容"),
+        WritebackMode::Write,
+    )
+    .expect_err("expected missing snapshot to be rejected");
 
-    let written = fs::read_to_string(&target).expect("read written file");
-    assert_eq!(written, "新的内容");
+    assert_eq!(error, SNAPSHOT_MISSING_ERROR);
 
     cleanup_dir(&root);
 }
 
 #[test]
-fn write_document_content_allows_docx_without_snapshot_when_source_matches() {
+fn write_document_content_rejects_docx_without_snapshot_even_when_source_matches() {
     let document_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
@@ -168,11 +148,16 @@ fn write_document_content_allows_docx_without_snapshot_when_source_matches() {
     let bytes = build_minimal_docx(document_xml);
     let (root, target) = write_temp_file("docx-writeback-without-snapshot", "docx", &bytes);
 
-    write_document_content(&target, "原文", None, "新正文")
-        .expect("docx write without snapshot when source matches");
+    let error = execute_document_writeback(
+        &target,
+        "原文",
+        None,
+        DocumentWriteback::Text("新正文"),
+        WritebackMode::Write,
+    )
+    .expect_err("expected missing snapshot to be rejected");
 
-    let loaded = load_document_source(&target, false).expect("reload docx");
-    assert_eq!(loaded.source_text, "新正文");
+    assert_eq!(error, SNAPSHOT_MISSING_ERROR);
 
     cleanup_dir(&root);
 }

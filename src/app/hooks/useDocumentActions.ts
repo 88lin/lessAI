@@ -1,7 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { startTransition, useCallback } from "react";
 import { openDocument, saveDocumentChunkEdits, saveDocumentEdits } from "../../lib/api";
-import type { DocumentSession, RewriteProgress } from "../../lib/types";
+import type { DocumentSession, DocumentSnapshot, RewriteProgress } from "../../lib/types";
 import { buildEditorChunkEdits, buildEditorTextFromChunks } from "../../lib/editorChunks";
 import {
   isDocxPath,
@@ -10,31 +10,28 @@ import {
   readableError,
   selectDefaultChunkIndex
 } from "../../lib/helpers";
-import type { NoticeTone } from "../../lib/constants";
-
-type ShowNotice = (
-  tone: NoticeTone,
-  message: string,
-  options?: { autoDismissMs?: number | null }
-) => void;
-
-type WithBusy = <T>(action: string, fn: () => Promise<T>) => Promise<T>;
-
-type ApplySessionState = (
-  session: DocumentSession,
-  nextChunkIndex: number,
-  options?: { preferredSuggestionId?: string | null }
-) => void;
+import {
+  refreshAllowedSessionOrNotify,
+  type ApplySessionState,
+  type RefreshSessionState,
+  type ShowNotice,
+  type WithBusy
+} from "./sessionActionShared";
 
 export function useDocumentActions(options: {
   busyAction: string | null;
   stageRef: React.MutableRefObject<"workbench" | "editor">;
   currentSessionRef: React.MutableRefObject<DocumentSession | null>;
+  activeChunkIndexRef: React.MutableRefObject<number>;
+  captureDocumentScrollPosition: () => number | null;
+  restoreDocumentScrollPosition: (scrollTop: number | null) => void;
   editorDirtyRef: React.MutableRefObject<boolean>;
   editorTextRef: React.MutableRefObject<string>;
   editorBaselineTextRef: React.MutableRefObject<string>;
+  editorBaseSnapshotRef: React.MutableRefObject<DocumentSnapshot | null>;
   editorChunkOverridesRef: React.MutableRefObject<Record<number, string>>;
   applySessionState: ApplySessionState;
+  refreshSessionState: RefreshSessionState;
   setStage: React.Dispatch<React.SetStateAction<"workbench" | "editor">>;
   setReviewView: React.Dispatch<React.SetStateAction<"diff" | "source" | "candidate">>;
   setEditorBaselineText: React.Dispatch<React.SetStateAction<string>>;
@@ -50,11 +47,16 @@ export function useDocumentActions(options: {
     busyAction,
     stageRef,
     currentSessionRef,
+    activeChunkIndexRef,
+    captureDocumentScrollPosition,
+    restoreDocumentScrollPosition,
     editorDirtyRef,
     editorTextRef,
     editorBaselineTextRef,
+    editorBaseSnapshotRef,
     editorChunkOverridesRef,
     applySessionState,
+    refreshSessionState,
     setStage,
     setReviewView,
     setEditorBaselineText,
@@ -106,6 +108,7 @@ export function useDocumentActions(options: {
       setStage("workbench");
       setEditorBaselineText("");
       setEditorText("");
+      editorBaseSnapshotRef.current = null;
       setEditorChunkOverrides({});
       closeSettings();
       showNotice(
@@ -120,6 +123,7 @@ export function useDocumentActions(options: {
     closeSettings,
     currentSessionRef,
     editorDirtyRef,
+    editorBaseSnapshotRef,
     setEditorBaselineText,
     setEditorChunkOverrides,
     setEditorText,
@@ -130,24 +134,34 @@ export function useDocumentActions(options: {
     withBusy
   ]);
 
-  const handleEnterEditor = useCallback(() => {
+  const handleEnterEditor = useCallback(async () => {
     const session = currentSessionRef.current;
     if (!session) {
       showNotice("warning", "请先打开一个文档。");
       return;
     }
 
-    if (isPdfPath(session.documentPath)) {
+    const latestSession = await refreshAllowedSessionOrNotify({
+      session,
+      refreshSessionState,
+      options: {
+        preserveChunk: true,
+        preserveSuggestion: true
+      },
+      showNotice,
+      errorPrefix: "进入编辑模式失败",
+      formatError: readableError,
+      allowed: (current) => current.plainTextEditorSafe,
+      blockedMessage: (current) => current.plainTextEditorBlockReason,
+      fallbackMessage: "当前文档暂不支持进入编辑模式。"
+    });
+    if (!latestSession) {
+      return;
+    }
+    if (isPdfPath(latestSession.documentPath)) {
       showNotice(
         "warning",
         "pdf 目前仅支持导入/改写/导出，暂不支持终稿编辑或写回覆盖。"
-      );
-      return;
-    }
-    if (!session.plainTextEditorSafe) {
-      showNotice(
-        "warning",
-        session.plainTextEditorBlockReason ?? "当前文档暂不支持进入编辑模式。"
       );
       return;
     }
@@ -157,15 +171,15 @@ export function useDocumentActions(options: {
       return;
     }
 
-    if (session.status === "running" || session.status === "paused") {
+    if (latestSession.status === "running" || latestSession.status === "paused") {
       showNotice("warning", "文档正在执行自动任务，请先取消后再编辑。");
       return;
     }
 
     const cleanSession =
-      session.status === "idle" &&
-      session.suggestions.length === 0 &&
-      session.chunks.every((chunk) => chunk.status === "idle" || chunk.skipRewrite);
+      latestSession.status === "idle" &&
+      latestSession.suggestions.length === 0 &&
+      latestSession.chunks.every((chunk) => chunk.status === "idle" || chunk.skipRewrite);
 
     if (!cleanSession) {
       showNotice(
@@ -177,16 +191,17 @@ export function useDocumentActions(options: {
 
     startTransition(() => {
       setStage("editor");
-      const baseline = isDocxPath(session.documentPath)
-        ? buildEditorTextFromChunks(session.chunks, {})
-        : normalizeNewlines(session.sourceText);
+      const baseline = isDocxPath(latestSession.documentPath)
+        ? buildEditorTextFromChunks(latestSession.chunks, {})
+        : normalizeNewlines(latestSession.sourceText);
       setEditorChunkOverrides({});
       setEditorBaselineText(baseline);
       setEditorText(baseline);
       setLiveProgress(null);
       setSettingsOpen(false);
     });
-    if (isDocxPath(session.documentPath)) {
+    editorBaseSnapshotRef.current = latestSession.sourceSnapshot ?? null;
+    if (isDocxPath(latestSession.documentPath)) {
       showNotice(
         "info",
         "docx 编辑模式已按可写回片段开放：锁定内容保持只读，可编辑范围与 AI 改写和写回范围一致。"
@@ -195,13 +210,15 @@ export function useDocumentActions(options: {
   }, [
     busyAction,
     currentSessionRef,
+    editorBaseSnapshotRef,
     setEditorBaselineText,
     setEditorText,
     setEditorChunkOverrides,
     setLiveProgress,
     setSettingsOpen,
     setStage,
-    showNotice
+    showNotice,
+    refreshSessionState
   ]);
 
   const handleDiscardEditorChanges = useCallback(() => {
@@ -230,8 +247,9 @@ export function useDocumentActions(options: {
       showNotice("warning", "你有未保存的手动编辑，请先保存或放弃修改。");
       return;
     }
+    editorBaseSnapshotRef.current = null;
     setStage("workbench");
-  }, [editorDirtyRef, setStage, showNotice, stageRef]);
+  }, [editorBaseSnapshotRef, editorDirtyRef, setStage, showNotice, stageRef]);
 
   const handleSaveEditor = useCallback(
     async (options?: { returnToWorkbench?: boolean }) => {
@@ -242,6 +260,7 @@ export function useDocumentActions(options: {
       if (!editorDirtyRef.current) {
         showNotice("info", "没有修改，无需保存。");
         if (options?.returnToWorkbench) {
+          editorBaseSnapshotRef.current = null;
           setStage("workbench");
         }
         return;
@@ -250,21 +269,31 @@ export function useDocumentActions(options: {
       const returnToWorkbench = Boolean(options?.returnToWorkbench);
       const actionKey = returnToWorkbench ? "save-edits-and-back" : "save-edits";
       const content = editorTextRef.current;
+      const preservedScrollTop = captureDocumentScrollPosition();
 
       try {
         const updated = await withBusy(actionKey, () => {
           if (!isDocxPath(session.documentPath)) {
-            return saveDocumentEdits(session.id, content);
+            return saveDocumentEdits(session.id, content, editorBaseSnapshotRef.current);
           }
 
           const edits = buildEditorChunkEdits(
             session.chunks,
             editorChunkOverridesRef.current
           );
-          return saveDocumentChunkEdits(session.id, edits);
+          return saveDocumentChunkEdits(
+            session.id,
+            edits,
+            editorBaseSnapshotRef.current
+          );
         });
 
-        applySessionState(updated, selectDefaultChunkIndex(updated));
+        applySessionState(
+          updated,
+          Math.min(activeChunkIndexRef.current, Math.max(0, updated.chunks.length - 1))
+        );
+        editorBaseSnapshotRef.current = updated.sourceSnapshot ?? null;
+        restoreDocumentScrollPosition(preservedScrollTop);
         setReviewView("diff");
         setLiveProgress(null);
 
@@ -278,6 +307,7 @@ export function useDocumentActions(options: {
         });
 
         if (returnToWorkbench) {
+          editorBaseSnapshotRef.current = null;
           setStage("workbench");
           showNotice("success", "已保存并返回工作台，可继续 AI 优化。");
           return;
@@ -289,9 +319,12 @@ export function useDocumentActions(options: {
       }
     },
     [
+      activeChunkIndexRef,
       applySessionState,
+      captureDocumentScrollPosition,
       currentSessionRef,
       editorDirtyRef,
+      editorBaseSnapshotRef,
       editorChunkOverridesRef,
       editorTextRef,
       setEditorBaselineText,
@@ -302,6 +335,7 @@ export function useDocumentActions(options: {
       setStage,
       showNotice,
       stageRef,
+      restoreDocumentScrollPosition,
       withBusy
     ]
   );

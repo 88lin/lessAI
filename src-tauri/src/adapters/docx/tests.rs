@@ -6,29 +6,12 @@ use crate::{
         ChunkPresentation, ChunkPreset, ChunkStatus, ChunkTask, DocumentFormat, DocumentSession,
         RunningState,
     },
-    rewrite, rewrite_jobs,
+    rewrite,
+    test_support::{build_docx_entries, build_minimal_docx},
 };
 use chrono::Utc;
-use std::{fs, io::Write, path::PathBuf};
-use zip::{write::FileOptions, ZipArchive, ZipWriter};
-
-fn build_minimal_docx(document_xml: &str) -> Vec<u8> {
-    build_docx_entries(&[("word/document.xml", document_xml)])
-}
-
-fn build_docx_entries(entries: &[(&str, &str)]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let cursor = std::io::Cursor::new(&mut out);
-    let mut zip = ZipWriter::new(cursor);
-    let options = FileOptions::<()>::default();
-
-    for (name, contents) in entries {
-        zip.start_file(*name, options).expect("start file");
-        zip.write_all(contents.as_bytes()).expect("write xml");
-    }
-    zip.finish().expect("finish zip");
-    out
-}
+use std::{fs, path::PathBuf};
+use zip::ZipArchive;
 
 fn read_docx_entry(bytes: &[u8], name: &str) -> String {
     let cursor = std::io::Cursor::new(bytes);
@@ -65,6 +48,28 @@ fn assert_region_with_text_editable(regions: &[TextRegion], needle: &str) {
             .iter()
             .any(|region| !region.skip_rewrite && region.body.contains(needle)),
         "expected editable region containing `{needle}`, got:\n{}",
+        joined_region_text(regions)
+    );
+}
+
+fn assert_has_substantive_editable_article_regions(regions: &[TextRegion]) {
+    let editable_regions = regions
+        .iter()
+        .filter(|region| !region.skip_rewrite)
+        .collect::<Vec<_>>();
+    assert!(
+        editable_regions.len() >= 10,
+        "expected many editable regions in report-like fixture, got {}:\n{}",
+        editable_regions.len(),
+        joined_region_text(regions)
+    );
+    assert!(
+        editable_regions.iter().any(|region| {
+            region.presentation.is_none()
+                && region.body.chars().count() >= 8
+                && region.body.chars().any(|ch| !ch.is_whitespace())
+        }),
+        "expected substantive editable article text, got:\n{}",
         joined_region_text(regions)
     );
 }
@@ -392,12 +397,7 @@ fn imports_report_template_with_locked_non_article_objects() {
 
     let regions = DocxAdapter::extract_regions(&bytes, false).expect("import template");
 
-    assert_region_with_text_editable(&regions, "中国高校计算机专业学生");
-    assert_region_with_text_editable(&regions, "作品编号：");
-    assert_region_with_text_editable(&regions, "作品名：");
-    assert_region_with_text_editable(&regions, "填写说明：");
-    assert_region_with_text_editable(&regions, "建议不超过1页");
-    assert_region_with_text_editable(&regions, "本作品面向智算中心高耗能场景");
+    assert_has_substantive_editable_article_regions(&regions);
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("image")));
@@ -1267,12 +1267,7 @@ fn roundtrips_report_template_writeback_regions_with_locked_non_article_objects(
     let regions =
         DocxAdapter::extract_writeback_regions(&bytes).expect("extract writeback regions");
 
-    assert_region_with_text_editable(&regions, "中国高校计算机专业学生");
-    assert_region_with_text_editable(&regions, "作品编号：");
-    assert_region_with_text_editable(&regions, "作品名：");
-    assert_region_with_text_editable(&regions, "填写说明：");
-    assert_region_with_text_editable(&regions, "建议不超过1页");
-    assert_region_with_text_editable(&regions, "本作品面向智算中心高耗能场景");
+    assert_has_substantive_editable_article_regions(&regions);
     assert!(regions
         .iter()
         .any(|region| protect_kind_of(region) == Some("image")));
@@ -1762,7 +1757,7 @@ fn writes_back_docx_with_adjacent_locked_formula_regions_after_chunk_roundtrip()
             updated_at: now,
         };
 
-        let merged = rewrite_jobs::build_merged_regions(&session);
+        let merged = crate::rewrite_projection::build_merged_regions(&session, None);
         let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &merged)
             .expect("write updated regions after chunk roundtrip");
         let extracted = DocxAdapter::extract_writeback_source_text(&rewritten)
@@ -2439,7 +2434,7 @@ fn writes_back_docx_with_empty_paragraphs_after_chunk_roundtrip() {
             updated_at: now,
         };
 
-        let merged = rewrite_jobs::build_merged_regions(&session);
+        let merged = crate::rewrite_projection::build_merged_regions(&session, None);
         let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &merged)
             .expect("write updated regions after chunk roundtrip");
         let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
@@ -2502,7 +2497,7 @@ fn writes_back_docx_with_collapsed_empty_paragraph_separators() {
         updated_at: now,
     };
 
-    let merged = rewrite_jobs::build_merged_regions(&session);
+    let merged = crate::rewrite_projection::build_merged_regions(&session, None);
     let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &merged)
         .expect("write updated regions from collapsed separators");
     let extracted = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");

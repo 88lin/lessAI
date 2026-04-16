@@ -28,20 +28,6 @@ pub fn resolve_target_indices(
     Ok(Some(selected))
 }
 
-pub fn find_next_manual_chunk(
-    chunks: &[ChunkTask],
-    target_indices: Option<&HashSet<usize>>,
-) -> Option<usize> {
-    chunks
-        .iter()
-        .find(|chunk| {
-            !chunk.skip_rewrite
-                && is_target_chunk(target_indices, chunk.index)
-                && matches!(chunk.status, ChunkStatus::Idle | ChunkStatus::Failed)
-        })
-        .map(|chunk| chunk.index)
-}
-
 pub fn find_next_manual_batch(
     chunks: &[ChunkTask],
     target_indices: Option<&HashSet<usize>>,
@@ -122,8 +108,7 @@ mod tests {
 
     use super::{
         build_auto_pending_queue, count_target_completed_chunks, count_target_total_chunks,
-        find_next_manual_batch, find_next_manual_chunk, resolve_target_indices,
-        take_next_auto_batch,
+        find_next_manual_batch, resolve_target_indices, take_next_auto_batch,
     };
     use crate::models::{ChunkStatus, ChunkTask};
 
@@ -165,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn find_next_manual_chunk_respects_target_subset() {
+    fn find_next_manual_batch_returns_first_rewriteable_chunk_when_batch_size_is_one() {
         let chunks = vec![
             chunk(0, ChunkStatus::Idle, false),
             chunk(1, ChunkStatus::Failed, false),
@@ -173,9 +158,9 @@ mod tests {
         ];
         let selected = resolve_target_indices(&chunks, Some(vec![2])).unwrap();
 
-        let next = find_next_manual_chunk(&chunks, selected.as_ref());
+        let next = find_next_manual_batch(&chunks, selected.as_ref(), 1);
 
-        assert_eq!(next, Some(2));
+        assert_eq!(next, vec![2]);
     }
 
     #[test]

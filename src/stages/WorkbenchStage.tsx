@@ -34,6 +34,7 @@ interface WorkbenchStageProps {
   editorDirty: boolean;
   editorHasSelection: boolean;
   editorRef: MutableRefObject<DocumentEditorHandle | null>;
+  documentScrollRef: MutableRefObject<HTMLDivElement | null>;
   onOpenDocument: () => void;
   onSelectChunk: (index: number, options?: { multiSelect?: boolean }) => void;
   onSelectSuggestion: (suggestionId: string) => void;
@@ -77,6 +78,7 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   editorDirty,
   editorHasSelection,
   editorRef,
+  documentScrollRef,
   onOpenDocument,
   onSelectChunk,
   onSelectSuggestion,
@@ -189,6 +191,7 @@ export const WorkbenchStage = memo(function WorkbenchStage({
             editorDirty={editorDirty}
             editorHasSelection={editorHasSelection}
             editorRef={editorRef}
+            documentScrollRef={documentScrollRef}
             onOpenDocument={onOpenDocument}
             onOpenSettings={onOpenSettings}
             onSelectChunk={onSelectChunk}
