@@ -1,5 +1,5 @@
 use crate::{
-    adapters::TextRegion,
+    adapters::{tex::TexAdapter, TextRegion},
     documents::{load_document_source, source::writeback_slots_from_regions},
     models::{SegmentationPreset, TextPresentation},
     rewrite_unit::build_rewrite_units,
@@ -62,6 +62,46 @@ fn writeback_slots_preserve_paragraph_boundaries_for_rewrite_units() {
 
     assert_eq!(units.len(), 2);
     assert_eq!(units[0].display_text, "第一段\n\n");
+    assert_eq!(units[1].display_text, "第二段");
+}
+
+#[test]
+fn tex_single_source_newline_does_not_split_paragraph_units() {
+    let regions = TexAdapter::split_regions("第一句。\n第二句。", false);
+    let slots = writeback_slots_from_regions(&regions);
+
+    let units = build_rewrite_units(&slots, SegmentationPreset::Paragraph);
+
+    assert_eq!(units.len(), 1);
+    assert_eq!(units[0].display_text, "第一句。\n第二句。");
+}
+
+#[test]
+fn tex_blank_line_boundaries_split_heading_and_paragraph_units() {
+    let text = "\\section{标题}\n\n第一段第一行。\n第一段第二行。\n\n第二段。";
+    let regions = TexAdapter::split_regions(text, false);
+    let slots = writeback_slots_from_regions(&regions);
+
+    let units = build_rewrite_units(&slots, SegmentationPreset::Paragraph);
+
+    assert_eq!(units.len(), 3);
+    assert_eq!(units[0].display_text, "\\section{标题}\n\n");
+    assert_eq!(units[1].display_text, "第一段第一行。\n第一段第二行。\n\n");
+    assert_eq!(units[2].display_text, "第二段。");
+}
+
+#[test]
+fn crlf_blank_line_boundaries_split_paragraph_units() {
+    let slots = writeback_slots_from_regions(&[TextRegion {
+        body: "第一段\r\n\r\n第二段".to_string(),
+        skip_rewrite: false,
+        presentation: None,
+    }]);
+
+    let units = build_rewrite_units(&slots, SegmentationPreset::Paragraph);
+
+    assert_eq!(units.len(), 2);
+    assert_eq!(units[0].display_text, "第一段\r\n\r\n");
     assert_eq!(units[1].display_text, "第二段");
 }
 

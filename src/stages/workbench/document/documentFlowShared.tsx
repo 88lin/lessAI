@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { DocumentSession, RewriteSuggestion, RewriteUnit, WritebackSlot } from "../../../lib/types";
 import type { DocumentView } from "../hooks/useCopyDocument";
 import type { ClientDocumentFormat } from "../../../lib/protectedText";
@@ -72,15 +72,18 @@ function renderSlots(
   documentFormat: ClientDocumentFormat,
   keyPrefix: string
 ) {
-  return slots.map((slot) => (
-    <span key={`${keyPrefix}-${slot.id}`} className={slotPresentationClass(slot)}>
-      {renderSlotText(slot.text, showMarkers, documentFormat, `${keyPrefix}-${slot.id}`)}
-    </span>
+  return slots.map((slot, index) => (
+    <Fragment key={`${keyPrefix}-${slot.id}`}>
+      <span className={slotPresentationClass(slot)}>
+        {renderSlotText(slot.text, showMarkers, documentFormat, `${keyPrefix}-${slot.id}`)}
+      </span>
+      {index < slots.length - 1 ? slot.separatorAfter : ""}
+    </Fragment>
   ));
 }
 
 function rewriteUnitSeparatorText(slots: ReadonlyArray<WritebackSlot>) {
-  return slots.map((slot) => slot.separatorAfter).join("");
+  return slots[slots.length - 1]?.separatorAfter ?? "";
 }
 
 function trimTrailingSeparatorFromDiffSpans(

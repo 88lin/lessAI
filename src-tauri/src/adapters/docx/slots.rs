@@ -1,4 +1,7 @@
-use crate::rewrite_unit::{WritebackSlot, WritebackSlotRole};
+use crate::{
+    rewrite_unit::{WritebackSlot, WritebackSlotRole},
+    text_boundaries::split_text_chunks_for_rewrite_slots,
+};
 
 use super::{
     display::{build_display_blocks, DisplayBlockKind},
@@ -88,7 +91,7 @@ fn build_paragraph_slots(
         let is_last = position + 1 == region_indices.len();
         let editable = !paragraph_is_locked(paragraph, region, rewrite_headings);
         let anchor = format!("docx:p{block_index}:r{region_index}");
-        let mut fragments = split_region_slot_fragments(region.text());
+        let mut fragments = split_region_slot_fragments(region.text(), editable);
         if let Some(last) = fragments.last_mut() {
             if is_last {
                 last.separator_after
@@ -131,7 +134,15 @@ struct SlotFragment {
     separator_after: String,
 }
 
-fn split_region_slot_fragments(text: &str) -> Vec<SlotFragment> {
+fn split_region_slot_fragments(text: &str, editable: bool) -> Vec<SlotFragment> {
+    let fragments = split_region_line_fragments(text);
+    if !editable {
+        return fragments;
+    }
+    split_editable_fragments_by_clause_boundary(fragments)
+}
+
+fn split_region_line_fragments(text: &str) -> Vec<SlotFragment> {
     if !text.contains('\n') {
         return vec![SlotFragment {
             text: text.to_string(),
@@ -181,6 +192,41 @@ fn split_region_slot_fragments(text: &str) -> Vec<SlotFragment> {
     }
 
     fragments
+}
+
+fn split_editable_fragments_by_clause_boundary(fragments: Vec<SlotFragment>) -> Vec<SlotFragment> {
+    let mut atomic = Vec::new();
+
+    for fragment in fragments {
+        if !text_has_visible_content(&fragment.text) {
+            atomic.push(fragment);
+            continue;
+        }
+
+        let parts = split_text_chunks_for_rewrite_slots(&fragment.text);
+        if parts.len() <= 1 {
+            atomic.push(fragment);
+            continue;
+        }
+
+        append_atomic_parts(&mut atomic, parts, fragment.separator_after);
+    }
+
+    atomic
+}
+
+fn append_atomic_parts(target: &mut Vec<SlotFragment>, parts: Vec<&str>, final_separator: String) {
+    let last_index = parts.len().saturating_sub(1);
+    for (index, part) in parts.into_iter().enumerate() {
+        target.push(SlotFragment {
+            text: part.to_string(),
+            separator_after: if index == last_index {
+                final_separator.clone()
+            } else {
+                String::new()
+            },
+        });
+    }
 }
 
 fn locked_block_slot(

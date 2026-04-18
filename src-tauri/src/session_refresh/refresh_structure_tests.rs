@@ -2,8 +2,10 @@ use std::path::Path;
 
 use super::refresh_session_from_loaded;
 use crate::{
+    adapters::TextRegion,
+    documents::writeback_slots_from_regions,
     documents::LoadedDocumentSource,
-    models::{DocumentSnapshot, RewriteUnitStatus, SegmentationPreset},
+    models::{DocumentSnapshot, RewriteUnitStatus, RunningState, SegmentationPreset},
     rewrite_unit::RewriteUnit,
     session_refresh::test_support::{
         dirty_session_with_applied_suggestion, loaded_docx, sample_session,
@@ -192,6 +194,74 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
     assert_eq!(
         refreshed.session.rewrite_units[0].display_text,
         "第一句。第二句。"
+    );
+}
+
+#[test]
+fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
+    let now = chrono::Utc::now();
+    let text = "第一句。第二句，第三句。";
+    let existing = crate::models::DocumentSession {
+        id: "session-text-1".to_string(),
+        title: "示例".to_string(),
+        document_path: "/tmp/example.tex".to_string(),
+        source_text: text.to_string(),
+        source_snapshot: None,
+        normalized_text: text.to_string(),
+        write_back_supported: true,
+        write_back_block_reason: None,
+        plain_text_editor_safe: true,
+        plain_text_editor_block_reason: None,
+        segmentation_preset: Some(SegmentationPreset::Paragraph),
+        rewrite_headings: Some(false),
+        writeback_slots: vec![editable_slot("slot-0", 0, text)],
+        rewrite_units: vec![RewriteUnit {
+            id: "unit-0".to_string(),
+            order: 0,
+            slot_ids: vec!["slot-0".to_string()],
+            display_text: text.to_string(),
+            segmentation_preset: SegmentationPreset::Paragraph,
+            status: RewriteUnitStatus::Idle,
+            error_message: None,
+        }],
+        suggestions: Vec::new(),
+        next_suggestion_sequence: 1,
+        status: RunningState::Idle,
+        created_at: now,
+        updated_at: now,
+    };
+    let loaded = LoadedDocumentSource {
+        source_text: text.to_string(),
+        writeback_slots: writeback_slots_from_regions(&[TextRegion {
+            body: text.to_string(),
+            skip_rewrite: false,
+            presentation: None,
+        }]),
+        write_back_supported: true,
+        write_back_block_reason: None,
+        plain_text_editor_safe: true,
+        plain_text_editor_block_reason: None,
+    };
+
+    let refreshed = refresh_session_from_loaded(
+        &existing,
+        Path::new("/tmp/example.tex"),
+        loaded,
+        SegmentationPreset::Sentence,
+        false,
+        None,
+    );
+
+    assert!(refreshed.changed);
+    assert_eq!(
+        refreshed.session.segmentation_preset,
+        Some(SegmentationPreset::Sentence)
+    );
+    assert_eq!(refreshed.session.rewrite_units.len(), 2);
+    assert_eq!(refreshed.session.rewrite_units[0].display_text, "第一句。");
+    assert_eq!(
+        refreshed.session.rewrite_units[1].display_text,
+        "第二句，第三句。"
     );
 }
 

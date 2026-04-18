@@ -29,6 +29,7 @@ mod session_refresh;
 mod settings_validation;
 mod state;
 mod storage;
+mod text_boundaries;
 #[cfg(test)]
 mod test_support;
 

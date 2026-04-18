@@ -75,13 +75,53 @@ function findBareUrlEnd(text: string, start: number): number | null {
   let end = start;
   while (end < text.length) {
     const ch = text[end];
-    if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === '"' || ch === "'" || ch === "]") {
+    if (isMarkdownBareUrlStop(ch)) {
       break;
     }
     end += 1;
   }
   while (end > start && /[.,;:!?，。；：！？]/.test(text[end - 1])) end -= 1;
   return end > start ? end : null;
+}
+
+function isMarkdownBareUrlStop(ch: string): boolean {
+  return (
+    /\s/.test(ch) ||
+    [
+      "<",
+      ">",
+      '"',
+      "'",
+      "[",
+      "]",
+      "(",
+      ")",
+      "{",
+      "}",
+      "（",
+      "）",
+      "【",
+      "】",
+      "「",
+      "」",
+      "『",
+      "』",
+      "《",
+      "》",
+      "〈",
+      "〉",
+      "“",
+      "”",
+      "‘",
+      "’",
+      "，",
+      "。",
+      "；",
+      "：",
+      "！",
+      "？"
+    ].includes(ch)
+  );
 }
 
 function findMarkdownInlineMathEnd(text: string, start: number): number | null {

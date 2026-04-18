@@ -1275,23 +1275,97 @@ fn find_inline_html_tag_end(line: &str, start: usize) -> Option<usize> {
 }
 
 fn find_bare_url_end(line: &str, start: usize) -> usize {
-    let bytes = line.as_bytes();
     let mut end = start;
-    while end < bytes.len() && !bytes[end].is_ascii_whitespace() {
-        end += 1;
+    while end < line.len() {
+        let Some(ch) = line[end..].chars().next() else {
+            break;
+        };
+        if is_bare_url_stop(ch) {
+            break;
+        }
+        end += ch.len_utf8();
     }
 
-    // 去掉结尾常见标点（避免把 `)` `,` 等一起保护导致改写区断裂过大）。
     while end > start {
-        match bytes[end - 1] {
-            b'.' | b',' | b';' | b':' | b'!' | b'?' | b')' | b']' | b'}' | b'"' | b'\'' => {
-                end -= 1;
-            }
-            _ => break,
+        let Some(ch) = line[..end].chars().next_back() else {
+            break;
+        };
+        if !is_trailing_bare_url_punctuation(ch) {
+            break;
         }
+        end -= ch.len_utf8();
     }
 
     end.max(start)
+}
+
+fn is_bare_url_stop(ch: char) -> bool {
+    ch.is_whitespace()
+        || matches!(
+            ch,
+            '<'
+                | '>'
+                | '"'
+                | '\''
+                | '['
+                | ']'
+                | '('
+                | ')'
+                | '{'
+                | '}'
+                | '（'
+                | '）'
+                | '【'
+                | '】'
+                | '「'
+                | '」'
+                | '『'
+                | '』'
+                | '《'
+                | '》'
+                | '〈'
+                | '〉'
+                | '“'
+                | '”'
+                | '‘'
+                | '’'
+                | '，'
+                | '。'
+                | '；'
+                | '：'
+                | '！'
+                | '？'
+        )
+}
+
+fn is_trailing_bare_url_punctuation(ch: char) -> bool {
+    matches!(
+        ch,
+        '.' | ','
+            | ';'
+            | ':'
+            | '!'
+            | '?'
+            | '，'
+            | '。'
+            | '；'
+            | '：'
+            | '！'
+            | '？'
+            | ')'
+            | ']'
+            | '}'
+            | '）'
+            | '】'
+            | '」'
+            | '』'
+            | '》'
+            | '〉'
+            | '"'
+            | '\''
+            | '”'
+            | '’'
+    )
 }
 
 fn is_math_block_delimiter_line(line: &str) -> bool {

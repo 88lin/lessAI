@@ -239,7 +239,7 @@ fn extract_writeback_slots_split_manual_line_breaks_into_separate_slots() {
 }
 
 #[test]
-fn paragraph_preset_splits_manual_line_breaks_into_distinct_editable_units() {
+fn paragraph_preset_keeps_manual_line_breaks_inside_same_editable_unit() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
@@ -252,14 +252,7 @@ fn paragraph_preset_splits_manual_line_breaks_into_distinct_editable_units() {
 
     let editable_units = editable_unit_texts(&bytes, SegmentationPreset::Paragraph);
 
-    assert_eq!(
-        editable_units,
-        vec![
-            "第一行\n".to_string(),
-            "第二行\n".to_string(),
-            "第三行".to_string()
-        ]
-    );
+    assert_eq!(editable_units, vec!["第一行\n第二行\n第三行".to_string()]);
 }
 
 #[test]
@@ -2700,23 +2693,27 @@ fn report_template_paragraph_chunks_do_not_expose_empty_editable_chunks() {
 }
 
 #[test]
-fn report_template_paragraph_chunks_split_manual_line_break_samples() {
+fn report_template_paragraph_chunks_keep_manual_line_break_samples_together() {
     let bytes = load_repo_docx_fixture("04-3 作品报告（大数据应用赛，2025版）模板.docx");
     let chunks = editable_unit_texts(&bytes, SegmentationPreset::Paragraph);
 
     assert!(
-        chunks.iter().any(|chunk| chunk == "以下为数据样例：\n"),
-        "expected sample intro line to be isolated as its own paragraph chunk, got:\n{:?}",
+        chunks.iter().any(|chunk| {
+            chunk.contains("以下为数据样例：")
+                && chunk.contains("样例1（表格数据）：")
+                && chunk.contains("001, 2024-01-15, 类型1, 23.5, 87.2, 正常")
+                && !chunk.contains("样例2（JSON数据）：")
+        }),
+        "expected sample intro and csv lines to stay in one paragraph chunk, got:\n{:?}",
         chunks
     );
     assert!(
-        chunks.iter().any(|chunk| chunk == "样例1（表格数据）：\n"),
-        "expected table sample header to be isolated as its own paragraph chunk, got:\n{:?}",
-        chunks
-    );
-    assert!(
-        chunks.iter().any(|chunk| chunk == "样例2（JSON数据）：\n"),
-        "expected json sample header to be isolated as its own paragraph chunk, got:\n{:?}",
+        chunks.iter().any(|chunk| {
+            chunk.contains("样例2（JSON数据）：")
+                && chunk.contains("time: 2024-01-17 10:23:15")
+                && chunk.contains("label: 正常")
+        }),
+        "expected json sample lines to stay in one paragraph chunk, got:\n{:?}",
         chunks
     );
 }

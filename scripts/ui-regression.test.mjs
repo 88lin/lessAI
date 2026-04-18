@@ -509,6 +509,16 @@ function renderTexMarkup(text) {
   );
 }
 
+function renderMarkdownMarkup(text) {
+  return renderToStaticMarkup(
+    React.createElement(
+      React.Fragment,
+      null,
+      renderInlineProtectedText(text, "markdown", "ui-regression")
+    )
+  );
+}
+
 // 1) 审阅区动作按钮不应依赖横向滚动（避免“左滑右滑”）
 assertNoRule(
   part02,
@@ -568,6 +578,16 @@ assertMatches(
   textbfMarkup,
   /\\textbf\{<\/span>很重要<span[^>]*class="inline-protected"[^>]*>\}<\/span>/,
   "期望 \\textbf{...} 只高亮命令语法，不锁死正文参数"
+);
+
+// 12) Markdown 裸 URL 遇到中文全角标点时，保护区必须只覆盖 URL 本体
+const markdownBareUrlMarkup = renderMarkdownMarkup(
+  "裸地址 https://example.com/report/final；后面的中文正文不应被一起判成保护区。"
+);
+assertMatches(
+  markdownBareUrlMarkup,
+  /<span[^>]*class="inline-protected"[^>]*>https:\/\/example\.com\/report\/final<\/span>；后面的中文正文/,
+  "期望 Markdown 裸 URL 在中文全角标点前正确收口"
 );
 
 console.log("[ui-regression] OK");

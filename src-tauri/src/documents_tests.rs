@@ -6,6 +6,8 @@ use super::{
     DocumentWriteback, WritebackMode,
 };
 use crate::document_snapshot::{capture_document_snapshot, SNAPSHOT_MISSING_ERROR};
+use crate::models::SegmentationPreset;
+use crate::rewrite_unit::build_rewrite_units;
 use crate::test_support::{build_docx_entries, build_minimal_docx, cleanup_dir, write_temp_file};
 
 fn rebuild_source_text(loaded: &super::LoadedDocumentSource) -> String {
@@ -186,6 +188,50 @@ fn load_markdown_source_returns_writeback_slots() {
 }
 
 #[test]
+fn load_markdown_source_protects_mixed_inline_structures_without_locking_prose() {
+    let markdown = "这一整段故意写得比较长，用来观察 Markdown 正文在复杂混排场景下的稳定性：它同时包含中文说明、English phrases、数字 0.618、版本号 `v3.1.4`、引用式链接 [深入说明][docs]、行内代码 `cargo test docx -- --nocapture`、公式 $f(x)=x^2$、引用标记 [@ref-demo]、脚注引用[^note1]、以及一个裸地址 https://example.com/report/final；段落模式应优先保证整体可读，整句模式应主要在真正句末切分，小句模式则可以更细，但任何模式都不应吞掉 Markdown 语法或把一个小结构拆成一串不可理解的碎片。\n";
+    let (root, target) = write_temp_file("markdown-inline-guards", "md", markdown.as_bytes());
+
+    let loaded = load_document_source(&target, false).expect("load markdown");
+
+    assert_eq!(loaded.source_text, markdown);
+    assert_eq!(rebuild_source_text(&loaded), markdown);
+
+    for protected in [
+        "`v3.1.4`",
+        "[深入说明][docs]",
+        "`cargo test docx -- --nocapture`",
+        "$f(x)=x^2$",
+        "[@ref-demo]",
+        "[^note1]",
+        "https://example.com/report/final",
+    ] {
+        let slot = loaded
+            .writeback_slots
+            .iter()
+            .find(|slot| slot.text == protected)
+            .unwrap_or_else(|| panic!("missing protected slot: {protected}"));
+        assert!(!slot.editable, "expected protected slot to stay locked: {protected}");
+    }
+
+    for editable in [
+        "这一整段故意写得比较长",
+        "English phrases",
+        "段落模式应优先保证整体可读",
+        "任何模式都不应吞掉 Markdown 语法",
+    ] {
+        let slot = loaded
+            .writeback_slots
+            .iter()
+            .find(|slot| slot.text.contains(editable))
+            .unwrap_or_else(|| panic!("missing editable slot: {editable}"));
+        assert!(slot.editable, "expected prose slot to stay editable: {editable}");
+    }
+
+    cleanup_dir(&root);
+}
+
+#[test]
 fn load_tex_source_returns_writeback_slots() {
     let tex = "\\section{标题}\n正文和公式 $x+y$。\n% 注释\n";
     let (root, target) = write_temp_file("tex-source", "tex", tex.as_bytes());
@@ -208,16 +254,42 @@ fn load_tex_source_returns_writeback_slots() {
 }
 
 #[test]
-fn load_plain_text_source_returns_single_editable_slot() {
+fn load_plain_text_source_returns_atomic_editable_slots() {
     let text = "第一句。\n第二句。";
     let (root, target) = write_temp_file("plain-source", "txt", text.as_bytes());
 
     let loaded = load_document_source(&target, false).expect("load text");
 
     assert_eq!(loaded.source_text, text);
-    assert_eq!(loaded.writeback_slots.len(), 1);
-    assert_eq!(loaded.writeback_slots[0].text, text);
-    assert!(loaded.writeback_slots[0].editable);
+    assert_eq!(rebuild_source_text(&loaded), text);
+    assert_eq!(loaded.writeback_slots.len(), 2);
+    assert_eq!(loaded.writeback_slots[0].text, "第一句。");
+    assert_eq!(loaded.writeback_slots[0].separator_after, "\n");
+    assert_eq!(loaded.writeback_slots[1].text, "第二句。");
+    assert!(loaded.writeback_slots.iter().all(|slot| slot.editable));
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn load_tex_source_uses_atomic_slots_so_segmentation_preset_changes_unit_count() {
+    let tex = "\\section{标题}\n\n第一句。第二句，第三句。";
+    let (root, target) = write_temp_file("tex-segmentation", "tex", tex.as_bytes());
+
+    let loaded = load_document_source(&target, false).expect("load tex");
+
+    let paragraph_units = build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Paragraph);
+    let sentence_units = build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Sentence);
+    let clause_units = build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Clause);
+
+    assert_eq!(paragraph_units.len(), 2);
+    assert_eq!(sentence_units.len(), 3);
+    assert_eq!(clause_units.len(), 4);
+    assert_eq!(sentence_units[1].display_text, "第一句。");
+    assert_eq!(sentence_units[2].display_text, "第二句，第三句。");
+    assert_eq!(clause_units[1].display_text, "第一句。");
+    assert_eq!(clause_units[2].display_text, "第二句，");
+    assert_eq!(clause_units[3].display_text, "第三句。");
 
     cleanup_dir(&root);
 }

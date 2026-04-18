@@ -1,8 +1,10 @@
-use crate::models::{RewriteUnitStatus, SegmentationPreset};
+use crate::{
+    models::{RewriteUnitStatus, SegmentationPreset},
+    text_boundaries::contains_paragraph_separator,
+};
 
 use super::{RewriteUnit, WritebackSlot, WritebackSlotRole};
 
-const PARAGRAPH_SEPARATOR: &str = "\n\n";
 const SENTENCE_BOUNDARIES: [char; 8] = ['。', '！', '？', '；', '!', '?', ';', '.'];
 const CLAUSE_BOUNDARIES: [char; 10] = ['。', '！', '？', '；', '!', '?', ';', '.', '，', ','];
 const CLOSING_PUNCTUATION: [char; 13] = [
@@ -70,15 +72,21 @@ fn should_close_unit(current: &[&WritebackSlot], preset: SegmentationPreset) -> 
         return false;
     };
     if last.role == WritebackSlotRole::ParagraphBreak
-        || last.separator_after.contains(PARAGRAPH_SEPARATOR)
-        || last.separator_after.contains('\n')
+        || contains_paragraph_separator(&last.separator_after)
     {
         return true;
     }
     if preset == SegmentationPreset::Paragraph {
         return false;
     }
+    if has_inline_line_break_boundary(last) {
+        return true;
+    }
     ends_semantic_group(current, preset)
+}
+
+fn has_inline_line_break_boundary(slot: &WritebackSlot) -> bool {
+    slot.anchor.is_some() && slot.separator_after.contains('\n')
 }
 
 fn is_standalone_separator_unit(current: &[&WritebackSlot]) -> bool {

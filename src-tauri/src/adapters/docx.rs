@@ -11,6 +11,9 @@ mod package;
 mod package_tests;
 #[path = "docx/placeholders.rs"]
 mod placeholders;
+#[cfg(test)]
+#[path = "docx/segmentation_tests.rs"]
+mod segmentation_tests;
 #[path = "docx/simple.rs"]
 mod simple;
 #[path = "docx/slots.rs"]

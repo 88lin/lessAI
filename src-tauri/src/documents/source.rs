@@ -1,15 +1,17 @@
 use std::{fs, path::Path};
-
 use uuid::Uuid;
-
 use crate::{
     adapters, models,
     rewrite_unit::{WritebackSlot, WritebackSlotRole},
+    text_boundaries::{
+        contains_paragraph_separator, split_text_chunks_by_paragraph_separator,
+        split_text_chunks_for_rewrite_slots,
+        trailing_paragraph_separator_range,
+    },
 };
 
 pub(super) const PDF_WRITE_BACK_UNSUPPORTED: &str =
     "当前文件为 .pdf：暂不支持写回覆盖（PDF 不是纯文本格式）。请使用“导出”为 .txt 后再进行后续排版。";
-const PRESERVED_BLOCK_SEPARATOR: &str = "\n\n";
 
 pub(crate) fn document_session_id(document_path: &str) -> String {
     let namespace = Uuid::from_bytes([
@@ -72,31 +74,50 @@ fn plain_text_regions(text: &str) -> Vec<adapters::TextRegion> {
 }
 
 pub(crate) fn writeback_slots_from_regions(regions: &[adapters::TextRegion]) -> Vec<WritebackSlot> {
-    regions
-        .iter()
-        .enumerate()
-        .map(|(index, region)| build_writeback_slot(index, region))
-        .collect()
+    let mut slots = Vec::new();
+    for region in regions {
+        for body in split_region_slot_chunks(region) {
+            push_region_slot_part(&mut slots, region, body);
+        }
+    }
+    slots
 }
 
-fn build_writeback_slot(index: usize, region: &adapters::TextRegion) -> WritebackSlot {
-    let (text, separator_after) = split_region_body_and_separator(&region.body);
+fn push_region_slot_part(slots: &mut Vec<WritebackSlot>, region: &adapters::TextRegion, body: &str) {
+    let (text, separator_after) = split_region_body_and_separator(body);
+    if text.is_empty() && !separator_after.is_empty() {
+        if let Some(last) = slots.last_mut() {
+            last.separator_after.push_str(&separator_after);
+            return;
+        }
+    }
+    slots.push(build_writeback_slot(
+        slots.len(),
+        text,
+        separator_after,
+        region.skip_rewrite,
+        region.presentation.clone(),
+    ));
+}
+
+fn build_writeback_slot(
+    index: usize,
+    text: String,
+    separator_after: String,
+    skip_rewrite: bool,
+    presentation: Option<models::TextPresentation>,
+) -> WritebackSlot {
     let text_empty = text.is_empty();
     let whitespace_only = !text.is_empty() && text.chars().all(|ch| ch.is_whitespace());
-    let editable = !region.skip_rewrite && !whitespace_only && !text_empty;
+    let editable = !skip_rewrite && !whitespace_only && !text_empty;
 
     WritebackSlot {
         id: format!("slot-{index}"),
         order: index,
         text,
         editable,
-        role: slot_role(
-            text_empty,
-            region.skip_rewrite,
-            whitespace_only,
-            &separator_after,
-        ),
-        presentation: region.presentation.clone(),
+        role: slot_role(text_empty, skip_rewrite, whitespace_only, &separator_after),
+        presentation,
         anchor: None,
         separator_after,
     }
@@ -108,7 +129,7 @@ fn slot_role(
     whitespace_only: bool,
     separator_after: &str,
 ) -> WritebackSlotRole {
-    if text_empty && separator_after.contains(PRESERVED_BLOCK_SEPARATOR) {
+    if text_empty && contains_paragraph_separator(separator_after) {
         return WritebackSlotRole::ParagraphBreak;
     }
     if skip_rewrite || whitespace_only {
@@ -118,10 +139,21 @@ fn slot_role(
 }
 
 fn split_region_body_and_separator(body: &str) -> (String, String) {
-    if let Some(text) = body.strip_suffix(PRESERVED_BLOCK_SEPARATOR) {
-        return (text.to_string(), PRESERVED_BLOCK_SEPARATOR.to_string());
+    if let Some((start, end)) = trailing_paragraph_separator_range(body) {
+        return (body[..start].to_string(), body[start..end].to_string());
     }
     split_trailing_whitespace(body)
+}
+
+fn split_region_body_chunks(body: &str) -> Vec<&str> {
+    split_text_chunks_by_paragraph_separator(body)
+}
+
+fn split_region_slot_chunks<'a>(region: &'a adapters::TextRegion) -> Vec<&'a str> {
+    if region.skip_rewrite {
+        return split_region_body_chunks(&region.body);
+    }
+    split_text_chunks_for_rewrite_slots(&region.body)
 }
 
 fn split_trailing_whitespace(text: &str) -> (String, String) {
