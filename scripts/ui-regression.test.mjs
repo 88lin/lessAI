@@ -215,6 +215,16 @@ assertNotIncludes(
   "chunkNodesRef.current[firstEditable.index]?.focus();\n    }, [session.chunks]);",
   "docx 编辑器写回后不应因为 chunks 变化重新聚焦首个可编辑块"
 );
+assertIncludes(
+  docxSlotEditor,
+  "session.rewriteUnits.map((rewriteUnit) => {",
+  "docx 编辑页应与主页面一致，按 rewrite unit 作为展示分组骨架"
+);
+assertNotIncludes(
+  docxSlotEditor,
+  "session.writebackSlots.map((slot) => {",
+  "docx 编辑页不应再按 writeback slot 平铺渲染，避免与主页面分块不一致"
+);
 assertNotIncludes(
   documentActions,
   "applySessionState(updated, selectDefaultChunkIndex(updated));",

@@ -1,30 +1,27 @@
 import {
-  Fragment,
   forwardRef,
   memo,
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef
 } from "react";
-import type { ClipboardEvent } from "react";
 
 import {
   applyEditorSlotOverride,
   buildEditorSlotEdits,
   buildEditorTextFromSession,
-  resolveEditorSlotText,
+  resolveEditorSlotText
 } from "../../../lib/editorSlots";
 import { normalizeNewlines } from "../../../lib/helpers";
-import type { WritebackSlot } from "../../../lib/types";
 import type {
   DocumentEditorHandle,
   DocumentEditorProps,
   DocumentEditorSelectionSnapshot,
   DocumentEditorPreviewResult,
-  SlotSelectionSnapshot,
+  SlotSelectionSnapshot
 } from "./documentEditorTypes";
+import { DocxEditorUnit } from "./DocxEditorUnit";
 
 function selectionPointOffset(node: HTMLElement, container: Node, offset: number) {
   const range = document.createRange();
@@ -78,84 +75,6 @@ function replaceSelectionText(
   } as const;
 }
 
-function slotPresentationClass(slot: WritebackSlot) {
-  const presentation = slot.presentation;
-  return [
-    "docx-editor-slot",
-    slot.editable ? "is-editable" : "is-locked",
-    presentation?.bold ? "is-bold" : "",
-    presentation?.italic ? "is-italic" : "",
-    presentation?.underline ? "is-underline" : "",
-    presentation?.href ? "is-link" : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-const EditableSlotSpan = memo(function EditableSlotSpan({
-  slot,
-  text,
-  busy,
-  registerNode,
-  onChange,
-}: {
-  slot: WritebackSlot;
-  text: string;
-  busy: boolean;
-  registerNode: (slotId: string, node: HTMLSpanElement | null) => void;
-  onChange: (slotId: string, value: string) => void;
-}) {
-  const nodeRef = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    registerNode(slot.id, nodeRef.current);
-    return () => registerNode(slot.id, null);
-  }, [registerNode, slot.id]);
-
-  useLayoutEffect(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-    const domText = normalizeNewlines(node.innerText);
-    if (domText === text) return;
-    if (document.activeElement === node) return;
-    node.innerText = text;
-  }, [text]);
-
-  const handleInput = useCallback(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-    onChange(slot.id, normalizeNewlines(node.innerText));
-  }, [onChange, slot.id]);
-
-  const handlePaste = useCallback((event: ClipboardEvent<HTMLSpanElement>) => {
-    event.preventDefault();
-    const text = event.clipboardData.getData("text/plain");
-    if (!text) return;
-
-    if (document.execCommand("insertText", false, text)) return;
-    const selection = window.getSelection();
-    if (!selection?.rangeCount) return;
-    selection.deleteFromDocument();
-    selection.getRangeAt(0).insertNode(document.createTextNode(text));
-    selection.collapseToEnd();
-  }, []);
-
-  return (
-    <span
-      ref={nodeRef}
-      className={slotPresentationClass(slot)}
-      contentEditable={!busy}
-      suppressContentEditableWarning
-      spellCheck={false}
-      role="textbox"
-      aria-label={`编辑槽位 ${slot.order + 1}`}
-      data-slot-id={slot.id}
-      onInput={handleInput}
-      onPaste={handlePaste}
-    />
-  );
-});
-
 export const DocxSlotEditor = memo(
   forwardRef<DocumentEditorHandle, DocumentEditorProps>(function DocxSlotEditor(
     {
@@ -176,6 +95,11 @@ export const DocxSlotEditor = memo(
     const registerNode = useCallback((slotId: string, node: HTMLSpanElement | null) => {
       slotNodesRef.current[slotId] = node;
     }, []);
+
+    const findSessionSlot = useCallback(
+      (slotId: string) => session.writebackSlots.find((item) => item.id === slotId) ?? null,
+      [session.writebackSlots]
+    );
 
     const captureSlotSelection = useCallback(() => {
       const selection = window.getSelection();
@@ -236,7 +160,7 @@ export const DocxSlotEditor = memo(
           return { ok: false, error: "请在单个可编辑片段内重新选中后再试。" };
         }
 
-        const slot = session.writebackSlots.find((item) => item.id === snapshot.slotId);
+        const slot = findSessionSlot(snapshot.slotId);
         if (!slot || !slot.editable) {
           return { ok: false, error: "当前选区不在可编辑片段内，请重新选中后再试。" };
         }
@@ -252,7 +176,7 @@ export const DocxSlotEditor = memo(
           slotEdits: buildEditorSlotEdits(session, nextOverrides)
         };
       },
-      [session, slotOverrides]
+      [findSessionSlot, session, slotOverrides]
     );
 
     useImperativeHandle(
@@ -267,7 +191,7 @@ export const DocxSlotEditor = memo(
             return { ok: false, error: "请在单个可编辑片段内重新选中后再试。" };
           }
 
-          const slot = session.writebackSlots.find((item) => item.id === snapshot.slotId);
+          const slot = findSessionSlot(snapshot.slotId);
           if (!slot || !slot.editable) {
             return { ok: false, error: "当前选区不在可编辑片段内，请重新选中后再试。" };
           }
@@ -287,28 +211,30 @@ export const DocxSlotEditor = memo(
         },
         collectSlotEdits: () => buildEditorSlotEdits(session, slotOverrides)
       }),
-      [captureSlotSelection, onChange, onChangeSlotText, previewSelectionReplacement, session, slotOverrides]
+      [
+        captureSlotSelection,
+        findSessionSlot,
+        onChange,
+        onChangeSlotText,
+        previewSelectionReplacement,
+        session,
+        slotOverrides
+      ]
     );
 
     return (
       <div className="workbench-editor-editable docx-editor-flow" aria-label="编辑终稿">
-        {session.writebackSlots.map((slot) => {
-          const text = resolveEditorSlotText(slot, slotOverrides);
+        {session.rewriteUnits.map((rewriteUnit) => {
           return (
-            <Fragment key={slot.id}>
-              {slot.editable ? (
-                <EditableSlotSpan
-                  slot={slot}
-                  text={text}
-                  busy={busy}
-                  registerNode={registerNode}
-                  onChange={onChangeSlotText}
-                />
-              ) : (
-                <span className={slotPresentationClass(slot)}>{text}</span>
-              )}
-              {slot.separatorAfter}
-            </Fragment>
+            <DocxEditorUnit
+              key={rewriteUnit.id}
+              session={session}
+              rewriteUnit={rewriteUnit}
+              slotOverrides={slotOverrides}
+              busy={busy}
+              registerNode={registerNode}
+              onChangeSlotText={onChangeSlotText}
+            />
           );
         })}
       </div>

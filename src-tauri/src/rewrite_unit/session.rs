@@ -1,6 +1,4 @@
-use crate::{
-    models::{DocumentFormat, DocumentSession},
-};
+use crate::models::{DocumentFormat, DocumentSession};
 
 use super::{
     projection::{apply_slot_updates, merged_text_from_slots},
@@ -57,7 +55,11 @@ fn unit_slot_projection(
 ) -> Result<Vec<WritebackSlot>, String> {
     let unit = find_rewrite_unit(session, rewrite_unit_id)?;
     for update in updates {
-        if !unit.slot_ids.iter().any(|slot_id| slot_id == &update.slot_id) {
+        if !unit
+            .slot_ids
+            .iter()
+            .any(|slot_id| slot_id == &update.slot_id)
+        {
             return Err(format!(
                 "改写结果越过了改写单元边界：{} 不属于 {}。",
                 update.slot_id, rewrite_unit_id
@@ -112,11 +114,7 @@ pub(crate) fn build_rewrite_unit_request_from_slots(
             role: slot.role.clone(),
         })
         .collect();
-    RewriteUnitRequest::new(
-        rewrite_unit_id,
-        format_label(format),
-        request_slots,
-    )
+    RewriteUnitRequest::new(rewrite_unit_id, format_label(format), request_slots)
 }
 
 fn format_label(format: DocumentFormat) -> &'static str {

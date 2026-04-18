@@ -12,11 +12,11 @@ use crate::{
     storage,
 };
 
+use super::support::RewriteSessionAccess;
 use super::{
     emit_rewrite_finished, ensure_targets_available, resolve_available_rewrite_targets,
     rewrite_session_request,
 };
-use super::support::RewriteSessionAccess;
 use crate::rewrite_jobs::auto_loop::run_auto_loop;
 
 pub(crate) fn run_auto_rewrite(
@@ -45,7 +45,11 @@ fn start_auto_rewrite_session(
                 &session.rewrite_units,
                 targets.target_unit_ids.as_ref(),
             );
-            ensure_targets_available(pending, targets.has_target_subset, std::collections::VecDeque::is_empty)?;
+            ensure_targets_available(
+                pending,
+                targets.has_target_subset,
+                std::collections::VecDeque::is_empty,
+            )?;
             start_auto_rewrite_session_steps(
                 &mut session,
                 targets.target_unit_ids,
@@ -67,8 +71,8 @@ fn spawn_auto_loop(
     let session_id = session_id.to_string();
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let result = run_auto_loop(app_handle.clone(), session_id.clone(), job, target_unit_ids)
-            .await;
+        let result =
+            run_auto_loop(app_handle.clone(), session_id.clone(), job, target_unit_ids).await;
         match &result {
             Ok(()) => info!(
                 "auto loop finished: session_id={} outcome=success remove_job_before_signal=true",

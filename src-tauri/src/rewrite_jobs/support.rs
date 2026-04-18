@@ -79,7 +79,8 @@ pub(super) fn build_rewrite_source_snapshot(
         .rewrite_units
         .iter()
         .map(|unit| {
-            build_rewrite_unit_request(session, &unit.id, format).map(|request| (unit.id.clone(), request))
+            build_rewrite_unit_request(session, &unit.id, format)
+                .map(|request| (unit.id.clone(), request))
         })
         .collect()
 }
@@ -108,7 +109,10 @@ pub(super) fn prepare_auto_rewrite_session(
     target_unit_ids: Option<&HashSet<String>>,
 ) -> Result<PreparedAutoRewriteSession, String> {
     Ok(PreparedAutoRewriteSession {
-        total_units: rewrite_targets::count_target_total_units(&session.rewrite_units, target_unit_ids),
+        total_units: rewrite_targets::count_target_total_units(
+            &session.rewrite_units,
+            target_unit_ids,
+        ),
         pending: rewrite_targets::build_auto_pending_queue(&session.rewrite_units, target_unit_ids),
         request_snapshot: build_rewrite_source_snapshot(session)?,
         completed_units: rewrite_targets::count_target_completed_units(

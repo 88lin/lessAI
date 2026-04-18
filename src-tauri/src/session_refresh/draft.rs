@@ -3,7 +3,7 @@ use std::path::Path;
 use chrono::Utc;
 
 use crate::{
-    models::{SegmentationPreset, DocumentSession, RunningState},
+    models::{DocumentSession, RunningState, SegmentationPreset},
     rewrite,
     rewrite_unit::{RewriteUnit, WritebackSlot},
 };
@@ -76,7 +76,7 @@ mod tests {
 
     use super::SessionRefreshDraft;
     use crate::{
-        models::{SegmentationPreset, RewriteUnitStatus, RunningState},
+        models::{RewriteUnitStatus, RunningState, SegmentationPreset},
         rewrite_unit::{RewriteUnit, WritebackSlot},
         session_refresh::test_support::sample_session,
     };
@@ -128,7 +128,10 @@ mod tests {
         assert_eq!(refreshed.session.normalized_text, "第一句。第二句。");
         assert_eq!(refreshed.session.writeback_slots.len(), 1);
         assert_eq!(refreshed.session.rewrite_units.len(), 1);
-        assert_eq!(refreshed.session.segmentation_preset, Some(SegmentationPreset::Sentence));
+        assert_eq!(
+            refreshed.session.segmentation_preset,
+            Some(SegmentationPreset::Sentence)
+        );
         assert_eq!(refreshed.session.rewrite_headings, Some(true));
         assert_eq!(refreshed.session.status, RunningState::Idle);
     }

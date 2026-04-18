@@ -3,7 +3,7 @@ use std::path::Path;
 use super::refresh_session_from_loaded;
 use crate::{
     documents::LoadedDocumentSource,
-    models::{SegmentationPreset, RewriteUnitStatus, DocumentSnapshot},
+    models::{DocumentSnapshot, RewriteUnitStatus, SegmentationPreset},
     rewrite_unit::RewriteUnit,
     session_refresh::test_support::{
         dirty_session_with_applied_suggestion, loaded_docx, sample_session,
@@ -82,10 +82,16 @@ fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
     );
 
     assert!(refreshed.changed);
-    assert_eq!(refreshed.session.segmentation_preset, Some(SegmentationPreset::Paragraph));
+    assert_eq!(
+        refreshed.session.segmentation_preset,
+        Some(SegmentationPreset::Paragraph)
+    );
     assert_eq!(refreshed.session.rewrite_headings, Some(false));
     assert_eq!(refreshed.session.rewrite_units.len(), 1);
-    assert_eq!(refreshed.session.rewrite_units[0].display_text, "第一句。第二句。");
+    assert_eq!(
+        refreshed.session.rewrite_units[0].display_text,
+        "第一句。第二句。"
+    );
 }
 
 #[test]
@@ -183,7 +189,10 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
         refreshed.session.rewrite_units[0].slot_ids,
         vec!["slot-0".to_string()]
     );
-    assert_eq!(refreshed.session.rewrite_units[0].display_text, "第一句。第二句。");
+    assert_eq!(
+        refreshed.session.rewrite_units[0].display_text,
+        "第一句。第二句。"
+    );
 }
 
 #[test]

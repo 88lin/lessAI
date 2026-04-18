@@ -1,5 +1,5 @@
-use std::path::Path;
 use std::collections::HashSet;
+use std::path::Path;
 
 use log::{error, info};
 
@@ -115,7 +115,9 @@ fn validate_unique_batch_slot_updates(responses: &[RewriteUnitResponse]) -> Resu
 fn build_session_writeback_plan(session: &DocumentSession) -> Result<SessionWritebackPlan, String> {
     let updated_slots = build_applied_slot_projection(session)?;
     if !is_docx_path(Path::new(&session.document_path)) {
-        return Ok(SessionWritebackPlan::Text(merged_text_from_slots(&updated_slots)));
+        return Ok(SessionWritebackPlan::Text(merged_text_from_slots(
+            &updated_slots,
+        )));
     }
 
     Ok(SessionWritebackPlan::Slots(updated_slots))

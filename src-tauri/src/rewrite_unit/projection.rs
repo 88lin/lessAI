@@ -31,7 +31,8 @@ pub(crate) fn apply_slot_updates(
 }
 
 fn slot_positions(slots: &[WritebackSlot]) -> HashMap<String, usize> {
-    slots.iter()
+    slots
+        .iter()
         .enumerate()
         .map(|(index, slot)| (slot.id.clone(), index))
         .collect()
@@ -53,7 +54,10 @@ mod tests {
 
         let updated = apply_slot_updates(
             &slots,
-            &[SlotUpdate::new("slot-1", "改写后"), SlotUpdate::new("slot-3", "尾段")],
+            &[
+                SlotUpdate::new("slot-1", "改写后"),
+                SlotUpdate::new("slot-3", "尾段"),
+            ],
         )
         .expect("slot updates should succeed");
 

@@ -1,5 +1,7 @@
 use crate::{
-    models::{SegmentationPreset, RewriteUnitStatus, DocumentSession, DocumentSnapshot, RunningState},
+    models::{
+        DocumentSession, DocumentSnapshot, RewriteUnitStatus, RunningState, SegmentationPreset,
+    },
     rewrite_unit::{RewriteUnit, WritebackSlot},
 };
 
@@ -20,10 +22,12 @@ pub(super) fn source_snapshot_changed(
 pub(super) fn session_can_rebuild_cleanly(session: &DocumentSession) -> bool {
     session.status == RunningState::Idle
         && session.suggestions.is_empty()
-        && session
-            .rewrite_units
-            .iter()
-            .all(|unit| matches!(unit.status, RewriteUnitStatus::Idle | RewriteUnitStatus::Done))
+        && session.rewrite_units.iter().all(|unit| {
+            matches!(
+                unit.status,
+                RewriteUnitStatus::Idle | RewriteUnitStatus::Done
+            )
+        })
 }
 
 pub(super) fn decide_segmentation_refresh(
@@ -63,10 +67,7 @@ fn should_rebuild_structure(
         || !rewrite_unit_structures_match(&session.rewrite_units, expected_rewrite_units)
 }
 
-fn writeback_slot_structures_match(
-    current: &[WritebackSlot],
-    expected: &[WritebackSlot],
-) -> bool {
+fn writeback_slot_structures_match(current: &[WritebackSlot], expected: &[WritebackSlot]) -> bool {
     current.len() == expected.len()
         && current.iter().zip(expected.iter()).all(|(left, right)| {
             left.order == right.order

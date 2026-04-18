@@ -3,7 +3,7 @@ use std::path::Path;
 use super::refresh_session_from_loaded;
 use crate::{
     documents::LoadedDocumentSource,
-    models::{SegmentationPreset, DocumentSnapshot, RunningState, SuggestionDecision},
+    models::{DocumentSnapshot, RunningState, SegmentationPreset, SuggestionDecision},
     rewrite_unit::SlotUpdate,
     session_refresh::test_support::{
         dirty_session_with_applied_suggestion, loaded_docx, sample_session,

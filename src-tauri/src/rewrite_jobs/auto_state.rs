@@ -5,8 +5,8 @@ use crate::{
         batch_commit_mode, commit_rewrite_result, emit_rewrite_unit_completed_events,
     },
     rewrite_job_state::{mark_auto_batch_failed, mark_session_cancelled, mark_session_failed},
-    rewrite_writeback::validate_candidate_batch_writeback,
     rewrite_unit::RewriteBatchResponse,
+    rewrite_writeback::validate_candidate_batch_writeback,
     state::AppState,
 };
 

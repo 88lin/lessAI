@@ -90,7 +90,12 @@ fn build_writeback_slot(index: usize, region: &adapters::TextRegion) -> Writebac
         order: index,
         text,
         editable,
-        role: slot_role(text_empty, region.skip_rewrite, whitespace_only, &separator_after),
+        role: slot_role(
+            text_empty,
+            region.skip_rewrite,
+            whitespace_only,
+            &separator_after,
+        ),
         presentation: region.presentation.clone(),
         anchor: None,
         separator_after,

@@ -1,7 +1,7 @@
 use tauri::AppHandle;
 
 use crate::{
-    models::{RewriteUnitStatus, DocumentSession, RunningState},
+    models::{DocumentSession, RewriteUnitStatus, RunningState},
     rewrite_permissions::REWRITE_UNIT_NOT_FOUND_ERROR,
     session_access::{mutate_current_session, CurrentSessionRequest},
     session_edit::SessionMutation,
@@ -41,7 +41,11 @@ pub(crate) fn update_target_units(
     error_message: Option<&str>,
 ) -> Result<(), String> {
     for rewrite_unit_id in rewrite_unit_ids {
-        if !session.rewrite_units.iter().any(|unit| &unit.id == rewrite_unit_id) {
+        if !session
+            .rewrite_units
+            .iter()
+            .any(|unit| &unit.id == rewrite_unit_id)
+        {
             return Err(REWRITE_UNIT_NOT_FOUND_ERROR.to_string());
         }
     }
@@ -175,9 +179,9 @@ pub(crate) fn finalize_auto_session(
     session_id: &str,
 ) -> Result<RunningState, String> {
     mutate_stored_session_now(app, state, session_id, |session| {
-            session.status = compute_session_state(session);
-            Ok(session.status)
-        })
+        session.status = compute_session_state(session);
+        Ok(session.status)
+    })
 }
 
 pub(crate) fn mark_units_running(
@@ -187,9 +191,9 @@ pub(crate) fn mark_units_running(
     rewrite_unit_ids: &[String],
 ) -> Result<(), String> {
     mutate_stored_session_now(app, state, session_id, |session| {
-            set_units_running_status(session, rewrite_unit_ids)?;
-            Ok(())
-        })
+        set_units_running_status(session, rewrite_unit_ids)?;
+        Ok(())
+    })
 }
 
 pub(crate) fn mark_session_failed(
@@ -199,10 +203,10 @@ pub(crate) fn mark_session_failed(
     error: String,
 ) -> Result<(), String> {
     mutate_stored_session_now(app, state, session_id, |session| {
-            session.status = RunningState::Failed;
-            fail_running_units(session, &error);
-            Ok(())
-        })
+        session.status = RunningState::Failed;
+        fail_running_units(session, &error);
+        Ok(())
+    })
 }
 
 pub(crate) fn mark_auto_batch_failed(
@@ -213,7 +217,7 @@ pub(crate) fn mark_auto_batch_failed(
     error: String,
 ) -> Result<(), String> {
     mutate_stored_session_now(app, state, session_id, |session| {
-            fail_target_units_and_reset_other_running(session, rewrite_unit_ids, &error)?;
-            Ok(())
-        })
+        fail_target_units_and_reset_other_running(session, rewrite_unit_ids, &error)?;
+        Ok(())
+    })
 }

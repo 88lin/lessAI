@@ -1,4 +1,4 @@
-use crate::models::{SegmentationPreset, RewriteUnitStatus};
+use crate::models::{RewriteUnitStatus, SegmentationPreset};
 
 use super::{RewriteUnit, WritebackSlot, WritebackSlotRole};
 
@@ -71,6 +71,7 @@ fn should_close_unit(current: &[&WritebackSlot], preset: SegmentationPreset) -> 
     };
     if last.role == WritebackSlotRole::ParagraphBreak
         || last.separator_after.contains(PARAGRAPH_SEPARATOR)
+        || last.separator_after.contains('\n')
     {
         return true;
     }
@@ -141,7 +142,8 @@ mod tests {
         empty_break.separator_after = "\n\n".to_string();
         let second = WritebackSlot::editable("slot-3", 2, "正文开始");
 
-        let units = build_rewrite_units(&[first, empty_break, second], SegmentationPreset::Paragraph);
+        let units =
+            build_rewrite_units(&[first, empty_break, second], SegmentationPreset::Paragraph);
 
         assert_eq!(units.len(), 2);
         assert_eq!(units[0].slot_ids, vec!["slot-1"]);

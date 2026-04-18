@@ -6,8 +6,7 @@ use super::{SlotUpdate, WritebackSlotRole};
 
 const UNIT_RESPONSE_FORMAT: &str =
     r#"{"rewriteUnitId":"...","updates":[{"slotId":"...","text":"..."}]}"#;
-const BATCH_RESPONSE_FORMAT: &str =
-    r#"{"batchId":"...","results":[{"rewriteUnitId":"...","updates":[{"slotId":"...","text":"..."}]}]}"#;
+const BATCH_RESPONSE_FORMAT: &str = r#"{"batchId":"...","results":[{"rewriteUnitId":"...","updates":[{"slotId":"...","text":"..."}]}]}"#;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

@@ -909,6 +909,25 @@
   line-height: 1.92;
 }
 
+.docx-editor-unit {
+  display: inline;
+  padding: 0.08em 0.14em;
+  border-radius: 12px;
+  background: rgba(23, 68, 207, 0.028);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.docx-editor-unit:focus-within {
+  background: rgba(23, 68, 207, 0.072);
+  box-shadow: inset 0 0 0 1px rgba(23, 68, 207, 0.14);
+}
+
+.docx-editor-unit.is-protected {
+  background: rgba(20, 20, 20, 0.045);
+}
+
 .docx-editor-slot {
   display: inline;
   border-radius: 10px;

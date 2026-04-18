@@ -3,14 +3,15 @@ use chrono::Utc;
 use crate::{
     adapters::docx::DocxAdapter,
     document_snapshot::capture_document_snapshot,
-    models::{SegmentationPreset, DocumentSession, RunningState, SuggestionDecision},
+    models::{DocumentSession, RunningState, SegmentationPreset, SuggestionDecision},
     rewrite_unit::{build_rewrite_units, SlotUpdate},
     test_support::{build_minimal_docx, cleanup_dir, rewrite_suggestion, write_temp_file},
 };
 
 fn session_from_docx(path: &std::path::Path, bytes: &[u8]) -> DocumentSession {
     let now = Utc::now();
-    let writeback_slots = DocxAdapter::extract_writeback_slots(bytes, false).expect("extract slots");
+    let writeback_slots =
+        DocxAdapter::extract_writeback_slots(bytes, false).expect("extract slots");
     let source_text = writeback_slots
         .iter()
         .map(|slot| format!("{}{}", slot.text, slot.separator_after))

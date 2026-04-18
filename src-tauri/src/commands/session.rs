@@ -6,8 +6,8 @@ use tauri::{AppHandle, State};
 use crate::{
     documents::document_session_id,
     models::DocumentSession,
-    session_access::{access_current_session, CurrentSessionRequest},
     session_access::open_session_for_path,
+    session_access::{access_current_session, CurrentSessionRequest},
     session_loader::load_clean_session_from_existing,
     state::{with_session_lock, AppState},
     storage,

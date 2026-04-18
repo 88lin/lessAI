@@ -1,7 +1,7 @@
 use crate::{
     adapters::TextRegion,
     documents::{load_document_source, source::writeback_slots_from_regions},
-    models::{TextPresentation, SegmentationPreset},
+    models::{SegmentationPreset, TextPresentation},
     rewrite_unit::build_rewrite_units,
     test_support::{build_minimal_docx, cleanup_dir, write_temp_file},
 };
@@ -87,7 +87,10 @@ fn load_docx_source_marks_page_break_placeholder_as_inline_object_slot() {
         .find(|slot| slot.text == "[分页符]")
         .expect("page break slot");
 
-    assert_eq!(slot.role, crate::rewrite_unit::WritebackSlotRole::InlineObject);
+    assert_eq!(
+        slot.role,
+        crate::rewrite_unit::WritebackSlotRole::InlineObject
+    );
     assert!(!slot.editable);
 
     cleanup_dir(&root);

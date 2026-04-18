@@ -1,8 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    documents::ensure_document_can_ai_rewrite_safely,
-    models::DocumentSession,
+    documents::ensure_document_can_ai_rewrite_safely, models::DocumentSession,
     rewrite_unit::find_rewrite_unit,
 };
 

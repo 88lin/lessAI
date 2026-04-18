@@ -22,7 +22,10 @@ pub(super) async fn rewrite_selection_text_with_client(
     super::validate_settings(settings)?;
 
     let slots = build_selection_slots(source_text, format, rewrite_headings);
-    if !slots.iter().any(|slot| slot.editable && !slot.text.trim().is_empty()) {
+    if !slots
+        .iter()
+        .any(|slot| slot.editable && !slot.text.trim().is_empty())
+    {
         return Err("选区不包含可改写文本。".to_string());
     }
 

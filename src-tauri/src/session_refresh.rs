@@ -5,9 +5,9 @@ use tauri::AppHandle;
 use crate::{
     document_snapshot::{capture_document_snapshot, SNAPSHOT_MISMATCH_ERROR},
     documents::{load_document_source, LoadedDocumentSource},
-    models::{SegmentationPreset, DocumentSession, DocumentSnapshot},
-    session_builder::{build_clean_session, CleanSessionBuildInput},
+    models::{DocumentSession, DocumentSnapshot, SegmentationPreset},
     rewrite_unit::build_rewrite_units,
+    session_builder::{build_clean_session, CleanSessionBuildInput},
     storage,
 };
 

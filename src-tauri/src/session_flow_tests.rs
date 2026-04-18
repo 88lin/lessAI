@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use chrono::Utc;
 
 use crate::{
-    models::{SegmentationPreset, DocumentSession, RunningState},
+    models::{DocumentSession, RunningState, SegmentationPreset},
     persist,
     session_flow::{allow_session, SessionLock, SessionStepConfig},
 };

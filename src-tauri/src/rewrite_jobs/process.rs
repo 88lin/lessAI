@@ -12,8 +12,8 @@ use crate::{
     storage,
 };
 
-use super::{prepare_loaded_rewrite_batch, rewrite_session_request};
 use super::support::RewriteSessionAccess;
+use super::{prepare_loaded_rewrite_batch, rewrite_session_request};
 
 pub(crate) async fn process_rewrite_unit(
     app: &AppHandle,

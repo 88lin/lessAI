@@ -9,7 +9,10 @@ use uuid::Uuid;
 use zip::{write::FileOptions, ZipWriter};
 
 use crate::{
-    models::{SegmentationPreset, RewriteUnitStatus, DiffSpan, DocumentSession, RunningState, SuggestionDecision},
+    models::{
+        DiffSpan, DocumentSession, RewriteUnitStatus, RunningState, SegmentationPreset,
+        SuggestionDecision,
+    },
     rewrite_unit::{RewriteSuggestion, RewriteUnit, SlotUpdate, WritebackSlot},
 };
 

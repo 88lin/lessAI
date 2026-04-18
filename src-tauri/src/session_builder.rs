@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     documents::LoadedDocumentSource,
-    models::{SegmentationPreset, DocumentSession, DocumentSnapshot, RunningState},
+    models::{DocumentSession, DocumentSnapshot, RunningState, SegmentationPreset},
     rewrite_unit::build_rewrite_units,
 };
 
@@ -68,7 +68,7 @@ mod tests {
 
     use crate::{
         documents::LoadedDocumentSource,
-        models::{SegmentationPreset, DocumentSnapshot, RunningState},
+        models::{DocumentSnapshot, RunningState, SegmentationPreset},
         rewrite_unit::WritebackSlot,
     };
 
@@ -110,7 +110,10 @@ mod tests {
                 .map(|item| item.sha256.as_str()),
             Some("new")
         );
-        assert_eq!(session.segmentation_preset, Some(SegmentationPreset::Paragraph));
+        assert_eq!(
+            session.segmentation_preset,
+            Some(SegmentationPreset::Paragraph)
+        );
         assert_eq!(session.rewrite_headings, Some(true));
         assert_eq!(session.writeback_slots.len(), 3);
         assert_eq!(session.rewrite_units.len(), 1);

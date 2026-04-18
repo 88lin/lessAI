@@ -19,8 +19,8 @@ use super::{
     numbering::{list_marker_for_paragraph, NumberingTracker},
     package::{load_docx_document, DocxSupportData},
     placeholders,
-    specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
     slots::build_writeback_slots,
+    specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
     styles::ParagraphStyles,
     xml::{
         attr_value, hyperlink_target, local_name, local_name_owned, toggle_attr_enabled,
@@ -29,7 +29,7 @@ use super::{
 };
 use crate::{
     adapters::TextRegion,
-    models::{TextPresentation, DiffType},
+    models::{DiffType, TextPresentation},
     rewrite_unit::WritebackSlot,
 };
 
@@ -188,14 +188,42 @@ fn extract_regions_from_document_xml(
 }
 
 fn text_regions_from_writeback_slots(updated_slots: &[WritebackSlot]) -> Vec<TextRegion> {
-    updated_slots
-        .iter()
-        .map(|slot| TextRegion {
-            body: format!("{}{}", slot.text, slot.separator_after),
-            skip_rewrite: !slot.editable,
-            presentation: slot.presentation.clone(),
-        })
-        .collect()
+    let mut regions = Vec::new();
+    let mut current_anchor: Option<&str> = None;
+    let mut current_body = String::new();
+    let mut current_presentation = None;
+    let mut current_has_editable = false;
+
+    for slot in updated_slots {
+        let anchor = slot.anchor.as_deref().unwrap_or(slot.id.as_str());
+        if current_anchor.is_some_and(|current| current != anchor) {
+            regions.push(TextRegion {
+                body: std::mem::take(&mut current_body),
+                skip_rewrite: !current_has_editable,
+                presentation: current_presentation.take(),
+            });
+            current_has_editable = false;
+        }
+
+        if current_anchor != Some(anchor) {
+            current_anchor = Some(anchor);
+            current_presentation = slot.presentation.clone();
+        }
+
+        current_body.push_str(&slot.text);
+        current_body.push_str(&slot.separator_after);
+        current_has_editable |= slot.editable;
+    }
+
+    if current_anchor.is_some() {
+        regions.push(TextRegion {
+            body: current_body,
+            skip_rewrite: !current_has_editable,
+            presentation: current_presentation,
+        });
+    }
+
+    regions
 }
 
 fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
@@ -1082,7 +1110,9 @@ fn merge_adjacent_writeback_regions(
 }
 
 fn writeback_regions_have_visible_content(regions: &[WritebackRegionTemplate]) -> bool {
-    regions.iter().any(|region| text_has_visible_content(region.text()))
+    regions
+        .iter()
+        .any(|region| text_has_visible_content(region.text()))
 }
 
 fn text_has_visible_content(text: &str) -> bool {
@@ -1524,7 +1554,10 @@ fn split_structured_text_segments<'a>(
 
 fn text_content_bounds(text: &str) -> Option<(usize, usize)> {
     let start = text.char_indices().find(|(_, ch)| !ch.is_whitespace())?.0;
-    let (end_start, end_ch) = text.char_indices().rev().find(|(_, ch)| !ch.is_whitespace())?;
+    let (end_start, end_ch) = text
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !ch.is_whitespace())?;
     Some((start, end_start + end_ch.len_utf8()))
 }
 
@@ -1565,7 +1598,11 @@ fn bare_url_spans(text: &str) -> Vec<(usize, usize)> {
             None
         };
         let Some(prefix_len) = prefix_len else {
-            index += text[index..].chars().next().map(|ch| ch.len_utf8()).unwrap_or(1);
+            index += text[index..]
+                .chars()
+                .next()
+                .map(|ch| ch.len_utf8())
+                .unwrap_or(1);
             continue;
         };
         if !url_start_allowed(text, index) {
@@ -1610,8 +1647,27 @@ fn url_trailing_punctuation(ch: Option<char>) -> bool {
     matches!(
         ch,
         Some(
-            '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\'' | '。' | '，'
-                | '；' | '：' | '！' | '？' | '）' | '】' | '」' | '』' | '、'
+            '.' | ','
+                | ';'
+                | ':'
+                | '!'
+                | '?'
+                | ')'
+                | ']'
+                | '}'
+                | '"'
+                | '\''
+                | '。'
+                | '，'
+                | '；'
+                | '：'
+                | '！'
+                | '？'
+                | '）'
+                | '】'
+                | '」'
+                | '』'
+                | '、'
         )
     )
 }

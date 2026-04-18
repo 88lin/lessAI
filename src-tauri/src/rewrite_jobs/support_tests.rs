@@ -18,5 +18,8 @@ fn in_flight_batch_count_uses_batch_count_not_unit_count() {
     ];
 
     assert_eq!(super::in_flight_batch_count(&batches), 2);
-    assert_eq!(super::snapshot_running_indices_from_batches(&batches).len(), 3);
+    assert_eq!(
+        super::snapshot_running_indices_from_batches(&batches).len(),
+        3
+    );
 }

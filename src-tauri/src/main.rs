@@ -35,8 +35,8 @@ mod test_support;
 use commands::{
     apply_suggestion, cancel_rewrite, delete_suggestion, dismiss_suggestion, export_document,
     finalize_document, load_session, load_settings, open_document, pause_rewrite, reset_session,
-    resume_rewrite, retry_rewrite_unit, rewrite_selection, run_document_writeback,
-    save_settings, start_rewrite, test_provider,
+    resume_rewrite, retry_rewrite_unit, rewrite_selection, run_document_writeback, save_settings,
+    start_rewrite, test_provider,
 };
 use state::AppState;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};

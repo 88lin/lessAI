@@ -77,7 +77,10 @@ pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
     match load_settings_from_path(&path) {
         Ok(settings) => Ok(settings),
         Err(error) => {
-            log::error!("load settings failed: path={} error={error}", path.display());
+            log::error!(
+                "load settings failed: path={} error={error}",
+                path.display()
+            );
             Err(error)
         }
     }
@@ -88,20 +91,16 @@ fn load_settings_from_path(path: &Path) -> Result<AppSettings, String> {
         return Ok(AppSettings::default());
     }
 
-    let raw = read_json_value(path).map_err(|error| {
-        format!("读取配置文件失败（{}）：{error}", path.display())
-    })?;
+    let raw = read_json_value(path)
+        .map_err(|error| format!("读取配置文件失败（{}）：{error}", path.display()))?;
     let (migrated, changed_fields) = migrate_settings_value(raw)?;
-    let settings = serde_json::from_value::<AppSettings>(migrated).map_err(|error| {
-        format!("读取配置文件失败（{}）：{error}", path.display())
-    })?;
-    validate_numeric_settings(&settings).map_err(|error| {
-        format!("配置文件无效（{}）：{error}", path.display())
-    })?;
+    let settings = serde_json::from_value::<AppSettings>(migrated)
+        .map_err(|error| format!("读取配置文件失败（{}）：{error}", path.display()))?;
+    validate_numeric_settings(&settings)
+        .map_err(|error| format!("配置文件无效（{}）：{error}", path.display()))?;
     if !changed_fields.is_empty() {
-        write_json(path, &settings).map_err(|error| {
-            format!("写回迁移后的配置文件失败（{}）：{error}", path.display())
-        })?;
+        write_json(path, &settings)
+            .map_err(|error| format!("写回迁移后的配置文件失败（{}）：{error}", path.display()))?;
         log::warn!(
             "migrated legacy settings file: path={} added_fields={}",
             path.display(),
@@ -116,12 +115,11 @@ fn migrate_settings_value(value: Value) -> Result<(Value, Vec<String>), String> 
         Value::Object(object) => object,
         _ => return Err("配置文件根节点必须是 JSON 对象。".to_string()),
     };
-    let defaults = match serde_json::to_value(AppSettings::default())
-        .map_err(|error| error.to_string())?
-    {
-        Value::Object(object) => object,
-        _ => return Err("默认配置必须是 JSON 对象。".to_string()),
-    };
+    let defaults =
+        match serde_json::to_value(AppSettings::default()).map_err(|error| error.to_string())? {
+            Value::Object(object) => object,
+            _ => return Err("默认配置必须是 JSON 对象。".to_string()),
+        };
 
     let changed_fields = merge_missing_object_fields(&mut current, &defaults);
     Ok((Value::Object(current), changed_fields))
@@ -284,8 +282,8 @@ mod tests {
         )
         .expect("write legacy settings");
 
-        let settings = super::load_settings_from_path(&path)
-            .expect("expected legacy settings to migrate");
+        let settings =
+            super::load_settings_from_path(&path).expect("expected legacy settings to migrate");
 
         assert_eq!(settings.api_key, "key");
         assert_eq!(

@@ -1,12 +1,16 @@
 use chrono::Utc;
 
 use crate::{
-    models::{SegmentationPreset, RewriteUnitStatus, DocumentSession, EditorSlotEdit, RunningState},
+    models::{
+        DocumentSession, EditorSlotEdit, RewriteUnitStatus, RunningState, SegmentationPreset,
+    },
     rewrite_unit::SlotUpdate,
     test_support::{editable_slot, locked_slot, rewrite_unit},
 };
 
-use super::{build_plain_text_editor_writeback, build_slot_editor_writeback, EditorWritebackPayload};
+use super::{
+    build_plain_text_editor_writeback, build_slot_editor_writeback, EditorWritebackPayload,
+};
 
 fn sample_docx_session() -> DocumentSession {
     let now = Utc::now();
@@ -96,8 +100,9 @@ fn build_slot_editor_writeback_returns_updated_slots_for_docx() {
                 SlotUpdate::new("slot-0", "新前文"),
                 SlotUpdate::new("slot-2", "新后文"),
             ];
-            let merged = crate::rewrite_unit::apply_slot_updates(&session.writeback_slots, &updates)
-                .expect("expected updates to be applicable");
+            let merged =
+                crate::rewrite_unit::apply_slot_updates(&session.writeback_slots, &updates)
+                    .expect("expected updates to be applicable");
             assert_eq!(slots, merged);
             assert_eq!(slots[0].text, "新前文");
             assert_eq!(slots[1].text, "[公式]");
@@ -135,8 +140,8 @@ fn build_slot_editor_writeback_rejects_locked_slot_edit() {
         },
     ];
 
-    let error = build_slot_editor_writeback(&session, &edits)
-        .expect_err("locked slot edit should fail");
+    let error =
+        build_slot_editor_writeback(&session, &edits).expect_err("locked slot edit should fail");
 
     assert!(error.contains("不可编辑") || error.contains("不存在"));
 }
@@ -172,15 +177,17 @@ fn build_plain_text_editor_writeback_normalizes_line_endings() {
 fn build_plain_text_editor_writeback_rejects_dirty_session() {
     let mut session = sample_text_session();
     session.status = RunningState::Completed;
-    session.suggestions.push(crate::test_support::rewrite_suggestion(
-        "suggestion-1",
-        1,
-        "unit-0",
-        "原文\r\n下一行\r\n",
-        "改写后",
-        crate::models::SuggestionDecision::Proposed,
-        vec![SlotUpdate::new("slot-0", "改写后")],
-    ));
+    session
+        .suggestions
+        .push(crate::test_support::rewrite_suggestion(
+            "suggestion-1",
+            1,
+            "unit-0",
+            "原文\r\n下一行\r\n",
+            "改写后",
+            crate::models::SuggestionDecision::Proposed,
+            vec![SlotUpdate::new("slot-0", "改写后")],
+        ));
 
     let error = build_plain_text_editor_writeback(&session, "新文")
         .expect_err("dirty editor session should fail");

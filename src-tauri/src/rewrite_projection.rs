@@ -3,7 +3,9 @@ use chrono::{DateTime, Utc};
 use crate::{
     models::{DocumentSession, SuggestionDecision},
     rewrite,
-    rewrite_unit::{apply_slot_updates, rewrite_unit_text, rewrite_unit_text_with_updates, SlotUpdate},
+    rewrite_unit::{
+        apply_slot_updates, rewrite_unit_text, rewrite_unit_text_with_updates, SlotUpdate,
+    },
 };
 
 pub(crate) const SUGGESTION_NOT_FOUND_ERROR: &str = "未找到对应的修改对。";
@@ -32,18 +34,20 @@ pub(crate) fn apply_preview_suggestion(
     let after_text = rewrite_unit_text_with_updates(session, rewrite_unit_id, &slot_updates)?;
     let now = Utc::now();
     dismiss_applied_suggestions_for_unit(session, rewrite_unit_id, now);
-    session.suggestions.push(crate::rewrite_unit::RewriteSuggestion {
-        id: format!("__preview__:{rewrite_unit_id}"),
-        sequence: session.next_suggestion_sequence,
-        rewrite_unit_id: rewrite_unit_id.to_string(),
-        before_text: before_text.clone(),
-        after_text: after_text.clone(),
-        diff_spans: rewrite::build_diff(&before_text, &after_text),
-        decision: SuggestionDecision::Applied,
-        slot_updates,
-        created_at: now,
-        updated_at: now,
-    });
+    session
+        .suggestions
+        .push(crate::rewrite_unit::RewriteSuggestion {
+            id: format!("__preview__:{rewrite_unit_id}"),
+            sequence: session.next_suggestion_sequence,
+            rewrite_unit_id: rewrite_unit_id.to_string(),
+            before_text: before_text.clone(),
+            after_text: after_text.clone(),
+            diff_spans: rewrite::build_diff(&before_text, &after_text),
+            decision: SuggestionDecision::Applied,
+            slot_updates,
+            created_at: now,
+            updated_at: now,
+        });
     Ok(())
 }
 

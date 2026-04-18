@@ -2,7 +2,7 @@ use tauri::{AppHandle, State};
 
 use crate::{
     documents::WritebackMode,
-    models::{RewriteUnitStatus, DocumentSession, SuggestionDecision},
+    models::{DocumentSession, RewriteUnitStatus, SuggestionDecision},
     rewrite_projection::{
         apply_suggestion_by_id, find_suggestion_index, SUGGESTION_NOT_FOUND_ERROR,
     },

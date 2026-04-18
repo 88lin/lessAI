@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::models::{
-    TextPresentation, SegmentationPreset, RewriteUnitStatus, DiffSpan, SuggestionDecision,
+    DiffSpan, RewriteUnitStatus, SegmentationPreset, SuggestionDecision, TextPresentation,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

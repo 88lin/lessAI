@@ -22,7 +22,11 @@ pub(super) fn build_writeback_slots(
                     continue;
                 };
                 if display_block.region_indices.is_empty() {
-                    slots.push(paragraph_break_slot(slots.len(), block_index, append_block_separator));
+                    slots.push(paragraph_break_slot(
+                        slots.len(),
+                        block_index,
+                        append_block_separator,
+                    ));
                     continue;
                 }
                 slots.extend(build_paragraph_slots(
@@ -51,7 +55,11 @@ pub(super) fn build_writeback_slots(
     slots
 }
 
-fn paragraph_break_slot(order: usize, block_index: usize, append_block_separator: bool) -> WritebackSlot {
+fn paragraph_break_slot(
+    order: usize,
+    block_index: usize,
+    append_block_separator: bool,
+) -> WritebackSlot {
     WritebackSlot {
         id: format!("docx:p{block_index}:break"),
         order,
@@ -72,29 +80,107 @@ fn build_paragraph_slots(
     append_block_separator: bool,
     rewrite_headings: bool,
 ) -> Vec<WritebackSlot> {
-    let mut slots = Vec::with_capacity(region_indices.len());
+    let mut slots = Vec::new();
     for (position, region_index) in region_indices.iter().copied().enumerate() {
         let Some(region) = paragraph.regions.get(region_index) else {
             continue;
         };
         let is_last = position + 1 == region_indices.len();
         let editable = !paragraph_is_locked(paragraph, region, rewrite_headings);
-        slots.push(WritebackSlot {
-            id: format!("docx:p{block_index}:r{region_index}"),
-            order: start_order + slots.len(),
-            text: region.text().to_string(),
-            editable,
-            role: region_role(region, editable),
-            presentation: region.presentation().cloned(),
-            anchor: None,
-            separator_after: if is_last {
-                paragraph_separator(append_block_separator)
-            } else {
-                String::new()
-            },
-        });
+        let anchor = format!("docx:p{block_index}:r{region_index}");
+        let mut fragments = split_region_slot_fragments(region.text());
+        if let Some(last) = fragments.last_mut() {
+            if is_last {
+                last.separator_after
+                    .push_str(&paragraph_separator(append_block_separator));
+            }
+        }
+
+        let split_count = fragments.len();
+        for (fragment_index, fragment) in fragments.into_iter().enumerate() {
+            let slot_editable = editable && text_has_visible_content(&fragment.text);
+            slots.push(WritebackSlot {
+                id: slot_id(&anchor, fragment_index, split_count),
+                order: start_order + slots.len(),
+                text: fragment.text,
+                editable: slot_editable,
+                role: region_role(region, slot_editable),
+                presentation: region.presentation().cloned(),
+                anchor: Some(anchor.clone()),
+                separator_after: fragment.separator_after,
+            });
+        }
     }
     slots
+}
+
+fn slot_id(anchor: &str, fragment_index: usize, split_count: usize) -> String {
+    if split_count == 1 {
+        return anchor.to_string();
+    }
+    format!("{anchor}:s{fragment_index}")
+}
+
+fn text_has_visible_content(text: &str) -> bool {
+    !text.trim().is_empty()
+}
+
+#[derive(Debug)]
+struct SlotFragment {
+    text: String,
+    separator_after: String,
+}
+
+fn split_region_slot_fragments(text: &str) -> Vec<SlotFragment> {
+    if !text.contains('\n') {
+        return vec![SlotFragment {
+            text: text.to_string(),
+            separator_after: String::new(),
+        }];
+    }
+
+    let mut fragments = Vec::new();
+    let mut current = String::new();
+    let mut leading_separator = String::new();
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            if !current.is_empty() {
+                fragments.push(SlotFragment {
+                    text: std::mem::take(&mut current),
+                    separator_after: "\n".to_string(),
+                });
+                continue;
+            }
+            if let Some(last) = fragments.last_mut() {
+                last.separator_after.push('\n');
+            } else {
+                leading_separator.push('\n');
+            }
+            continue;
+        }
+
+        if !leading_separator.is_empty() {
+            fragments.push(SlotFragment {
+                text: String::new(),
+                separator_after: std::mem::take(&mut leading_separator),
+            });
+        }
+        current.push(ch);
+    }
+
+    if !current.is_empty() || fragments.is_empty() {
+        fragments.push(SlotFragment {
+            text: current,
+            separator_after: leading_separator,
+        });
+    } else if !leading_separator.is_empty() {
+        if let Some(last) = fragments.last_mut() {
+            last.separator_after.push_str(&leading_separator);
+        }
+    }
+
+    fragments
 }
 
 fn locked_block_slot(

@@ -69,7 +69,12 @@ pub(super) async fn run_auto_loop(
     runtime.apply_settings(&settings);
     let ensure_rewriteable_session = || {
         access_current_session(
-            rewrite_session_request(&app, app_state, &session_id, RewriteSessionAccess::ActiveJob),
+            rewrite_session_request(
+                &app,
+                app_state,
+                &session_id,
+                RewriteSessionAccess::ActiveJob,
+            ),
             Ok,
         )
     };
@@ -78,8 +83,8 @@ pub(super) async fn run_auto_loop(
     let units_per_batch = settings.units_per_batch;
     let client = Arc::new(runtime.session_result(rewrite::build_client(&settings))?);
 
-    let (total_units, mut pending, request_snapshot, completed_units) = runtime
-        .session_result(mutate_current_session(
+    let (total_units, mut pending, request_snapshot, completed_units) =
+        runtime.session_result(mutate_current_session(
             CurrentSessionRequest::stored(&app, app_state, &session_id),
             |session| {
                 let now = chrono::Utc::now();
@@ -136,9 +141,12 @@ pub(super) async fn run_auto_loop(
             let batch_settings = settings.clone();
             let start_batch_result = runtime.start_batch(batch_unit_ids.clone(), |tasks| {
                 tasks.spawn(async move {
-                    let result =
-                        rewrite::rewrite_batch_with_client(&batch_client, &batch_settings, &batch_request)
-                            .await;
+                    let result = rewrite::rewrite_batch_with_client(
+                        &batch_client,
+                        &batch_settings,
+                        &batch_request,
+                    )
+                    .await;
                     (batch_unit_ids, result)
                 });
             });

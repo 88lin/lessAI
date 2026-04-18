@@ -1,7 +1,7 @@
 use super::DocxAdapter;
 use crate::{
     adapters::TextRegion,
-    models::{TextPresentation, SegmentationPreset},
+    models::{SegmentationPreset, TextPresentation},
     rewrite_unit::build_rewrite_units,
     test_support::{build_docx_entries, build_minimal_docx},
 };
@@ -218,6 +218,51 @@ fn imports_line_breaks_as_visible_newlines_during_import() {
 }
 
 #[test]
+fn extract_writeback_slots_split_manual_line_breaks_into_separate_slots() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>甲</w:t><w:br/><w:t>乙</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let slots = DocxAdapter::extract_writeback_slots(&bytes, false).expect("extract slots");
+
+    assert_eq!(slots.len(), 2);
+    assert_eq!(slots[0].text, "甲");
+    assert_eq!(slots[0].separator_after, "\n");
+    assert_eq!(slots[1].text, "乙");
+    assert_eq!(slots[1].separator_after, "");
+}
+
+#[test]
+fn paragraph_preset_splits_manual_line_breaks_into_distinct_editable_units() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>第一行</w:t><w:br/><w:t>第二行</w:t><w:br/><w:t>第三行</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+
+    let editable_units = editable_unit_texts(&bytes, SegmentationPreset::Paragraph);
+
+    assert_eq!(
+        editable_units,
+        vec![
+            "第一行\n".to_string(),
+            "第二行\n".to_string(),
+            "第三行".to_string()
+        ]
+    );
+}
+
+#[test]
 fn imports_carriage_returns_as_visible_newlines_during_import() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -261,9 +306,15 @@ fn imports_empty_paragraphs_as_locked_separators() {
 
     let regions = DocxAdapter::extract_regions(&bytes, false).expect("extract regions");
 
-    assert_eq!(regions.first().map(|region| region.body.as_str()), Some("\n\n"));
+    assert_eq!(
+        regions.first().map(|region| region.body.as_str()),
+        Some("\n\n")
+    );
     assert!(regions.first().is_some_and(|region| region.skip_rewrite));
-    assert!(regions.first().and_then(|region| region.presentation.as_ref()).is_none());
+    assert!(regions
+        .first()
+        .and_then(|region| region.presentation.as_ref())
+        .is_none());
 }
 
 #[test]
@@ -570,7 +621,12 @@ fn splits_underlined_run_edge_whitespace_into_locked_regions() {
     let rebuilt = joined_region_text(&regions);
     let underlined_regions = regions
         .iter()
-        .filter(|region| region.presentation.as_ref().is_some_and(|presentation| presentation.underline))
+        .filter(|region| {
+            region
+                .presentation
+                .as_ref()
+                .is_some_and(|presentation| presentation.underline)
+        })
         .map(|region| (region.body.as_str(), region.skip_rewrite))
         .collect::<Vec<_>>();
 
@@ -609,7 +665,12 @@ fn writes_back_underlined_run_with_locked_edge_whitespace() {
     let extracted = DocxAdapter::extract_writeback_regions(&rewritten).expect("extract rewritten");
     let underlined_regions = extracted
         .iter()
-        .filter(|region| region.presentation.as_ref().is_some_and(|presentation| presentation.underline))
+        .filter(|region| {
+            region
+                .presentation
+                .as_ref()
+                .is_some_and(|presentation| presentation.underline)
+        })
         .map(|region| (region.body.as_str(), region.skip_rewrite))
         .collect::<Vec<_>>();
 
@@ -2132,6 +2193,30 @@ fn writes_back_updated_text_for_simple_docx_with_line_breaks() {
 }
 
 #[test]
+fn writes_back_updated_slots_for_docx_with_manual_line_breaks() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t>甲</w:t><w:br/><w:t>乙</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let source = DocxAdapter::extract_writeback_source_text(&bytes).expect("extract source");
+    let mut slots = DocxAdapter::extract_writeback_slots(&bytes, false).expect("extract slots");
+
+    slots[0].text = "丙".to_string();
+    slots[1].text = "丁".to_string();
+
+    let rewritten =
+        DocxAdapter::write_updated_slots(&bytes, &source, &slots).expect("write updated slots");
+    let extracted = DocxAdapter::extract_text(&rewritten).expect("extract updated text");
+
+    assert_eq!(extracted, "丙\n丁");
+}
+
+#[test]
 fn writes_back_updated_text_for_simple_docx_with_list_paragraphs() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -2608,10 +2693,30 @@ fn report_template_paragraph_chunks_do_not_expose_empty_editable_chunks() {
     let chunks = editable_unit_texts(&bytes, SegmentationPreset::Paragraph);
 
     assert!(
-        !chunks
-            .iter()
-            .any(|chunk| chunk.trim().is_empty()),
+        !chunks.iter().any(|chunk| chunk.trim().is_empty()),
         "expected no editable blank chunks, got:\n{:?}",
+        chunks
+    );
+}
+
+#[test]
+fn report_template_paragraph_chunks_split_manual_line_break_samples() {
+    let bytes = load_repo_docx_fixture("04-3 作品报告（大数据应用赛，2025版）模板.docx");
+    let chunks = editable_unit_texts(&bytes, SegmentationPreset::Paragraph);
+
+    assert!(
+        chunks.iter().any(|chunk| chunk == "以下为数据样例：\n"),
+        "expected sample intro line to be isolated as its own paragraph chunk, got:\n{:?}",
+        chunks
+    );
+    assert!(
+        chunks.iter().any(|chunk| chunk == "样例1（表格数据）：\n"),
+        "expected table sample header to be isolated as its own paragraph chunk, got:\n{:?}",
+        chunks
+    );
+    assert!(
+        chunks.iter().any(|chunk| chunk == "样例2（JSON数据）：\n"),
+        "expected json sample header to be isolated as its own paragraph chunk, got:\n{:?}",
         chunks
     );
 }
@@ -3025,10 +3130,7 @@ fn keeps_url_with_trailing_space_as_one_locked_region() {
 
     assert_eq!(
         parts,
-        vec![(
-            "https://chat.deepseek.com/share/lzlvnjcj3o5uees841 ",
-            true
-        )]
+        vec![("https://chat.deepseek.com/share/lzlvnjcj3o5uees841 ", true)]
     );
 }
 

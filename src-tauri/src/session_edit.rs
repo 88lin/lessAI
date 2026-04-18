@@ -8,11 +8,7 @@ pub(crate) enum SessionMutation<T> {
 }
 
 impl<T> SessionMutation<T> {
-    pub(crate) fn save(
-        session: &mut DocumentSession,
-        updated_at: DateTime<Utc>,
-        value: T,
-    ) -> Self {
+    pub(crate) fn save(session: &mut DocumentSession, updated_at: DateTime<Utc>, value: T) -> Self {
         session.updated_at = updated_at;
         Self::Save(value)
     }

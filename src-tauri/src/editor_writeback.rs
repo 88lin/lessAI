@@ -8,7 +8,7 @@ use crate::{
         ensure_document_can_write_back, execute_document_writeback, is_docx_path,
         normalize_text_against_source_layout, OwnedDocumentWriteback, WritebackMode,
     },
-    models::{RewriteUnitStatus, DocumentSession, EditorSlotEdit, RunningState},
+    models::{DocumentSession, EditorSlotEdit, RewriteUnitStatus, RunningState},
     rewrite_unit::{apply_slot_updates, SlotUpdate},
 };
 
@@ -80,10 +80,9 @@ pub(crate) fn execute_editor_writeback(
 fn plain_text_editor_session_is_clean(session: &DocumentSession) -> bool {
     session.status == RunningState::Idle
         && session.suggestions.is_empty()
-        && session
-            .rewrite_units
-            .iter()
-            .all(|unit| unit.status == RewriteUnitStatus::Idle || unit.status == RewriteUnitStatus::Done)
+        && session.rewrite_units.iter().all(|unit| {
+            unit.status == RewriteUnitStatus::Idle || unit.status == RewriteUnitStatus::Done
+        })
 }
 
 fn collect_slot_edit_updates(
@@ -108,7 +107,10 @@ fn collect_slot_edit_updates(
                 edit.slot_id
             ));
         }
-        if seen.insert(edit.slot_id.clone(), edit.text.clone()).is_some() {
+        if seen
+            .insert(edit.slot_id.clone(), edit.text.clone())
+            .is_some()
+        {
             return Err(format!(
                 "编辑器提交了重复的槽位 {}, 无法安全写回。",
                 edit.slot_id

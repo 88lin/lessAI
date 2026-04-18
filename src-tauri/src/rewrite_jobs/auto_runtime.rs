@@ -169,12 +169,10 @@ impl<'a> AutoLoopRuntime<'a> {
     ) -> Result<T, String> {
         run_with_auto_failure(result, |error| match failure {
             AutoLoopFailure::Session => self.finish(AutoLoopStop::SessionFailed(error)),
-            AutoLoopFailure::Batch(rewrite_unit_ids) => {
-                self.finish(AutoLoopStop::BatchFailed {
-                    rewrite_unit_ids,
-                    error,
-                })
-            }
+            AutoLoopFailure::Batch(rewrite_unit_ids) => self.finish(AutoLoopStop::BatchFailed {
+                rewrite_unit_ids,
+                error,
+            }),
         })
     }
 }

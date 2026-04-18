@@ -38,7 +38,10 @@ pub fn find_next_manual_batch(
         .iter()
         .filter(|unit| {
             is_target_unit(target_unit_ids, &unit.id)
-                && matches!(unit.status, RewriteUnitStatus::Idle | RewriteUnitStatus::Failed)
+                && matches!(
+                    unit.status,
+                    RewriteUnitStatus::Idle | RewriteUnitStatus::Failed
+                )
         })
         .take(batch_size.max(1))
         .map(|unit| unit.id.clone())
@@ -51,7 +54,9 @@ pub fn build_auto_pending_queue(
 ) -> VecDeque<String> {
     units
         .iter()
-        .filter(|unit| is_target_unit(target_unit_ids, &unit.id) && unit.status != RewriteUnitStatus::Done)
+        .filter(|unit| {
+            is_target_unit(target_unit_ids, &unit.id) && unit.status != RewriteUnitStatus::Done
+        })
         .map(|unit| unit.id.clone())
         .collect()
 }
@@ -83,7 +88,9 @@ pub fn count_target_completed_units(
 ) -> usize {
     units
         .iter()
-        .filter(|unit| is_target_unit(target_unit_ids, &unit.id) && unit.status == RewriteUnitStatus::Done)
+        .filter(|unit| {
+            is_target_unit(target_unit_ids, &unit.id) && unit.status == RewriteUnitStatus::Done
+        })
         .count()
 }
 
@@ -103,7 +110,7 @@ mod tests {
         find_next_manual_batch, resolve_target_rewrite_unit_ids, take_next_auto_batch,
     };
     use crate::{
-        models::{SegmentationPreset, RewriteUnitStatus},
+        models::{RewriteUnitStatus, SegmentationPreset},
         rewrite_unit::RewriteUnit,
     };
 
@@ -140,9 +147,10 @@ mod tests {
 
     #[test]
     fn resolve_target_rewrite_unit_ids_rejects_missing_unit() {
-        let error = resolve_target_rewrite_unit_ids(&[unit("unit-0", RewriteUnitStatus::Idle)], Some(vec![
-            "unit-x".to_string(),
-        ]))
+        let error = resolve_target_rewrite_unit_ids(
+            &[unit("unit-0", RewriteUnitStatus::Idle)],
+            Some(vec!["unit-x".to_string()]),
+        )
         .expect_err("missing unit should fail");
 
         assert!(error.contains("不存在"));
@@ -158,7 +166,10 @@ mod tests {
         let selected =
             resolve_target_rewrite_unit_ids(&units, Some(vec!["unit-1".to_string()])).unwrap();
 
-        assert_eq!(find_next_manual_batch(&units, selected.as_ref(), 2), vec!["unit-1"]);
+        assert_eq!(
+            find_next_manual_batch(&units, selected.as_ref(), 2),
+            vec!["unit-1"]
+        );
     }
 
     #[test]

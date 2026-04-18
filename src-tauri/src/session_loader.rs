@@ -103,7 +103,7 @@ mod tests {
 
     use crate::{
         documents::LoadedDocumentSource,
-        models::{SegmentationPreset, DocumentSession, DocumentSnapshot, RunningState},
+        models::{DocumentSession, DocumentSnapshot, RunningState, SegmentationPreset},
         rewrite_unit::WritebackSlot,
     };
 

@@ -1,7 +1,7 @@
 use chrono::Utc;
 
 use crate::{
-    models::{SegmentationPreset, RewriteUnitStatus, DocumentSession, RunningState},
+    models::{DocumentSession, RewriteUnitStatus, RunningState, SegmentationPreset},
     rewrite_batch_commit::{batch_commit_mode, rewrite_unit_completed_events},
     rewrite_unit::{build_rewrite_units, WritebackSlot},
     test_support::{editable_slot, locked_slot},
@@ -41,7 +41,8 @@ fn session_with_unit_statuses(statuses: &[RewriteUnitStatus]) -> DocumentSession
         .iter()
         .enumerate()
         .map(|(index, _)| {
-            let mut slot = editable_slot(&format!("slot-{index}"), index, &format!("chunk-{index}"));
+            let mut slot =
+                editable_slot(&format!("slot-{index}"), index, &format!("chunk-{index}"));
             if index + 1 < statuses.len() {
                 slot.separator_after = "\n\n".to_string();
             }
@@ -49,7 +50,11 @@ fn session_with_unit_statuses(statuses: &[RewriteUnitStatus]) -> DocumentSession
         })
         .collect::<Vec<_>>();
     let mut session = session_with_slots_and_units(slots);
-    for (unit, status) in session.rewrite_units.iter_mut().zip(statuses.iter().copied()) {
+    for (unit, status) in session
+        .rewrite_units
+        .iter_mut()
+        .zip(statuses.iter().copied())
+    {
         unit.status = status;
         unit.error_message = Some("旧错误".to_string());
     }
@@ -97,7 +102,8 @@ fn fail_running_units_marks_only_running_units() {
 
 #[test]
 fn set_units_running_status_preserves_paused_session_state() {
-    let mut session = session_with_unit_statuses(&[RewriteUnitStatus::Idle, RewriteUnitStatus::Idle]);
+    let mut session =
+        session_with_unit_statuses(&[RewriteUnitStatus::Idle, RewriteUnitStatus::Idle]);
     session.status = RunningState::Paused;
     let target = vec!["unit-0".to_string()];
 
@@ -111,7 +117,8 @@ fn set_units_running_status_preserves_paused_session_state() {
 
 #[test]
 fn update_target_units_rejects_unknown_without_partial_mutation() {
-    let mut session = session_with_unit_statuses(&[RewriteUnitStatus::Idle, RewriteUnitStatus::Idle]);
+    let mut session =
+        session_with_unit_statuses(&[RewriteUnitStatus::Idle, RewriteUnitStatus::Idle]);
     let before = session.rewrite_units.clone();
     let target = vec!["unit-x".to_string()];
 
@@ -123,7 +130,10 @@ fn update_target_units_rejects_unknown_without_partial_mutation() {
     )
     .expect_err("unknown unit should fail");
 
-    assert_eq!(error, crate::rewrite_permissions::REWRITE_UNIT_NOT_FOUND_ERROR);
+    assert_eq!(
+        error,
+        crate::rewrite_permissions::REWRITE_UNIT_NOT_FOUND_ERROR
+    );
     assert_eq!(session.rewrite_units, before);
 }
 
@@ -161,11 +171,8 @@ fn collect_rewrite_batch_source_texts_rejects_locked_only_unit() {
     let session = session_with_slots_and_units(vec![locked, editable_slot("slot-1", 1, "正文")]);
     let snapshot = super::build_rewrite_source_snapshot(&session).expect("snapshot");
 
-    let error = super::collect_rewrite_batch_source_texts(
-        &snapshot,
-        &["unit-0".to_string()],
-    )
-    .expect_err("locked-only unit should fail");
+    let error = super::collect_rewrite_batch_source_texts(&snapshot, &["unit-0".to_string()])
+        .expect_err("locked-only unit should fail");
 
     assert!(error.contains("保护区"));
 }
@@ -231,8 +238,14 @@ fn batch_commit_mode_marks_auto_approve_as_applied() {
     let approved = batch_commit_mode(true);
     let proposed = batch_commit_mode(false);
 
-    assert_eq!(approved.decision, crate::models::SuggestionDecision::Applied);
+    assert_eq!(
+        approved.decision,
+        crate::models::SuggestionDecision::Applied
+    );
     assert_eq!(approved.set_status, None);
-    assert_eq!(proposed.decision, crate::models::SuggestionDecision::Proposed);
+    assert_eq!(
+        proposed.decision,
+        crate::models::SuggestionDecision::Proposed
+    );
     assert_eq!(proposed.set_status, Some(RunningState::Idle));
 }

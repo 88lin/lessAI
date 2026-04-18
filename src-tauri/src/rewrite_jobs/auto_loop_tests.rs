@@ -122,7 +122,7 @@ fn ensure_in_flight_batches_drained_rejects_remaining_batches() {
         vec!["unit-0".to_string()],
         vec!["unit-2".to_string(), "unit-3".to_string()],
     ])
-        .expect_err("expected orphaned in-flight batches to be rejected");
+    .expect_err("expected orphaned in-flight batches to be rejected");
 
     assert_eq!(error, TASK_SET_DRAINED_WITH_IN_FLIGHT_BATCHES_ERROR);
 }

@@ -64,9 +64,14 @@ pub async fn rewrite_unit_with_client(
 ) -> Result<RewriteUnitResponse, String> {
     let system_prompt = request.system_prompt();
     let user_prompt = request.user_prompt();
-    let raw =
-        transport::call_chat_model(client, settings, &system_prompt, &user_prompt, settings.temperature)
-            .await?;
+    let raw = transport::call_chat_model(
+        client,
+        settings,
+        &system_prompt,
+        &user_prompt,
+        settings.temperature,
+    )
+    .await?;
     parse_rewrite_unit_response(request, &raw)
 }
 
@@ -77,9 +82,14 @@ pub async fn rewrite_batch_with_client(
 ) -> Result<RewriteBatchResponse, String> {
     let system_prompt = request.system_prompt();
     let user_prompt = request.user_prompt();
-    let raw =
-        transport::call_chat_model(client, settings, &system_prompt, &user_prompt, settings.temperature)
-            .await?;
+    let raw = transport::call_chat_model(
+        client,
+        settings,
+        &system_prompt,
+        &user_prompt,
+        settings.temperature,
+    )
+    .await?;
     parse_rewrite_batch_response(request, &raw)
 }
 

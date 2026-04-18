@@ -3,7 +3,7 @@ use chrono::Utc;
 use crate::{
     documents::LoadedDocumentSource,
     models::{
-        SegmentationPreset, RewriteUnitStatus, DocumentSession, DocumentSnapshot, RunningState,
+        DocumentSession, DocumentSnapshot, RewriteUnitStatus, RunningState, SegmentationPreset,
         SuggestionDecision,
     },
     rewrite_unit::{RewriteSuggestion, RewriteUnit, SlotUpdate, WritebackSlot},

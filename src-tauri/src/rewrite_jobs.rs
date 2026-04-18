@@ -8,8 +8,8 @@ mod support;
 
 pub(crate) use auto::run_auto_rewrite;
 pub(crate) use manual::run_manual_rewrite;
-pub(crate) use process::process_rewrite_unit;
 use process::process_loaded_rewrite_batch;
+pub(crate) use process::process_rewrite_unit;
 #[cfg(test)]
 use support::build_rewrite_source_snapshot;
 use support::{

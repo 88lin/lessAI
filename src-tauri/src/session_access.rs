@@ -189,8 +189,7 @@ pub(crate) fn mutate_current_session<T, Guard, Mutate>(
 ) -> Result<T, String>
 where
     Guard: FnOnce(&DocumentSession) -> Result<(), String>,
-    Mutate:
-        FnOnce(&mut DocumentSession) -> Result<crate::session_edit::SessionMutation<T>, String>,
+    Mutate: FnOnce(&mut DocumentSession) -> Result<crate::session_edit::SessionMutation<T>, String>,
 {
     let app = request.app;
     access_current_session(request, move |mut session| {

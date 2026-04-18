@@ -1,4 +1,4 @@
-use super::{AppSettings, SegmentationPreset, DocumentSession, RunningState};
+use super::{AppSettings, DocumentSession, RunningState, SegmentationPreset};
 use crate::test_support::sample_clean_session;
 
 #[test]

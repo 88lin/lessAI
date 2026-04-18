@@ -8,11 +8,11 @@ use crate::{
     storage,
 };
 
+use super::support::RewriteSessionAccess;
 use super::{
     ensure_targets_available, process_loaded_rewrite_batch, resolve_available_rewrite_targets,
     rewrite_session_request,
 };
-use super::support::RewriteSessionAccess;
 
 pub(crate) async fn run_manual_rewrite(
     app: &AppHandle,
@@ -31,11 +31,9 @@ pub(crate) async fn run_manual_rewrite(
         targets.target_unit_ids.as_ref(),
         settings.units_per_batch,
     );
-    let next_batch = ensure_targets_available(next_batch, targets.has_target_subset, Vec::is_empty)?;
+    let next_batch =
+        ensure_targets_available(next_batch, targets.has_target_subset, Vec::is_empty)?;
 
     process_loaded_rewrite_batch(app, state, &session.id, &session, &next_batch, false).await?;
-    access_current_session(
-        CurrentSessionRequest::stored(app, state, &session.id),
-        Ok,
-    )
+    access_current_session(CurrentSessionRequest::stored(app, state, &session.id), Ok)
 }

@@ -4,9 +4,7 @@ use tauri::{AppHandle, State};
 
 use crate::{
     documents::{document_format, ensure_document_source_matches_session},
-    editor_session::{
-        ensure_editor_base_snapshot_matches_path, ACTIVE_EDITOR_SESSION_ERROR,
-    },
+    editor_session::{ensure_editor_base_snapshot_matches_path, ACTIVE_EDITOR_SESSION_ERROR},
     editor_writeback::ensure_session_can_use_plain_text_editor,
     models::{DocumentSession, DocumentSnapshot},
     rewrite,

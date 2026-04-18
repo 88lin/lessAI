@@ -4,13 +4,16 @@ use uuid::Uuid;
 
 use crate::{
     documents::normalize_text_against_source_layout,
-    models::{RewriteUnitStatus, RewriteUnitCompletedEvent, DocumentSession, RunningState, SuggestionDecision},
+    models::{
+        DocumentSession, RewriteUnitCompletedEvent, RewriteUnitStatus, RunningState,
+        SuggestionDecision,
+    },
     rewrite,
     rewrite_job_state::fail_target_units_and_reset_other_running,
     rewrite_projection::apply_suggestion_by_id,
     rewrite_unit::{
-        rewrite_unit_text, rewrite_unit_text_with_updates, RewriteBatchResponse,
-        RewriteSuggestion, RewriteUnitResponse,
+        rewrite_unit_text, rewrite_unit_text_with_updates, RewriteBatchResponse, RewriteSuggestion,
+        RewriteUnitResponse,
     },
     session_access::{mutate_current_session, CurrentSessionRequest},
     session_edit::SessionMutation,
@@ -115,7 +118,8 @@ fn commit_rewrite_batch_success(
         CurrentSessionRequest::stored(app, state, session_id),
         |latest| {
             let now = Utc::now();
-            let normalized = normalize_candidate_batch_response(latest, rewrite_unit_ids, response)?;
+            let normalized =
+                normalize_candidate_batch_response(latest, rewrite_unit_ids, response)?;
             validate_batch_writeback(latest, &normalized)?;
             let mut completed = Vec::with_capacity(rewrite_unit_ids.len());
 

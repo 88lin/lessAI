@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use chrono::Utc;
 
 use crate::{
-    models::{SegmentationPreset, RewriteUnitStatus, DocumentSession, RunningState},
+    models::{DocumentSession, RewriteUnitStatus, RunningState, SegmentationPreset},
     rewrite_unit::RewriteUnit,
     state::JobControl,
 };
