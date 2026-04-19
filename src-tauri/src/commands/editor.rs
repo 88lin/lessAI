@@ -57,26 +57,20 @@ pub fn run_document_writeback(
         |session| {
             let payload = input.build(&session)?;
             execute_editor_writeback(&session, &payload, mode)?;
-            finish_editor_writeback(&app, session, mode)
+            match mode {
+                WritebackMode::Validate => Ok(session),
+                WritebackMode::Write => {
+                    let rebuilt = load_clean_session_from_existing(
+                        &app,
+                        &session,
+                        session.created_at,
+                        false,
+                    )?;
+                    persist::save_and_return(rebuilt, |rebuilt| {
+                        storage::save_session(&app, rebuilt)
+                    })
+                }
+            }
         },
     )
-}
-
-fn finish_editor_writeback(
-    app: &AppHandle,
-    session: DocumentSession,
-    mode: WritebackMode,
-) -> Result<DocumentSession, String> {
-    match mode {
-        WritebackMode::Validate => Ok(session),
-        WritebackMode::Write => rebuild_saved_editor_session(app, session),
-    }
-}
-
-fn rebuild_saved_editor_session(
-    app: &AppHandle,
-    session: DocumentSession,
-) -> Result<DocumentSession, String> {
-    let rebuilt = load_clean_session_from_existing(app, &session, session.created_at, false)?;
-    persist::save_and_return(rebuilt, |rebuilt| storage::save_session(app, rebuilt))
 }

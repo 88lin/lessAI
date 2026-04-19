@@ -149,7 +149,7 @@ export function useDocumentActions(options: {
       formatError: readableError,
       allowed: (current) => current.plainTextEditorSafe,
       blockedMessage: (current) => current.plainTextEditorBlockReason,
-      fallbackMessage: "当前文档暂不支持进入编辑模式。"
+      defaultBlockedMessage: "当前文档暂不支持进入编辑模式。"
     });
     if (!latestSession) {
       return;

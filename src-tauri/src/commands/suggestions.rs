@@ -20,7 +20,12 @@ pub fn apply_suggestion(
     suggestion_id: String,
 ) -> Result<DocumentSession, String> {
     mutate_current_session(
-        CurrentSessionRequest::refreshed(&app, state.inner(), &session_id),
+        CurrentSessionRequest::guarded_refresh(
+            &app,
+            state.inner(),
+            &session_id,
+            crate::session_flow::allow_session,
+        ),
         |session| {
             let now = chrono::Utc::now();
             apply_suggestion_by_id(session, &suggestion_id, now)?;

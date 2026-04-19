@@ -83,6 +83,10 @@ fn rebuilds_snapshotless_clean_session_when_source_changes() {
     let existing = sample_session();
     let loaded = LoadedDocumentSource {
         source_text: "新前文E=mc^2新后文".to_string(),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots: vec![
             editable_slot("slot-0", 0, "新前文"),
             locked_slot("slot-1", 1, "E=mc^2"),
@@ -137,6 +141,10 @@ fn blocks_snapshotless_dirty_session_when_source_changes() {
 
     let loaded = LoadedDocumentSource {
         source_text: "新前文E=mc^2新后文".to_string(),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots: vec![editable_slot("slot-0", 0, "新前文E=mc^2新后文")],
         write_back_supported: true,
         write_back_block_reason: None,

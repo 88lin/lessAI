@@ -22,6 +22,10 @@ pub(crate) struct CleanSessionBuildInput<'a> {
 pub(crate) fn build_clean_session(input: CleanSessionBuildInput<'_>) -> DocumentSession {
     let LoadedDocumentSource {
         source_text,
+        template_kind,
+        template_signature,
+        slot_structure_signature,
+        template_snapshot,
         writeback_slots,
         write_back_supported,
         write_back_block_reason,
@@ -38,6 +42,10 @@ pub(crate) fn build_clean_session(input: CleanSessionBuildInput<'_>) -> Document
         document_path: input.document_path,
         source_text,
         source_snapshot: input.source_snapshot,
+        template_kind,
+        template_signature,
+        slot_structure_signature,
+        template_snapshot,
         normalized_text,
         write_back_supported,
         write_back_block_reason,
@@ -77,6 +85,10 @@ mod tests {
         let created_at = Utc::now();
         let loaded = LoadedDocumentSource {
             source_text: "前文[公式]后文".to_string(),
+            template_kind: None,
+            template_signature: None,
+            slot_structure_signature: None,
+            template_snapshot: None,
             writeback_slots: vec![
                 WritebackSlot::editable("slot-0", 0, "前文"),
                 WritebackSlot::locked("slot-1", 1, "[公式]"),
@@ -138,6 +150,10 @@ mod tests {
     fn build_clean_session_stores_writeback_slots_and_rewrite_units() {
         let loaded = LoadedDocumentSource {
             source_text: "甲乙".to_string(),
+            template_kind: None,
+            template_signature: None,
+            slot_structure_signature: None,
+            template_snapshot: None,
             writeback_slots: vec![
                 WritebackSlot::editable("slot-1", 0, "甲"),
                 WritebackSlot::editable("slot-2", 1, "乙"),
@@ -162,5 +178,43 @@ mod tests {
         assert_eq!(session.writeback_slots.len(), 2);
         assert_eq!(session.rewrite_units.len(), 1);
         assert_eq!(session.rewrite_units[0].slot_ids, vec!["slot-1", "slot-2"]);
+    }
+
+    #[test]
+    fn build_clean_session_persists_textual_template_metadata() {
+        let template = crate::textual_template::models::TextTemplate::single_paragraph(
+            "plain_text",
+            "txt:p0",
+            "第一段\n\n",
+        );
+        let built = crate::textual_template::slots::build_slots(&template);
+        let loaded = LoadedDocumentSource {
+            source_text: "第一段\n\n".to_string(),
+            template_kind: Some("plain_text".to_string()),
+            template_signature: Some(template.template_signature.clone()),
+            slot_structure_signature: Some(built.slot_structure_signature.clone()),
+            template_snapshot: Some(template.clone()),
+            writeback_slots: built.slots,
+            write_back_supported: true,
+            write_back_block_reason: None,
+            plain_text_editor_safe: true,
+            plain_text_editor_block_reason: None,
+        };
+
+        let session = super::build_clean_session(super::CleanSessionBuildInput {
+            session_id: "session-1".to_string(),
+            canonical_path: std::path::Path::new("/tmp/example.txt"),
+            document_path: "/tmp/example.txt".to_string(),
+            loaded,
+            source_snapshot: None,
+            segmentation_preset: SegmentationPreset::Paragraph,
+            rewrite_headings: false,
+            created_at: Utc::now(),
+        });
+
+        assert_eq!(session.template_kind.as_deref(), Some("plain_text"));
+        assert!(session.template_snapshot.is_some());
+        assert!(session.template_signature.is_some());
+        assert!(session.slot_structure_signature.is_some());
     }
 }

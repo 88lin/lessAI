@@ -110,6 +110,10 @@ mod tests {
     fn sample_loaded(source_text: &str) -> LoadedDocumentSource {
         LoadedDocumentSource {
             source_text: source_text.to_string(),
+            template_kind: None,
+            template_signature: None,
+            slot_structure_signature: None,
+            template_snapshot: None,
             writeback_slots: vec![WritebackSlot::editable("slot-0", 0, source_text)],
             write_back_supported: true,
             write_back_block_reason: None,
@@ -168,6 +172,10 @@ mod tests {
             document_path: "/tmp/example.txt".to_string(),
             source_text: "正文".to_string(),
             source_snapshot: None,
+            template_kind: None,
+            template_signature: None,
+            slot_structure_signature: None,
+            template_snapshot: None,
             normalized_text: "正文".to_string(),
             write_back_supported: true,
             write_back_block_reason: None,

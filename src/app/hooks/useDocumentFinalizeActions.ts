@@ -113,7 +113,7 @@ export function useDocumentFinalizeActions(options: {
       formatError: readableError,
       allowed: (current) => current.writeBackSupported,
       blockedMessage: (current) => current.writeBackBlockReason,
-      fallbackMessage: "当前文档暂不支持安全写回覆盖。"
+      defaultBlockedMessage: "当前文档暂不支持安全写回覆盖。"
     });
     if (!latestSession) {
       return;

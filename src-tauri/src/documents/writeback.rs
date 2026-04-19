@@ -5,10 +5,13 @@ use serde::Deserialize;
 use crate::{
     adapters, atomic_write::write_bytes_atomically,
     document_snapshot::ensure_document_snapshot_matches, models, rewrite,
-    rewrite_unit::WritebackSlot,
+    rewrite_unit::WritebackSlot, textual_template,
 };
 
-use super::source::{is_docx_path, is_pdf_path, PDF_WRITE_BACK_UNSUPPORTED};
+use super::{
+    source::{is_docx_path, is_pdf_path, PDF_WRITE_BACK_UNSUPPORTED},
+    textual::load_textual_template_source,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -21,6 +24,50 @@ pub(crate) enum WritebackMode {
 pub(crate) enum DocumentWriteback<'a> {
     Text(&'a str),
     Slots(&'a [WritebackSlot]),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DocumentWritebackContext<'a> {
+    pub expected_source_text: &'a str,
+    pub expected_source_snapshot: Option<&'a models::DocumentSnapshot>,
+    pub expected_template_signature: Option<&'a str>,
+    pub expected_slot_structure_signature: Option<&'a str>,
+    pub rewrite_headings: bool,
+}
+
+impl<'a> DocumentWritebackContext<'a> {
+    pub(crate) fn new(
+        expected_source_text: &'a str,
+        expected_source_snapshot: Option<&'a models::DocumentSnapshot>,
+    ) -> Self {
+        Self {
+            expected_source_text,
+            expected_source_snapshot,
+            expected_template_signature: None,
+            expected_slot_structure_signature: None,
+            rewrite_headings: false,
+        }
+    }
+
+    pub(crate) fn from_session(session: &'a models::DocumentSession) -> Self {
+        Self::new(&session.source_text, session.source_snapshot.as_ref()).with_textual_template(
+            session.template_signature.as_deref(),
+            session.slot_structure_signature.as_deref(),
+            session.rewrite_headings.unwrap_or(false),
+        )
+    }
+
+    pub(crate) fn with_textual_template(
+        mut self,
+        expected_template_signature: Option<&'a str>,
+        expected_slot_structure_signature: Option<&'a str>,
+        rewrite_headings: bool,
+    ) -> Self {
+        self.expected_template_signature = expected_template_signature;
+        self.expected_slot_structure_signature = expected_slot_structure_signature;
+        self.rewrite_headings = rewrite_headings;
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -68,7 +115,7 @@ pub(crate) fn ensure_document_source_matches_session(
     if is_pdf_path(path) {
         return Ok(());
     }
-    load_verified_writeback_source(path, expected_source_snapshot).map(|_| ())
+    load_verified_writeback_source(path, expected_source_snapshot, false).map(|_| ())
 }
 
 pub(crate) fn ensure_document_can_ai_rewrite_safely(
@@ -83,43 +130,40 @@ pub(crate) fn ensure_document_can_ai_rewrite_safely(
 
 pub(crate) fn execute_document_writeback(
     path: &Path,
-    expected_source_text: &str,
-    expected_source_snapshot: Option<&models::DocumentSnapshot>,
+    context: DocumentWritebackContext<'_>,
     writeback: DocumentWriteback<'_>,
     mode: WritebackMode,
 ) -> Result<(), String> {
-    let source = load_verified_writeback_source(path, expected_source_snapshot)?;
-    let updated = build_document_writeback_bytes(&source, expected_source_text, writeback)?;
+    let source = load_verified_writeback_source(
+        path,
+        context.expected_source_snapshot,
+        context.rewrite_headings,
+    )?;
+    let updated = match writeback {
+        DocumentWriteback::Text(updated_text) => {
+            build_text_writeback_bytes(&source, context.expected_source_text, updated_text)
+        }
+        DocumentWriteback::Slots(updated_slots) => {
+            build_slot_writeback_bytes(&source, context, updated_slots)
+        }
+    }?;
     finish_document_writeback(path, &updated, mode)
 }
 
-fn build_document_writeback_bytes(
-    source: &VerifiedWritebackSource,
-    expected_source_text: &str,
-    writeback: DocumentWriteback<'_>,
-) -> Result<Vec<u8>, String> {
-    match writeback {
-        DocumentWriteback::Text(updated_text) => {
-            build_text_writeback_bytes(source, expected_source_text, updated_text)
-        }
-        DocumentWriteback::Slots(updated_slots) => {
-            build_slot_writeback_bytes(source, expected_source_text, updated_slots)
-        }
-    }
-}
-
 enum VerifiedWritebackSource {
-    PlainText,
+    Textual(textual_template::TextTemplate),
     Docx(Vec<u8>),
 }
 
 fn load_verified_writeback_source(
     path: &Path,
     expected_source_snapshot: Option<&models::DocumentSnapshot>,
+    rewrite_headings: bool,
 ) -> Result<VerifiedWritebackSource, String> {
     let source_bytes = ensure_document_snapshot_matches(path, expected_source_snapshot)?;
     if !is_docx_path(path) {
-        return Ok(VerifiedWritebackSource::PlainText);
+        let (_, template) = load_textual_template_source(path, &source_bytes, rewrite_headings)?;
+        return Ok(VerifiedWritebackSource::Textual(template));
     }
 
     Ok(VerifiedWritebackSource::Docx(source_bytes))
@@ -131,7 +175,7 @@ fn build_text_writeback_bytes(
     updated_text: &str,
 ) -> Result<Vec<u8>, String> {
     match source {
-        VerifiedWritebackSource::PlainText => Ok(normalize_text_against_source_layout(
+        VerifiedWritebackSource::Textual(_) => Ok(normalize_text_against_source_layout(
             expected_source_text,
             updated_text,
         )
@@ -160,15 +204,29 @@ pub(crate) fn normalize_text_against_source_layout(
 
 fn build_slot_writeback_bytes(
     source: &VerifiedWritebackSource,
-    expected_source_text: &str,
+    context: DocumentWritebackContext<'_>,
     updated_slots: &[WritebackSlot],
 ) -> Result<Vec<u8>, String> {
     match source {
-        VerifiedWritebackSource::PlainText => Err("当前仅 docx 支持按槽位写回。".to_string()),
+        VerifiedWritebackSource::Textual(template) => {
+            textual_template::validate::ensure_template_signature(
+                context.expected_template_signature,
+                template,
+            )?;
+            textual_template::validate::ensure_slot_structure_signature(
+                context.expected_slot_structure_signature,
+                updated_slots,
+            )?;
+            let rebuilt = textual_template::rebuild::rebuild_text(template, updated_slots)?;
+            Ok(
+                normalize_text_against_source_layout(context.expected_source_text, &rebuilt)
+                    .into_bytes(),
+            )
+        }
         VerifiedWritebackSource::Docx(current_bytes) => {
             adapters::docx::DocxAdapter::write_updated_slots(
                 current_bytes,
-                expected_source_text,
+                context.expected_source_text,
                 updated_slots,
             )
         }

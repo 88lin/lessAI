@@ -76,10 +76,18 @@ fn refresh_session_from_loaded(
     draft.sync_document_path(canonical);
 
     let expected_rewrite_units = build_rewrite_units(&loaded.writeback_slots, segmentation_preset);
+    let template_kind = loaded.template_kind.clone();
+    let template_signature = loaded.template_signature.clone();
+    let slot_structure_signature = loaded.slot_structure_signature.clone();
+    let template_snapshot = loaded.template_snapshot.clone();
+    let writeback_slots = loaded.writeback_slots.clone();
 
     match decide_segmentation_refresh(
         &draft.session,
-        &loaded.writeback_slots,
+        template_kind.as_deref(),
+        template_signature.as_deref(),
+        slot_structure_signature.as_deref(),
+        &writeback_slots,
         &expected_rewrite_units,
         segmentation_preset,
         rewrite_headings,
@@ -87,8 +95,12 @@ fn refresh_session_from_loaded(
         SegmentationRefreshAction::Keep => {}
         SegmentationRefreshAction::Rebuild => {
             draft.rebuild_structure(
-                loaded.writeback_slots,
+                writeback_slots,
                 expected_rewrite_units,
+                template_kind,
+                template_signature,
+                slot_structure_signature,
+                template_snapshot,
                 segmentation_preset,
                 rewrite_headings,
             );

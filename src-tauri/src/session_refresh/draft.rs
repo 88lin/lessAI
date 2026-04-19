@@ -39,10 +39,18 @@ impl SessionRefreshDraft {
         &mut self,
         writeback_slots: Vec<WritebackSlot>,
         rewrite_units: Vec<RewriteUnit>,
+        template_kind: Option<String>,
+        template_signature: Option<String>,
+        slot_structure_signature: Option<String>,
+        template_snapshot: Option<crate::textual_template::TextTemplate>,
         segmentation_preset: SegmentationPreset,
         rewrite_headings: bool,
     ) {
         self.session.normalized_text = rewrite::normalize_text(&self.session.source_text);
+        self.session.template_kind = template_kind;
+        self.session.template_signature = template_signature;
+        self.session.slot_structure_signature = slot_structure_signature;
+        self.session.template_snapshot = template_snapshot;
         self.session.writeback_slots = writeback_slots;
         self.session.rewrite_units = rewrite_units;
         self.session.segmentation_preset = Some(segmentation_preset);
@@ -119,6 +127,10 @@ mod tests {
                 status: RewriteUnitStatus::Idle,
                 error_message: None,
             }],
+            Some("plain_text".to_string()),
+            Some("template-signature".to_string()),
+            Some("slot-signature".to_string()),
+            None,
             SegmentationPreset::Sentence,
             true,
         );
@@ -128,6 +140,18 @@ mod tests {
         assert_eq!(refreshed.session.normalized_text, "第一句。第二句。");
         assert_eq!(refreshed.session.writeback_slots.len(), 1);
         assert_eq!(refreshed.session.rewrite_units.len(), 1);
+        assert_eq!(
+            refreshed.session.template_kind.as_deref(),
+            Some("plain_text")
+        );
+        assert_eq!(
+            refreshed.session.template_signature.as_deref(),
+            Some("template-signature")
+        );
+        assert_eq!(
+            refreshed.session.slot_structure_signature.as_deref(),
+            Some("slot-signature")
+        );
         assert_eq!(
             refreshed.session.segmentation_preset,
             Some(SegmentationPreset::Sentence)

@@ -1,6 +1,4 @@
 use crate::{
-    adapters::{markdown::MarkdownAdapter, tex::TexAdapter, TextRegion},
-    documents::writeback_slots_from_regions,
     models::{AppSettings, DocumentFormat},
     rewrite_unit::{
         apply_slot_updates, build_rewrite_unit_request_from_slots, merged_text_from_slots,
@@ -21,7 +19,8 @@ pub(super) async fn rewrite_selection_text_with_client(
 ) -> Result<String, String> {
     super::validate_settings(settings)?;
 
-    let slots = build_selection_slots(source_text, format, rewrite_headings);
+    let slots =
+        crate::textual_template::factory::build_slots(source_text, format, rewrite_headings);
     if !slots
         .iter()
         .any(|slot| slot.editable && !slot.text.trim().is_empty())
@@ -34,23 +33,6 @@ pub(super) async fn rewrite_selection_text_with_client(
     let updates = normalize_selection_updates(&slots, response)?;
     let updated_slots = apply_slot_updates(&slots, &updates)?;
     Ok(merged_text_from_slots(&updated_slots))
-}
-
-fn build_selection_slots(
-    source_text: &str,
-    format: DocumentFormat,
-    rewrite_headings: bool,
-) -> Vec<WritebackSlot> {
-    let regions = match format {
-        DocumentFormat::PlainText => vec![TextRegion {
-            body: source_text.to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        }],
-        DocumentFormat::Markdown => MarkdownAdapter::split_regions(source_text, rewrite_headings),
-        DocumentFormat::Tex => TexAdapter::split_regions(source_text, rewrite_headings),
-    };
-    writeback_slots_from_regions(&regions)
 }
 
 fn normalize_selection_updates(

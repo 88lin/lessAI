@@ -1,6 +1,7 @@
 pub mod docx;
 pub mod markdown;
 pub mod pdf;
+pub mod plain_text;
 pub mod tex;
 
 use crate::models::TextPresentation;

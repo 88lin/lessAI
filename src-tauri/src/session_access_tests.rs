@@ -298,7 +298,6 @@ fn access_current_session_steps_loads_then_mutates_session() {
 #[test]
 fn current_session_request_exposes_constructor_signatures() {
     let _ = super::CurrentSessionRequest::stored;
-    let _ = super::CurrentSessionRequest::refreshed;
     let _ =
         super::CurrentSessionRequest::<fn(&DocumentSession) -> Result<(), String>>::guarded_refresh;
 }

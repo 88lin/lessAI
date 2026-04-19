@@ -30,7 +30,7 @@ fn accepts_current_segmentation_preset_values() {
 }
 
 #[test]
-fn rejects_app_settings_payload_missing_current_required_fields() {
+fn fills_missing_app_settings_fields_from_defaults() {
     let base = serde_json::json!({
         "baseUrl": "https://api.openai.com/v1",
         "apiKey": "",
@@ -62,8 +62,22 @@ fn rejects_app_settings_payload_missing_current_required_fields() {
             .remove(field)
             .expect("field exists");
 
-        let parsed = serde_json::from_value::<AppSettings>(payload);
-        assert!(parsed.is_err(), "missing field should be rejected: {field}");
+        let parsed = serde_json::from_value::<AppSettings>(payload)
+            .unwrap_or_else(|_| panic!("missing field should default: {field}"));
+
+        let defaults = AppSettings::default();
+        match field {
+            "updateProxy" => assert_eq!(parsed.update_proxy, defaults.update_proxy),
+            "rewriteHeadings" => assert_eq!(parsed.rewrite_headings, defaults.rewrite_headings),
+            "maxConcurrency" => assert_eq!(parsed.max_concurrency, defaults.max_concurrency),
+            "unitsPerBatch" => assert_eq!(parsed.units_per_batch, defaults.units_per_batch),
+            "promptPresetId" => assert_eq!(parsed.prompt_preset_id, defaults.prompt_preset_id),
+            "customPrompts" => {
+                assert!(parsed.custom_prompts.is_empty());
+                assert!(defaults.custom_prompts.is_empty());
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

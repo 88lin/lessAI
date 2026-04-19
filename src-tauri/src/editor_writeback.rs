@@ -6,7 +6,8 @@ use std::{
 use crate::{
     documents::{
         ensure_document_can_write_back, execute_document_writeback, is_docx_path,
-        normalize_text_against_source_layout, OwnedDocumentWriteback, WritebackMode,
+        normalize_text_against_source_layout, DocumentWritebackContext, OwnedDocumentWriteback,
+        WritebackMode,
     },
     models::{DocumentSession, EditorSlotEdit, RewriteUnitStatus, RunningState},
     rewrite_unit::{apply_slot_updates, SlotUpdate},
@@ -70,8 +71,7 @@ pub(crate) fn execute_editor_writeback(
 ) -> Result<(), String> {
     execute_document_writeback(
         Path::new(&session.document_path),
-        &session.source_text,
-        session.source_snapshot.as_ref(),
+        DocumentWritebackContext::from_session(session),
         payload.as_document_writeback(),
         mode,
     )

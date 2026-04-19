@@ -12,7 +12,7 @@ import {
   toggleSelectedRewriteUnitIds
 } from "../../lib/rewriteUnitSelection";
 import {
-  refreshSessionStateSilently,
+  refreshSessionStateAfterFailure,
   refreshRewriteableSessionOrNotify,
   runSessionActionOrNotify,
   type ApplySessionState,
@@ -153,7 +153,7 @@ export function useSuggestionActions(options: {
           };
         },
         recover: async () => {
-          await refreshSessionStateSilently({
+          await refreshSessionStateAfterFailure({
             sessionId: session.id,
             refreshSessionState,
             options: {

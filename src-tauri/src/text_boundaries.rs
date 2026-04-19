@@ -25,6 +25,13 @@ pub(crate) fn trailing_paragraph_separator_range(text: &str) -> Option<(usize, u
     (end == text.len()).then_some((start, end))
 }
 
+pub(crate) fn split_text_and_trailing_separator(text: &str) -> (String, String) {
+    if let Some((start, end)) = trailing_paragraph_separator_range(text) {
+        return (text[..start].to_string(), text[start..end].to_string());
+    }
+    split_trailing_whitespace(text)
+}
+
 pub(crate) fn split_text_chunks_for_rewrite_slots(text: &str) -> Vec<&str> {
     let mut chunks = Vec::new();
     for paragraph_chunk in split_text_chunks_by_paragraph_separator(text) {
@@ -170,4 +177,13 @@ fn consume_line_break(text: &str, index: usize) -> Option<usize> {
         Some(b'\r') => Some(index + 1),
         _ => None,
     }
+}
+
+fn split_trailing_whitespace(text: &str) -> (String, String) {
+    let split_at = text
+        .char_indices()
+        .rev()
+        .find_map(|(index, ch)| (!ch.is_whitespace()).then_some(index + ch.len_utf8()))
+        .unwrap_or(0);
+    (text[..split_at].to_string(), text[split_at..].to_string())
 }

@@ -6,7 +6,7 @@ use log::{error, info};
 use crate::{
     documents::{
         ensure_document_can_ai_rewrite, ensure_document_can_write_back, execute_document_writeback,
-        is_docx_path, OwnedDocumentWriteback, WritebackMode,
+        is_pdf_path, DocumentWritebackContext, OwnedDocumentWriteback, WritebackMode,
     },
     models::{DocumentSession, SuggestionDecision},
     observability::{document_kind_label, writeback_mode_label},
@@ -53,8 +53,7 @@ pub(crate) fn execute_session_writeback(
         let plan = build_session_writeback_plan(session)?;
         execute_document_writeback(
             path,
-            &session.source_text,
-            session.source_snapshot.as_ref(),
+            DocumentWritebackContext::from_session(session),
             plan.as_document_writeback(),
             mode,
         )
@@ -114,7 +113,7 @@ fn validate_unique_batch_slot_updates(responses: &[RewriteUnitResponse]) -> Resu
 
 fn build_session_writeback_plan(session: &DocumentSession) -> Result<SessionWritebackPlan, String> {
     let updated_slots = build_applied_slot_projection(session)?;
-    if !is_docx_path(Path::new(&session.document_path)) {
+    if is_pdf_path(Path::new(&session.document_path)) {
         return Ok(SessionWritebackPlan::Text(merged_text_from_slots(
             &updated_slots,
         )));

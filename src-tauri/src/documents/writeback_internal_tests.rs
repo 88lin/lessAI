@@ -1,6 +1,11 @@
 use std::fs;
 
-use crate::test_support::{cleanup_dir, editable_slot, write_temp_file};
+use crate::test_support::{cleanup_dir, write_temp_file};
+
+fn plain_text_source(text: &str) -> super::VerifiedWritebackSource {
+    let template = crate::adapters::plain_text::PlainTextAdapter::build_template(text);
+    super::VerifiedWritebackSource::Textual(template)
+}
 
 #[test]
 fn finish_document_writeback_skips_disk_write_in_validate_mode() {
@@ -28,26 +33,33 @@ fn finish_document_writeback_persists_bytes_in_write_mode() {
 
 #[test]
 fn build_text_writeback_bytes_returns_plain_text_bytes_for_plain_text_source() {
-    let bytes = super::build_text_writeback_bytes(
-        &super::VerifiedWritebackSource::PlainText,
-        "原始内容",
-        "新的内容",
-    )
-    .expect("expected plain text writeback bytes");
+    let bytes =
+        super::build_text_writeback_bytes(&plain_text_source("原始内容"), "原始内容", "新的内容")
+            .expect("expected plain text writeback bytes");
 
     assert_eq!(bytes, "新的内容".as_bytes());
 }
 
 #[test]
-fn build_slot_writeback_bytes_rejects_plain_text_source() {
-    let error = super::build_slot_writeback_bytes(
-        &super::VerifiedWritebackSource::PlainText,
-        "原始内容",
-        &[editable_slot("slot-0", 0, "新的内容")],
-    )
-    .expect_err("expected plain text slot writeback to be rejected");
+fn build_slot_writeback_bytes_rejects_reordered_plain_text_slots() {
+    let template =
+        crate::adapters::plain_text::PlainTextAdapter::build_template("第一段\n\n第二段");
+    let built = crate::textual_template::slots::build_slots(&template);
+    let mut slots = built.slots.clone();
+    slots.swap(0, 1);
 
-    assert_eq!(error, "当前仅 docx 支持按槽位写回。");
+    let error = super::build_slot_writeback_bytes(
+        &plain_text_source("第一段\n\n第二段"),
+        super::DocumentWritebackContext::new("第一段\n\n第二段", None).with_textual_template(
+            Some(&template.template_signature),
+            Some(&built.slot_structure_signature),
+            false,
+        ),
+        &slots,
+    )
+    .expect_err("expected reordered plain text slots to be rejected");
+
+    assert!(error.contains("结构"));
 }
 
 #[test]

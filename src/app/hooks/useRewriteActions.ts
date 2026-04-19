@@ -27,7 +27,7 @@ import {
 } from "../../lib/rewriteUnitSelection";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
 import {
-  refreshSessionStateSilently,
+  refreshSessionStateAfterFailure,
   refreshRewriteableSessionOrNotify,
   runSessionActionOrNotify,
   type ApplySessionState,
@@ -227,7 +227,7 @@ export function useRewriteActions(options: {
           };
         },
         recover: async () => {
-          await refreshSessionStateSilently({
+          await refreshSessionStateAfterFailure({
             sessionId: session.id,
             refreshSessionState,
             options: {
@@ -409,7 +409,7 @@ export function useRewriteActions(options: {
         };
       },
       recover: async () => {
-        await refreshSessionStateSilently({
+        await refreshSessionStateAfterFailure({
           sessionId: latestSession.id,
           refreshSessionState,
           options: {

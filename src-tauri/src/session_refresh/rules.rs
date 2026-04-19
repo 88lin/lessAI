@@ -32,6 +32,9 @@ pub(super) fn session_can_rebuild_cleanly(session: &DocumentSession) -> bool {
 
 pub(super) fn decide_segmentation_refresh(
     session: &DocumentSession,
+    expected_template_kind: Option<&str>,
+    expected_template_signature: Option<&str>,
+    expected_slot_structure_signature: Option<&str>,
     expected_writeback_slots: &[WritebackSlot],
     expected_rewrite_units: &[RewriteUnit],
     segmentation_preset: SegmentationPreset,
@@ -39,6 +42,9 @@ pub(super) fn decide_segmentation_refresh(
 ) -> SegmentationRefreshAction {
     if should_rebuild_structure(
         session,
+        expected_template_kind,
+        expected_template_signature,
+        expected_slot_structure_signature,
         expected_writeback_slots,
         expected_rewrite_units,
         segmentation_preset,
@@ -56,6 +62,9 @@ pub(super) fn decide_segmentation_refresh(
 
 fn should_rebuild_structure(
     session: &DocumentSession,
+    expected_template_kind: Option<&str>,
+    expected_template_signature: Option<&str>,
+    expected_slot_structure_signature: Option<&str>,
     expected_writeback_slots: &[WritebackSlot],
     expected_rewrite_units: &[RewriteUnit],
     segmentation_preset: SegmentationPreset,
@@ -63,6 +72,9 @@ fn should_rebuild_structure(
 ) -> bool {
     session.segmentation_preset != Some(segmentation_preset)
         || session.rewrite_headings != Some(rewrite_headings)
+        || session.template_kind.as_deref() != expected_template_kind
+        || session.template_signature.as_deref() != expected_template_signature
+        || session.slot_structure_signature.as_deref() != expected_slot_structure_signature
         || !writeback_slot_structures_match(&session.writeback_slots, expected_writeback_slots)
         || !rewrite_unit_structures_match(&session.rewrite_units, expected_rewrite_units)
 }

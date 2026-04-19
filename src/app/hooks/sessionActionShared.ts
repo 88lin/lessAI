@@ -155,32 +155,31 @@ export async function refreshSessionOrNotify({
   }
 }
 
-interface RefreshSessionStateSilentlyOptions {
+interface RefreshSessionStateAfterFailureOptions {
   sessionId: string;
   refreshSessionState: RefreshSessionState;
   options?: RefreshSessionOptions;
-  afterRefresh?: (session: DocumentSession) => void | Promise<void>;
 }
 
-export async function refreshSessionStateSilently({
+export async function refreshSessionStateAfterFailure({
   sessionId,
   refreshSessionState,
-  options,
-  afterRefresh
-}: RefreshSessionStateSilentlyOptions): Promise<DocumentSession | null> {
+  options
+}: RefreshSessionStateAfterFailureOptions): Promise<void> {
   try {
-    const session = await refreshSessionState(sessionId, options);
-    await afterRefresh?.(session);
-    return session;
-  } catch {
-    return null;
+    await refreshSessionState(sessionId, options);
+  } catch (error) {
+    console.error("[lessai::session_action] failed to refresh session after action error", {
+      sessionId,
+      error
+    });
   }
 }
 
 interface RefreshAllowedSessionOrNotifyOptions extends RefreshSessionOrNotifyOptions {
   allowed: (session: DocumentSession) => boolean;
   blockedMessage: (session: DocumentSession) => string | null | undefined;
-  fallbackMessage: string;
+  defaultBlockedMessage: string;
 }
 
 export async function refreshAllowedSessionOrNotify({
@@ -192,7 +191,7 @@ export async function refreshAllowedSessionOrNotify({
   formatError,
   allowed,
   blockedMessage,
-  fallbackMessage
+  defaultBlockedMessage
 }: RefreshAllowedSessionOrNotifyOptions): Promise<DocumentSession | null> {
   const latestSession = await refreshSessionOrNotify({
     session,
@@ -209,7 +208,7 @@ export async function refreshAllowedSessionOrNotify({
     !ensureAllowedOrNotify({
       allowed: allowed(latestSession),
       blockedMessage: blockedMessage(latestSession),
-      fallbackMessage,
+      defaultBlockedMessage,
       showNotice
     })
   ) {
@@ -237,7 +236,7 @@ export async function refreshRewriteableSessionOrNotify({
     formatError,
     allowed: canRewriteSession,
     blockedMessage: rewriteBlockedReason,
-    fallbackMessage: "当前文档暂不支持安全写回覆盖，因此不允许继续 AI 改写。"
+    defaultBlockedMessage: "当前文档暂不支持安全写回覆盖，因此不允许继续 AI 改写。"
   });
 }
 
@@ -270,17 +269,17 @@ export async function runSessionActionOrNotify({
 interface EnsureAllowedOrNotifyOptions {
   allowed: boolean;
   blockedMessage: string | null | undefined;
-  fallbackMessage: string;
+  defaultBlockedMessage: string;
   showNotice: ShowNotice;
 }
 
 export function ensureAllowedOrNotify({
   allowed,
   blockedMessage,
-  fallbackMessage,
+  defaultBlockedMessage,
   showNotice
 }: EnsureAllowedOrNotifyOptions): boolean {
   if (allowed) return true;
-  showNotice("warning", blockedMessage ?? fallbackMessage);
+  showNotice("warning", blockedMessage ?? defaultBlockedMessage);
   return false;
 }

@@ -20,7 +20,12 @@ pub fn load_session(
     session_id: String,
 ) -> Result<DocumentSession, String> {
     access_current_session(
-        CurrentSessionRequest::refreshed(&app, state.inner(), &session_id),
+        CurrentSessionRequest::guarded_refresh(
+            &app,
+            state.inner(),
+            &session_id,
+            crate::session_flow::allow_session,
+        ),
         Ok,
     )
 }

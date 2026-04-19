@@ -47,15 +47,6 @@ impl<'a> CurrentSessionRequest<'a, fn(&DocumentSession) -> Result<(), String>> {
     pub(crate) fn stored(app: &'a AppHandle, state: &'a AppState, session_id: &'a str) -> Self {
         Self::from_source(app, state, session_id, SessionLoadSource::stored())
     }
-
-    pub(crate) fn refreshed(app: &'a AppHandle, state: &'a AppState, session_id: &'a str) -> Self {
-        Self::from_source(
-            app,
-            state,
-            session_id,
-            SessionLoadSource::refreshed(crate::session_flow::allow_session),
-        )
-    }
 }
 
 impl<'a, Guard> CurrentSessionRequest<'a, Guard> {

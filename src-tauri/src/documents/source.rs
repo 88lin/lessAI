@@ -1,14 +1,8 @@
+use crate::{adapters, models, rewrite_unit::WritebackSlot};
 use std::{fs, path::Path};
 use uuid::Uuid;
-use crate::{
-    adapters, models,
-    rewrite_unit::{WritebackSlot, WritebackSlotRole},
-    text_boundaries::{
-        contains_paragraph_separator, split_text_chunks_by_paragraph_separator,
-        split_text_chunks_for_rewrite_slots,
-        trailing_paragraph_separator_range,
-    },
-};
+
+use super::textual::{load_textual_template_source, path_extension_lower};
 
 pub(super) const PDF_WRITE_BACK_UNSUPPORTED: &str =
     "当前文件为 .pdf：暂不支持写回覆盖（PDF 不是纯文本格式）。请使用“导出”为 .txt 后再进行后续排版。";
@@ -21,33 +15,6 @@ pub(crate) fn document_session_id(document_path: &str) -> String {
     Uuid::new_v5(&namespace, document_path.as_bytes()).to_string()
 }
 
-fn path_extension_lower(path: &Path) -> Option<String> {
-    path.extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-}
-
-fn supported_extensions() -> &'static [&'static str] {
-    &["txt", "md", "markdown", "tex", "latex", "docx", "pdf"]
-}
-
-fn supported_extensions_hint() -> String {
-    supported_extensions()
-        .iter()
-        .map(|ext| format!(".{ext}"))
-        .collect::<Vec<_>>()
-        .join(" / ")
-}
-
-pub(crate) fn document_format(path: &Path) -> models::DocumentFormat {
-    match path_extension_lower(path).as_deref() {
-        Some("md") | Some("markdown") => models::DocumentFormat::Markdown,
-        Some("tex") | Some("latex") => models::DocumentFormat::Tex,
-        Some("pdf") => models::DocumentFormat::PlainText,
-        _ => models::DocumentFormat::PlainText,
-    }
-}
-
 pub(crate) fn is_docx_path(path: &Path) -> bool {
     path_extension_lower(path).as_deref() == Some("docx")
 }
@@ -58,152 +25,15 @@ pub(crate) fn is_pdf_path(path: &Path) -> bool {
 
 pub(crate) struct LoadedDocumentSource {
     pub(crate) source_text: String,
+    pub(crate) template_kind: Option<String>,
+    pub(crate) template_signature: Option<String>,
+    pub(crate) slot_structure_signature: Option<String>,
+    pub(crate) template_snapshot: Option<crate::textual_template::TextTemplate>,
     pub(crate) writeback_slots: Vec<WritebackSlot>,
     pub(crate) write_back_supported: bool,
     pub(crate) write_back_block_reason: Option<String>,
     pub(crate) plain_text_editor_safe: bool,
     pub(crate) plain_text_editor_block_reason: Option<String>,
-}
-
-fn plain_text_regions(text: &str) -> Vec<adapters::TextRegion> {
-    vec![adapters::TextRegion {
-        body: text.to_string(),
-        skip_rewrite: false,
-        presentation: None,
-    }]
-}
-
-pub(crate) fn writeback_slots_from_regions(regions: &[adapters::TextRegion]) -> Vec<WritebackSlot> {
-    let mut slots = Vec::new();
-    for region in regions {
-        for body in split_region_slot_chunks(region) {
-            push_region_slot_part(&mut slots, region, body);
-        }
-    }
-    slots
-}
-
-fn push_region_slot_part(slots: &mut Vec<WritebackSlot>, region: &adapters::TextRegion, body: &str) {
-    let (text, separator_after) = split_region_body_and_separator(body);
-    if text.is_empty() && !separator_after.is_empty() {
-        if let Some(last) = slots.last_mut() {
-            last.separator_after.push_str(&separator_after);
-            return;
-        }
-    }
-    slots.push(build_writeback_slot(
-        slots.len(),
-        text,
-        separator_after,
-        region.skip_rewrite,
-        region.presentation.clone(),
-    ));
-}
-
-fn build_writeback_slot(
-    index: usize,
-    text: String,
-    separator_after: String,
-    skip_rewrite: bool,
-    presentation: Option<models::TextPresentation>,
-) -> WritebackSlot {
-    let text_empty = text.is_empty();
-    let whitespace_only = !text.is_empty() && text.chars().all(|ch| ch.is_whitespace());
-    let editable = !skip_rewrite && !whitespace_only && !text_empty;
-
-    WritebackSlot {
-        id: format!("slot-{index}"),
-        order: index,
-        text,
-        editable,
-        role: slot_role(text_empty, skip_rewrite, whitespace_only, &separator_after),
-        presentation,
-        anchor: None,
-        separator_after,
-    }
-}
-
-fn slot_role(
-    text_empty: bool,
-    skip_rewrite: bool,
-    whitespace_only: bool,
-    separator_after: &str,
-) -> WritebackSlotRole {
-    if text_empty && contains_paragraph_separator(separator_after) {
-        return WritebackSlotRole::ParagraphBreak;
-    }
-    if skip_rewrite || whitespace_only {
-        return WritebackSlotRole::LockedText;
-    }
-    WritebackSlotRole::EditableText
-}
-
-fn split_region_body_and_separator(body: &str) -> (String, String) {
-    if let Some((start, end)) = trailing_paragraph_separator_range(body) {
-        return (body[..start].to_string(), body[start..end].to_string());
-    }
-    split_trailing_whitespace(body)
-}
-
-fn split_region_body_chunks(body: &str) -> Vec<&str> {
-    split_text_chunks_by_paragraph_separator(body)
-}
-
-fn split_region_slot_chunks<'a>(region: &'a adapters::TextRegion) -> Vec<&'a str> {
-    if region.skip_rewrite {
-        return split_region_body_chunks(&region.body);
-    }
-    split_text_chunks_for_rewrite_slots(&region.body)
-}
-
-fn split_trailing_whitespace(text: &str) -> (String, String) {
-    let split_at = text
-        .char_indices()
-        .rev()
-        .find_map(|(index, ch)| (!ch.is_whitespace()).then_some(index + ch.len_utf8()))
-        .unwrap_or(0);
-    (text[..split_at].to_string(), text[split_at..].to_string())
-}
-
-fn decode_utf16_payload(payload: &[u8], little_endian: bool) -> Result<String, String> {
-    if payload.len() % 2 != 0 {
-        return Err("文本编码疑似为 UTF-16，但字节长度不是 2 的倍数，无法解码。".to_string());
-    }
-
-    let mut words = Vec::with_capacity(payload.len() / 2);
-    for chunk in payload.chunks_exact(2) {
-        let word = if little_endian {
-            u16::from_le_bytes([chunk[0], chunk[1]])
-        } else {
-            u16::from_be_bytes([chunk[0], chunk[1]])
-        };
-        words.push(word);
-    }
-
-    String::from_utf16(&words).map_err(|error| format!("UTF-16 解码失败：{error}"))
-}
-
-pub(crate) fn decode_text_file(bytes: &[u8]) -> Result<String, String> {
-    if bytes.is_empty() {
-        return Ok(String::new());
-    }
-    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        return std::str::from_utf8(&bytes[3..])
-            .map(|value| value.to_string())
-            .map_err(|error| format!("UTF-8 解码失败：{error}"));
-    }
-    if bytes.starts_with(&[0xFF, 0xFE]) {
-        return decode_utf16_payload(&bytes[2..], true);
-    }
-    if bytes.starts_with(&[0xFE, 0xFF]) {
-        return decode_utf16_payload(&bytes[2..], false);
-    }
-
-    std::str::from_utf8(bytes)
-        .map(|value| value.to_string())
-        .map_err(|_| {
-            "无法读取文本文件：当前仅支持 UTF-8（推荐）或 UTF-16（需带 BOM）。该文件可能是 GBK/ANSI 编码或二进制格式，请先转换为 UTF-8 后再导入。".to_string()
-        })
 }
 
 pub(crate) fn load_document_source(
@@ -216,8 +46,7 @@ pub(crate) fn load_document_source(
             Err("暂不支持 .doc（老版 Word 二进制格式）。请另存为 .docx 后再导入。".to_string())
         }
         Some("pdf") => load_pdf_source(path),
-        Some(other) => load_textual_source(path, other, rewrite_headings),
-        None => load_plain_text_source(path),
+        _ => load_textual_source(path, rewrite_headings),
     }
 }
 
@@ -239,6 +68,10 @@ fn load_docx_source(path: &Path, rewrite_headings: bool) -> Result<LoadedDocumen
     let plain_text_editor_block_reason = write_back_block_reason.clone();
     Ok(LoadedDocumentSource {
         source_text,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots,
         write_back_supported: write_back_block_reason.is_none(),
         write_back_block_reason,
@@ -250,9 +83,17 @@ fn load_docx_source(path: &Path, rewrite_headings: bool) -> Result<LoadedDocumen
 fn load_pdf_source(path: &Path) -> Result<LoadedDocumentSource, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let source_text = adapters::pdf::PdfAdapter::extract_text(&bytes)?;
-    let writeback_slots = writeback_slots_from_regions(&plain_text_regions(&source_text));
+    let writeback_slots = crate::textual_template::factory::build_slots(
+        &source_text,
+        models::DocumentFormat::PlainText,
+        false,
+    );
     Ok(LoadedDocumentSource {
         source_text,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots,
         write_back_supported: false,
         write_back_block_reason: Some(PDF_WRITE_BACK_UNSUPPORTED.to_string()),
@@ -263,46 +104,31 @@ fn load_pdf_source(path: &Path) -> Result<LoadedDocumentSource, String> {
 
 fn load_textual_source(
     path: &Path,
-    extension: &str,
     rewrite_headings: bool,
 ) -> Result<LoadedDocumentSource, String> {
-    if !matches!(extension, "txt" | "md" | "markdown" | "tex" | "latex") {
-        return Err(format!(
-            "暂不支持该文件格式：.{extension}。当前支持：{}。",
-            supported_extensions_hint()
-        ));
-    }
-
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let source_text = decode_text_file(&bytes)?;
-    let regions = match extension {
-        "md" | "markdown" => {
-            adapters::markdown::MarkdownAdapter::split_regions(&source_text, rewrite_headings)
-        }
-        "tex" | "latex" => adapters::tex::TexAdapter::split_regions(&source_text, rewrite_headings),
-        _ => plain_text_regions(&source_text),
-    };
-    let writeback_slots = writeback_slots_from_regions(&regions);
-    Ok(LoadedDocumentSource {
-        source_text,
-        writeback_slots,
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
-    })
+    let (source_text, template) = load_textual_template_source(path, &bytes, rewrite_headings)?;
+    Ok(build_template_loaded_source(source_text, template))
 }
 
-fn load_plain_text_source(path: &Path) -> Result<LoadedDocumentSource, String> {
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let source_text = decode_text_file(&bytes)?;
-    let writeback_slots = writeback_slots_from_regions(&plain_text_regions(&source_text));
-    Ok(LoadedDocumentSource {
+fn build_template_loaded_source(
+    source_text: String,
+    template: crate::textual_template::TextTemplate,
+) -> LoadedDocumentSource {
+    let template_kind = template.kind.clone();
+    let template_signature = template.template_signature.clone();
+    let built = crate::textual_template::slots::build_slots(&template);
+
+    LoadedDocumentSource {
         source_text,
-        writeback_slots,
+        template_kind: Some(template_kind),
+        template_signature: Some(template_signature),
+        slot_structure_signature: Some(built.slot_structure_signature),
+        template_snapshot: Some(template),
+        writeback_slots: built.slots,
         write_back_supported: true,
         write_back_block_reason: None,
         plain_text_editor_safe: true,
         plain_text_editor_block_reason: None,
-    })
+    }
 }

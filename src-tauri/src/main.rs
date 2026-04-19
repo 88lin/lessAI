@@ -29,9 +29,10 @@ mod session_refresh;
 mod settings_validation;
 mod state;
 mod storage;
-mod text_boundaries;
 #[cfg(test)]
 mod test_support;
+mod text_boundaries;
+mod textual_template;
 
 use commands::{
     apply_suggestion, cancel_rewrite, delete_suggestion, dismiss_suggestion, export_document,

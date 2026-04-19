@@ -50,6 +50,10 @@ fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
         document_path: "/tmp/example.docx".to_string(),
         source_text: "第一句。第二句。".to_string(),
         source_snapshot: None,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         normalized_text: "第一句。第二句。".to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -67,6 +71,10 @@ fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
     };
     let loaded = LoadedDocumentSource {
         source_text: "第一句。第二句。".to_string(),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots: vec![editable_slot("slot-0", 0, "第一句。第二句。")],
         write_back_supported: true,
         write_back_block_reason: None,
@@ -133,6 +141,10 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
         document_path: "/tmp/example.docx".to_string(),
         source_text: "第一句。第二句。".to_string(),
         source_snapshot: None,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         normalized_text: "第一句。第二句。".to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -169,6 +181,10 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
     };
     let loaded = LoadedDocumentSource {
         source_text: "第一句。第二句。".to_string(),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots: vec![editable_slot("slot-0", 0, "第一句。第二句。")],
         write_back_supported: true,
         write_back_block_reason: None,
@@ -207,6 +223,10 @@ fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
         document_path: "/tmp/example.tex".to_string(),
         source_text: text.to_string(),
         source_snapshot: None,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         normalized_text: text.to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -232,6 +252,10 @@ fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
     };
     let loaded = LoadedDocumentSource {
         source_text: text.to_string(),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots: writeback_slots_from_regions(&[TextRegion {
             body: text.to_string(),
             skip_rewrite: false,
@@ -262,6 +286,77 @@ fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
     assert_eq!(
         refreshed.session.rewrite_units[1].display_text,
         "第二句，第三句。"
+    );
+}
+
+#[test]
+fn rebuilds_clean_session_when_template_signature_changes() {
+    let now = chrono::Utc::now();
+    let template = crate::textual_template::models::TextTemplate::single_paragraph(
+        "plain_text",
+        "txt:p0",
+        "第一句。",
+    );
+    let built = crate::textual_template::slots::build_slots(&template);
+    let existing = crate::models::DocumentSession {
+        id: "session-template-1".to_string(),
+        title: "示例".to_string(),
+        document_path: "/tmp/example.txt".to_string(),
+        source_text: "第一句。".to_string(),
+        source_snapshot: None,
+        template_kind: Some("plain_text".to_string()),
+        template_signature: Some("old-template-signature".to_string()),
+        slot_structure_signature: Some(built.slot_structure_signature.clone()),
+        template_snapshot: Some(template.clone()),
+        normalized_text: "第一句。".to_string(),
+        write_back_supported: true,
+        write_back_block_reason: None,
+        plain_text_editor_safe: true,
+        plain_text_editor_block_reason: None,
+        segmentation_preset: Some(SegmentationPreset::Paragraph),
+        rewrite_headings: Some(false),
+        writeback_slots: built.slots.clone(),
+        rewrite_units: vec![RewriteUnit {
+            id: "unit-0".to_string(),
+            order: 0,
+            slot_ids: vec!["txt:p0:r0:s0".to_string()],
+            display_text: "第一句。".to_string(),
+            segmentation_preset: SegmentationPreset::Paragraph,
+            status: RewriteUnitStatus::Idle,
+            error_message: None,
+        }],
+        suggestions: Vec::new(),
+        next_suggestion_sequence: 1,
+        status: RunningState::Idle,
+        created_at: now,
+        updated_at: now,
+    };
+    let loaded = LoadedDocumentSource {
+        source_text: "第一句。".to_string(),
+        template_kind: Some("plain_text".to_string()),
+        template_signature: Some(template.template_signature.clone()),
+        slot_structure_signature: Some(built.slot_structure_signature.clone()),
+        template_snapshot: Some(template),
+        writeback_slots: built.slots,
+        write_back_supported: true,
+        write_back_block_reason: None,
+        plain_text_editor_safe: true,
+        plain_text_editor_block_reason: None,
+    };
+
+    let refreshed = refresh_session_from_loaded(
+        &existing,
+        Path::new("/tmp/example.txt"),
+        loaded,
+        SegmentationPreset::Paragraph,
+        false,
+        None,
+    );
+
+    assert!(refreshed.changed);
+    assert_ne!(
+        refreshed.session.template_signature.as_deref(),
+        Some("old-template-signature")
     );
 }
 

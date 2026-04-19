@@ -108,25 +108,15 @@ pub(crate) fn compute_session_state(session: &DocumentSession) -> RunningState {
     RunningState::Idle
 }
 
-pub(crate) fn set_session_cancelled(session: &mut DocumentSession) {
-    session.status = RunningState::Cancelled;
-    clear_running_units(session);
-}
-
-pub(crate) fn set_session_paused(session: &mut DocumentSession) {
-    session.status = RunningState::Paused;
-}
-
-pub(crate) fn set_session_running(session: &mut DocumentSession) {
-    session.status = RunningState::Running;
-}
-
-fn mark_session_transition(
+fn mark_session_transition<Transition>(
     app: &AppHandle,
     state: &AppState,
     session_id: &str,
-    transition: fn(&mut DocumentSession),
-) -> Result<DocumentSession, String> {
+    transition: Transition,
+) -> Result<DocumentSession, String>
+where
+    Transition: FnOnce(&mut DocumentSession),
+{
     mutate_stored_session_now(app, state, session_id, |session| {
         transition(session);
         Ok(session.clone())
@@ -154,7 +144,10 @@ pub(crate) fn mark_session_cancelled(
     state: &AppState,
     session_id: &str,
 ) -> Result<DocumentSession, String> {
-    mark_session_transition(app, state, session_id, set_session_cancelled)
+    mark_session_transition(app, state, session_id, |session| {
+        session.status = RunningState::Cancelled;
+        clear_running_units(session);
+    })
 }
 
 pub(crate) fn mark_session_paused(
@@ -162,7 +155,9 @@ pub(crate) fn mark_session_paused(
     state: &AppState,
     session_id: &str,
 ) -> Result<DocumentSession, String> {
-    mark_session_transition(app, state, session_id, set_session_paused)
+    mark_session_transition(app, state, session_id, |session| {
+        session.status = RunningState::Paused;
+    })
 }
 
 pub(crate) fn mark_session_running(
@@ -170,7 +165,9 @@ pub(crate) fn mark_session_running(
     state: &AppState,
     session_id: &str,
 ) -> Result<DocumentSession, String> {
-    mark_session_transition(app, state, session_id, set_session_running)
+    mark_session_transition(app, state, session_id, |session| {
+        session.status = RunningState::Running;
+    })
 }
 
 pub(crate) fn finalize_auto_session(

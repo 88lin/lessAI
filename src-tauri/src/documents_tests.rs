@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use super::{
     ensure_document_can_write_back, ensure_document_source_matches_session,
     execute_document_writeback, load_document_source, normalize_text_against_source_layout,
-    DocumentWriteback, WritebackMode,
+    DocumentWriteback, DocumentWritebackContext, WritebackMode,
 };
 use crate::document_snapshot::{capture_document_snapshot, SNAPSHOT_MISSING_ERROR};
 use crate::models::SegmentationPreset;
@@ -21,25 +21,25 @@ fn rebuild_source_text(loaded: &super::LoadedDocumentSource) -> String {
 #[test]
 fn decode_utf8_bom_text_file() {
     let bytes = [0xEF, 0xBB, 0xBF, b'a', b'b', b'c'];
-    assert_eq!(super::source::decode_text_file(&bytes).unwrap(), "abc");
+    assert_eq!(super::textual::decode_text_file(&bytes).unwrap(), "abc");
 }
 
 #[test]
 fn decode_utf16_le_bom_text_file() {
     let bytes = [0xFF, 0xFE, b'A', 0x00, b'\n', 0x00];
-    assert_eq!(super::source::decode_text_file(&bytes).unwrap(), "A\n");
+    assert_eq!(super::textual::decode_text_file(&bytes).unwrap(), "A\n");
 }
 
 #[test]
 fn decode_utf16_be_bom_text_file() {
     let bytes = [0xFE, 0xFF, 0x00, b'A', 0x00, b'\n'];
-    assert_eq!(super::source::decode_text_file(&bytes).unwrap(), "A\n");
+    assert_eq!(super::textual::decode_text_file(&bytes).unwrap(), "A\n");
 }
 
 #[test]
 fn decode_invalid_text_file_returns_error() {
     let bytes = [0xFF, 0xFF, 0xFF];
-    assert!(super::source::decode_text_file(&bytes).is_err());
+    assert!(super::textual::decode_text_file(&bytes).is_err());
 }
 
 #[test]
@@ -91,8 +91,7 @@ fn write_document_content_rejects_external_change_for_plain_text() {
 
     let error = execute_document_writeback(
         &target,
-        "原始内容",
-        Some(&snapshot),
+        DocumentWritebackContext::new("原始内容", Some(&snapshot)),
         DocumentWriteback::Text("新的内容"),
         WritebackMode::Write,
     )
@@ -127,8 +126,7 @@ fn write_document_content_rejects_plain_text_without_snapshot_even_when_source_m
 
     let error = execute_document_writeback(
         &target,
-        "原始内容",
-        None,
+        DocumentWritebackContext::new("原始内容", None),
         DocumentWriteback::Text("新的内容"),
         WritebackMode::Write,
     )
@@ -152,8 +150,7 @@ fn write_document_content_rejects_docx_without_snapshot_even_when_source_matches
 
     let error = execute_document_writeback(
         &target,
-        "原文",
-        None,
+        DocumentWritebackContext::new("原文", None),
         DocumentWriteback::Text("新正文"),
         WritebackMode::Write,
     )
@@ -211,7 +208,10 @@ fn load_markdown_source_protects_mixed_inline_structures_without_locking_prose()
             .iter()
             .find(|slot| slot.text == protected)
             .unwrap_or_else(|| panic!("missing protected slot: {protected}"));
-        assert!(!slot.editable, "expected protected slot to stay locked: {protected}");
+        assert!(
+            !slot.editable,
+            "expected protected slot to stay locked: {protected}"
+        );
     }
 
     for editable in [
@@ -225,7 +225,10 @@ fn load_markdown_source_protects_mixed_inline_structures_without_locking_prose()
             .iter()
             .find(|slot| slot.text.contains(editable))
             .unwrap_or_else(|| panic!("missing editable slot: {editable}"));
-        assert!(slot.editable, "expected prose slot to stay editable: {editable}");
+        assert!(
+            slot.editable,
+            "expected prose slot to stay editable: {editable}"
+        );
     }
 
     cleanup_dir(&root);
@@ -278,7 +281,8 @@ fn load_tex_source_uses_atomic_slots_so_segmentation_preset_changes_unit_count()
 
     let loaded = load_document_source(&target, false).expect("load tex");
 
-    let paragraph_units = build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Paragraph);
+    let paragraph_units =
+        build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Paragraph);
     let sentence_units = build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Sentence);
     let clause_units = build_rewrite_units(&loaded.writeback_slots, SegmentationPreset::Clause);
 

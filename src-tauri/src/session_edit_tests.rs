@@ -17,6 +17,10 @@ fn sample_session() -> DocumentSession {
         document_path: "/tmp/example.txt".to_string(),
         source_text: "正文".to_string(),
         source_snapshot: None,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         normalized_text: "正文".to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -231,7 +235,6 @@ fn mutate_loaded_session_for_source_refreshes_before_mutate() {
 #[test]
 fn session_load_request_exposes_constructor_signatures_for_mutation_chain() {
     let _ = crate::session_access::CurrentSessionRequest::stored;
-    let _ = crate::session_access::CurrentSessionRequest::refreshed;
     let _ = crate::session_access::CurrentSessionRequest::<
         fn(&DocumentSession) -> Result<(), String>,
     >::guarded_refresh;

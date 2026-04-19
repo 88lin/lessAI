@@ -41,7 +41,12 @@ pub fn finalize_document(
     session_id: String,
 ) -> Result<String, String> {
     access_current_session(
-        CurrentSessionRequest::refreshed(&app, state.inner(), &session_id)
+        CurrentSessionRequest::guarded_refresh(
+            &app,
+            state.inner(),
+            &session_id,
+            crate::session_flow::allow_session,
+        )
             .with_active_job_error("当前文档正在执行自动任务，请先暂停并取消后再写回原文件。"),
         |session| {
             execute_session_writeback(&session, WritebackMode::Write)?;

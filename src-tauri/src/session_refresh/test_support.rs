@@ -17,6 +17,10 @@ pub(super) fn sample_session() -> DocumentSession {
         document_path: "/tmp/example.docx".to_string(),
         source_text: "前文E=mc^2后文".to_string(),
         source_snapshot: None,
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         normalized_text: "前文E=mc^2后文".to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -81,6 +85,10 @@ pub(super) fn dirty_session_with_applied_suggestion() -> DocumentSession {
 pub(super) fn loaded_docx() -> LoadedDocumentSource {
     LoadedDocumentSource {
         source_text: "前文E=mc^2后文".to_string(),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         writeback_slots: vec![
             WritebackSlot::editable("slot-0", 0, "前文"),
             WritebackSlot::locked("slot-1", 1, "E=mc^2"),

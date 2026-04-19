@@ -1,6 +1,20 @@
-use super::{execute_document_writeback, load_document_source, DocumentWriteback, WritebackMode};
+use super::{
+    execute_document_writeback, load_document_source, DocumentWriteback, DocumentWritebackContext,
+    WritebackMode,
+};
 use crate::test_support::{build_minimal_docx, cleanup_dir, write_temp_file};
 use crate::{adapters::docx::DocxAdapter, document_snapshot::capture_document_snapshot};
+
+fn textual_writeback_context<'a>(
+    loaded: &'a super::LoadedDocumentSource,
+    snapshot: &'a crate::models::DocumentSnapshot,
+) -> DocumentWritebackContext<'a> {
+    DocumentWritebackContext::new(&loaded.source_text, Some(snapshot)).with_textual_template(
+        loaded.template_signature.as_deref(),
+        loaded.slot_structure_signature.as_deref(),
+        false,
+    )
+}
 
 #[test]
 fn write_document_content_allows_docx_when_styled_prefix_becomes_empty() {
@@ -19,8 +33,7 @@ fn write_document_content_allows_docx_when_styled_prefix_becomes_empty() {
 
     execute_document_writeback(
         &target,
-        "标题正文",
-        Some(&snapshot),
+        DocumentWritebackContext::new("标题正文", Some(&snapshot)),
         DocumentWriteback::Text("正文"),
         WritebackMode::Write,
     )
@@ -62,8 +75,7 @@ fn write_document_content_allows_docx_with_paragraph_level_drawing_placeholder()
 
     execute_document_writeback(
         &target,
-        "前文[图表]后文",
-        Some(&snapshot),
+        DocumentWritebackContext::new("前文[图表]后文", Some(&snapshot)),
         DocumentWriteback::Text("新前文[图表]新后文"),
         WritebackMode::Write,
     )
@@ -90,8 +102,7 @@ fn validate_document_writeback_rejects_docx_when_paragraph_count_changes() {
 
     let error = execute_document_writeback(
         &target,
-        "第一段\n\n第二段",
-        Some(&snapshot),
+        DocumentWritebackContext::new("第一段\n\n第二段", Some(&snapshot)),
         DocumentWriteback::Text("第一段\n\n新增段\n\n第二段"),
         WritebackMode::Validate,
     )
@@ -117,8 +128,7 @@ fn validate_document_writeback_allows_docx_when_structure_stays_compatible() {
 
     execute_document_writeback(
         &target,
-        "第一段\n\n第二段",
-        Some(&snapshot),
+        DocumentWritebackContext::new("第一段\n\n第二段", Some(&snapshot)),
         DocumentWriteback::Text("改写第一段\n\n改写第二段"),
         WritebackMode::Validate,
     )
@@ -147,12 +157,120 @@ fn validate_document_writeback_allows_docx_regions_with_adjacent_styles() {
 
     execute_document_writeback(
         &target,
-        "前文后文",
-        Some(&snapshot),
+        DocumentWritebackContext::new("前文后文", Some(&snapshot)),
         DocumentWriteback::Slots(&slots),
         WritebackMode::Validate,
     )
     .expect("expected region validation to preserve real adapter metadata");
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_rejects_plain_text_slot_reorder() {
+    let (root, target) =
+        write_temp_file("plain-slot-reorder", "txt", "第一段\n\n第二段".as_bytes());
+    let loaded = load_document_source(&target, false).expect("load plain text");
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+    let mut slots = loaded.writeback_slots.clone();
+    slots.swap(0, 1);
+
+    let error = execute_document_writeback(
+        &target,
+        textual_writeback_context(&loaded, &snapshot),
+        DocumentWriteback::Slots(&slots),
+        WritebackMode::Validate,
+    )
+    .expect_err("reordered plain-text slots should fail");
+
+    assert!(error.contains("结构"));
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_rejects_markdown_slot_reorder() {
+    let (root, target) =
+        write_temp_file("markdown-slot-reorder", "md", "第一段\n\n第二段".as_bytes());
+    let loaded = load_document_source(&target, false).expect("load markdown");
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+    let mut slots = loaded.writeback_slots.clone();
+    slots.swap(0, 1);
+
+    let error = execute_document_writeback(
+        &target,
+        textual_writeback_context(&loaded, &snapshot),
+        DocumentWriteback::Slots(&slots),
+        WritebackMode::Validate,
+    )
+    .expect_err("reordered markdown slots should fail");
+
+    assert!(error.contains("结构"));
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_rejects_tex_slot_reorder() {
+    let (root, target) = write_temp_file("tex-slot-reorder", "tex", "第一段\n\n第二段".as_bytes());
+    let loaded = load_document_source(&target, false).expect("load tex");
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+    let mut slots = loaded.writeback_slots.clone();
+    slots.swap(0, 1);
+
+    let error = execute_document_writeback(
+        &target,
+        textual_writeback_context(&loaded, &snapshot),
+        DocumentWriteback::Slots(&slots),
+        WritebackMode::Validate,
+    )
+    .expect_err("reordered tex slots should fail");
+
+    assert!(error.contains("结构"));
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_allows_markdown_slot_text_updates() {
+    let (root, target) =
+        write_temp_file("markdown-slot-update", "md", "第一段\n\n第二段".as_bytes());
+    let loaded = load_document_source(&target, false).expect("load markdown");
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+    let mut slots = loaded.writeback_slots.clone();
+    let first_editable = slots
+        .iter_mut()
+        .find(|slot| slot.editable)
+        .expect("first editable slot");
+    first_editable.text = "改写第一段".to_string();
+
+    execute_document_writeback(
+        &target,
+        textual_writeback_context(&loaded, &snapshot),
+        DocumentWriteback::Slots(&slots),
+        WritebackMode::Validate,
+    )
+    .expect("markdown slot text update should validate");
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn validate_document_writeback_allows_tex_slot_text_updates() {
+    let (root, target) = write_temp_file("tex-slot-update", "tex", "第一段\n\n第二段".as_bytes());
+    let loaded = load_document_source(&target, false).expect("load tex");
+    let snapshot = capture_document_snapshot(&target).expect("capture snapshot");
+    let mut slots = loaded.writeback_slots.clone();
+    let first_editable = slots
+        .iter_mut()
+        .find(|slot| slot.editable)
+        .expect("first editable slot");
+    first_editable.text = "改写第一段".to_string();
+
+    execute_document_writeback(
+        &target,
+        textual_writeback_context(&loaded, &snapshot),
+        DocumentWriteback::Slots(&slots),
+        WritebackMode::Validate,
+    )
+    .expect("tex slot text update should validate");
 
     cleanup_dir(&root);
 }

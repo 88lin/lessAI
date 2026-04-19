@@ -1,6 +1,7 @@
 use chrono::Utc;
 
 use crate::{
+    adapters::plain_text::PlainTextAdapter,
     document_snapshot::capture_document_snapshot,
     documents::{OwnedDocumentWriteback, WritebackMode},
     rewrite_unit::{RewriteUnitResponse, SlotUpdate},
@@ -12,12 +13,24 @@ use crate::{
 
 fn sample_plain_text_session(path: &std::path::Path) -> crate::models::DocumentSession {
     let now = Utc::now();
+    let template = PlainTextAdapter::build_template("原文\r\n下一行\r\n");
+    let built = crate::textual_template::slots::build_slots(&template);
+    let rewrite_units = crate::rewrite_unit::build_rewrite_units(
+        &built.slots,
+        crate::models::SegmentationPreset::Paragraph,
+    );
+    let slot_id = built.slots[0].id.clone();
+
     crate::models::DocumentSession {
         id: "session-text".to_string(),
         title: "示例".to_string(),
         document_path: path.to_string_lossy().to_string(),
         source_text: "原文\r\n下一行\r\n".to_string(),
         source_snapshot: Some(capture_document_snapshot(path).expect("capture snapshot")),
+        template_kind: Some(template.kind.clone()),
+        template_signature: Some(template.template_signature.clone()),
+        slot_structure_signature: Some(built.slot_structure_signature.clone()),
+        template_snapshot: Some(template),
         normalized_text: "原文\r\n下一行\r\n".to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -25,22 +38,16 @@ fn sample_plain_text_session(path: &std::path::Path) -> crate::models::DocumentS
         plain_text_editor_block_reason: None,
         segmentation_preset: Some(crate::models::SegmentationPreset::Paragraph),
         rewrite_headings: Some(false),
-        writeback_slots: vec![editable_slot("slot-0", 0, "原文\r\n下一行\r\n")],
-        rewrite_units: vec![rewrite_unit(
-            "unit-0",
-            0,
-            &["slot-0"],
-            "原文\r\n下一行\r\n",
-            crate::models::RewriteUnitStatus::Idle,
-        )],
+        writeback_slots: built.slots,
+        rewrite_units,
         suggestions: vec![rewrite_suggestion(
             "suggestion-1",
             1,
             "unit-0",
             "原文\r\n下一行\r\n",
-            "新文\n下一行  \n",
+            "新文\n下一行  ",
             crate::models::SuggestionDecision::Applied,
-            vec![SlotUpdate::new("slot-0", "新文\n下一行  \n")],
+            vec![SlotUpdate::new(&slot_id, "新文\n下一行  ")],
         )],
         next_suggestion_sequence: 2,
         status: crate::models::RunningState::Idle,
@@ -57,6 +64,10 @@ fn sample_docx_session(path: &std::path::Path) -> crate::models::DocumentSession
         document_path: path.to_string_lossy().to_string(),
         source_text: "前文[公式]后文".to_string(),
         source_snapshot: Some(capture_document_snapshot(path).expect("capture snapshot")),
+        template_kind: None,
+        template_signature: None,
+        slot_structure_signature: None,
+        template_snapshot: None,
         normalized_text: "前文[公式]后文".to_string(),
         write_back_supported: true,
         write_back_block_reason: None,
@@ -90,8 +101,12 @@ fn build_session_writeback_plan_returns_plain_text_output() {
     let session = sample_plain_text_session(&target);
 
     match super::build_session_writeback_plan(&session) {
-        Ok(OwnedDocumentWriteback::Text(text)) => assert_eq!(text, "新文\n下一行  \n"),
-        Ok(OwnedDocumentWriteback::Slots(_)) => panic!("expected plain-text output"),
+        Ok(OwnedDocumentWriteback::Slots(slots)) => {
+            assert_eq!(slots.len(), 1);
+            assert_eq!(slots[0].text, "新文\n下一行  ");
+            assert_eq!(slots[0].separator_after, "\r\n");
+        }
+        Ok(OwnedDocumentWriteback::Text(_)) => panic!("expected slot output"),
         Err(error) => panic!("unexpected error: {error}"),
     }
 
@@ -200,5 +215,20 @@ fn execute_session_writeback_returns_block_error_before_loading_source() {
         .expect_err("blocked session should short-circuit");
 
     assert_eq!(error, "blocked");
+    cleanup_dir(&root);
+}
+
+#[test]
+fn execute_session_writeback_validates_plain_text_slot_projection() {
+    let (root, target) = write_temp_file(
+        "plain-text-slot-writeback",
+        "txt",
+        "原文\r\n下一行\r\n".as_bytes(),
+    );
+    let session = sample_plain_text_session(&target);
+
+    super::execute_session_writeback(&session, WritebackMode::Validate)
+        .expect("plain-text slot projection should validate");
+
     cleanup_dir(&root);
 }

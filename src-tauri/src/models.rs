@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::rewrite_unit::{RewriteSuggestion, RewriteUnit, WritebackSlot};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct AppSettings {
     pub base_url: String,
     pub api_key: String,
@@ -180,6 +180,14 @@ pub struct DocumentSession {
     pub source_text: String,
     #[serde(default)]
     pub source_snapshot: Option<DocumentSnapshot>,
+    #[serde(default)]
+    pub template_kind: Option<String>,
+    #[serde(default)]
+    pub template_signature: Option<String>,
+    #[serde(default)]
+    pub slot_structure_signature: Option<String>,
+    #[serde(default)]
+    pub template_snapshot: Option<crate::textual_template::TextTemplate>,
     pub normalized_text: String,
     #[serde(default = "default_write_back_supported")]
     pub write_back_supported: bool,
