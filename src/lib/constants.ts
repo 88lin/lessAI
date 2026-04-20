@@ -52,11 +52,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   updateProxy: "",
   timeoutMs: 45_000,
   temperature: 0.8,
-  segmentationPreset: "paragraph",
+  segmentationPreset: "sentence",
   rewriteHeadings: false,
-  rewriteMode: "manual",
+  rewriteMode: "auto",
   maxConcurrency: 2,
-  unitsPerBatch: 1,
+  unitsPerBatch: 2,
   promptPresetId: "humanizer_zh",
   customPrompts: []
 };

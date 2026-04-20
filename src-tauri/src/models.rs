@@ -26,7 +26,7 @@ fn default_max_concurrency() -> usize {
 }
 
 fn default_units_per_batch() -> usize {
-    1
+    2
 }
 
 fn default_prompt_preset_id() -> String {
@@ -58,9 +58,9 @@ impl Default for AppSettings {
             update_proxy: String::new(),
             timeout_ms: 45_000,
             temperature: 0.8,
-            segmentation_preset: SegmentationPreset::Paragraph,
+            segmentation_preset: SegmentationPreset::Sentence,
             rewrite_headings: false,
-            rewrite_mode: RewriteMode::Manual,
+            rewrite_mode: RewriteMode::Auto,
             max_concurrency: default_max_concurrency(),
             units_per_batch: default_units_per_batch(),
             prompt_preset_id: default_prompt_preset_id(),
