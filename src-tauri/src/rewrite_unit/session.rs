@@ -123,5 +123,6 @@ fn format_label(format: DocumentFormat) -> &'static str {
         DocumentFormat::PlainText => "plainText",
         DocumentFormat::Markdown => "markdown",
         DocumentFormat::Tex => "tex",
+        DocumentFormat::Docx => "docx",
     }
 }

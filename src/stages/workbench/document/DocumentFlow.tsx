@@ -1,12 +1,10 @@
 import { memo } from "react";
-import type { SegmentationPreset } from "../../../lib/types";
 import { countSelectedRewriteUnits } from "../../../lib/rewriteUnitSelection";
 import { ParagraphDocumentFlow } from "./ParagraphDocumentFlow";
 import type { DocumentFlowBodyProps } from "./documentFlowShared";
 
 interface DocumentFlowProps extends DocumentFlowBodyProps {
   sessionId: string;
-  segmentationPreset: SegmentationPreset;
 }
 
 function buildWrapClassName(showMarkers: boolean, selectedDisplayCount: number) {
@@ -33,7 +31,6 @@ function legendSelectedTitle(rewriteEnabled: boolean) {
 
 export const DocumentFlow = memo(function DocumentFlow({
   sessionId,
-  segmentationPreset,
   session,
   rewriteUnits,
   documentView,
@@ -96,7 +93,6 @@ export const DocumentFlow = memo(function DocumentFlow({
       <p className="document-flow">
         <ParagraphDocumentFlow
           sessionId={sessionId}
-          segmentationPreset={segmentationPreset}
           session={session}
           rewriteUnits={rewriteUnits}
           documentView={documentView}

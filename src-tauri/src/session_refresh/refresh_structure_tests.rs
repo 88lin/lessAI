@@ -404,3 +404,36 @@ fn blocks_dirty_docx_session_when_chunk_structure_is_stale() {
         .as_deref()
         .is_some_and(|reason| reason.contains("分块结构")));
 }
+
+#[test]
+fn keeps_clean_docx_session_when_only_template_kind_none_vs_docx_differs() {
+    let mut existing = sample_session();
+    existing.template_kind = None;
+    existing.template_signature = Some("sig-docx".to_string());
+    existing.slot_structure_signature = Some("slot-docx".to_string());
+    existing.source_snapshot = Some(DocumentSnapshot {
+        sha256: "same".to_string(),
+    });
+    crate::documents::hydrate_session_capabilities(&mut existing);
+
+    let mut loaded = loaded_docx();
+    loaded.template_kind = Some("docx".to_string());
+    loaded.template_signature = Some("sig-docx".to_string());
+    loaded.slot_structure_signature = Some("slot-docx".to_string());
+
+    let refreshed = refresh_session_from_loaded(
+        &existing,
+        Path::new("/tmp/example.docx"),
+        loaded,
+        SegmentationPreset::Paragraph,
+        false,
+        Some(DocumentSnapshot {
+            sha256: "same".to_string(),
+        }),
+    );
+
+    assert!(refreshed.changed);
+    assert_eq!(refreshed.session.template_kind.as_deref(), Some("docx"));
+    assert!(refreshed.session.capabilities.source_writeback.allowed);
+    assert!(refreshed.session.capabilities.editor_writeback.allowed);
+}

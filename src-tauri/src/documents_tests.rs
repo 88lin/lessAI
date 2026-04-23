@@ -48,6 +48,14 @@ fn docx_is_allowed_to_write_back() {
 }
 
 #[test]
+fn document_format_maps_docx_extension_to_docx() {
+    assert_eq!(
+        super::textual::document_format(std::path::Path::new("/tmp/demo.docx")),
+        crate::models::DocumentFormat::Docx
+    );
+}
+
+#[test]
 fn pdf_is_not_allowed_to_write_back() {
     assert!(ensure_document_can_write_back("/tmp/demo.pdf").is_err());
 }
@@ -324,6 +332,7 @@ fn load_docx_source_preserves_writeback_slot_boundaries() {
 
     let loaded = load_document_source(&target, false).expect("load docx");
 
+    assert_eq!(loaded.template_kind.as_deref(), Some("docx"));
     assert_eq!(rebuild_source_text(&loaded), loaded.source_text);
     assert!(loaded.writeback_slots.iter().any(|slot| !slot.editable));
     assert!(loaded

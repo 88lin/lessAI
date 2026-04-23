@@ -54,7 +54,7 @@ fn load_docx_source(path: &Path, rewrite_headings: bool) -> Result<LoadedDocumen
     }
     Ok(LoadedDocumentSource {
         source_text,
-        template_kind: None,
+        template_kind: Some("docx".to_string()),
         template_signature: Some(model.template_signature),
         slot_structure_signature: Some(model.slot_structure_signature),
         template_snapshot: None,

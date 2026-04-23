@@ -5,10 +5,7 @@ import assert from "node:assert/strict";
 import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-
-function read(path) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-}
+import { assertIncludes, read } from "./test-helpers.mjs";
 
 function hasRule(css, selector, property, value) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -30,10 +27,6 @@ function assertNoRule(css, selector, property, value) {
     !hasRule(css, selector, property, value),
     `期望 CSS 不存在：${selector} { ${property}: ${value}; }`
   );
-}
-
-function assertIncludes(text, snippet) {
-  assert.ok(text.includes(snippet), `期望内容包含：${snippet}`);
 }
 
 function assertNotIncludes(text, snippet) {

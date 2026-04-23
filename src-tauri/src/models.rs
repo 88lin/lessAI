@@ -78,6 +78,7 @@ pub enum DocumentFormat {
     PlainText,
     Markdown,
     Tex,
+    Docx,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

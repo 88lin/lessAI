@@ -14,6 +14,12 @@ struct TextFixture {
 
 const TEXT_FIXTURES: &[TextFixture] = &[
     TextFixture {
+        name: "plain-multiline",
+        extension: "txt",
+        content: include_str!("../test-fixtures/roundtrip/plain/multiline.txt"),
+        rewrite_headings: false,
+    },
+    TextFixture {
         name: "markdown-nested-quote",
         extension: "md",
         content: include_str!("../test-fixtures/roundtrip/markdown/nested-quote.md"),

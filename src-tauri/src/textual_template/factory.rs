@@ -8,7 +8,7 @@ pub(crate) fn build_template(
     rewrite_headings: bool,
 ) -> TextTemplate {
     match format {
-        DocumentFormat::PlainText => {
+        DocumentFormat::PlainText | DocumentFormat::Docx => {
             crate::adapters::plain_text::PlainTextAdapter::build_template(source_text)
         }
         DocumentFormat::Markdown => crate::adapters::markdown::MarkdownAdapter::build_template(

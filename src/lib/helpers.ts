@@ -1,6 +1,5 @@
 import type {
   AppSettings,
-  RewriteUnitStatus,
   DocumentSession,
   RewriteSuggestion,
   RewriteUnit,
@@ -10,7 +9,6 @@ import type {
 } from "./types";
 import type { NoticeTone } from "./constants";
 import { sessionSupportsAiRewrite } from "./documentCapabilities";
-import { fileExtensionLower } from "./path";
 
 export function readableError(error: unknown): string {
   if (error instanceof Error) {

@@ -13,7 +13,6 @@ import { documentEditorMode } from "./lib/documentCapabilities";
 import {
   canRewriteSession,
   findRewriteUnit,
-  formatDisplayPath,
   getLatestSuggestion,
   getSessionStats,
   isSettingsReady,

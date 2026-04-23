@@ -8,8 +8,6 @@ import type {
 import type { EditorSlotOverrides } from "../../lib/editorSlots";
 import type { SessionStats } from "../../lib/helpers";
 import {
-  documentBackendKind,
-  documentEditorMode,
   editorEntryBlockedReason,
   sessionIsClean,
   sessionSupportsSourceWriteback
@@ -122,10 +120,7 @@ export const DocumentPanel = memo(function DocumentPanel({
 
   const rewriteRunning = currentSession?.status === "running";
   const rewritePaused = currentSession?.status === "paused";
-  const currentDocumentBackend = currentSession ? documentBackendKind(currentSession) : null;
-  const currentEditorMode = currentSession ? documentEditorMode(currentSession) : "none";
   const sourceWritebackSupported = currentSession ? sessionSupportsSourceWriteback(currentSession) : false;
-  const readOnlyDocument = currentDocumentBackend === "pdf";
   const anyBusy = Boolean(busyAction);
 
   const startKey = `start-${settings.rewriteMode}`;
@@ -141,7 +136,6 @@ export const DocumentPanel = memo(function DocumentPanel({
   const showCancelAction = rewriteRunning || rewritePaused;
   const hasAppliedEdits = Boolean(currentStats && currentStats.suggestionsApplied > 0);
   const hasRewriteUnitSelection = hasSelectedRewriteUnits(selectedRewriteUnitIds);
-  const effectiveSegmentationPreset = currentSession?.segmentationPreset ?? settings.segmentationPreset;
   const selectedDisplayCount = countSelectedRewriteUnits(selectedRewriteUnitIds);
   const rewriteBlockReason = rewriteBlockedReason(currentSession);
   const nextManualTargetRewriteUnit = useMemo(
@@ -424,7 +418,6 @@ export const DocumentPanel = memo(function DocumentPanel({
                 sessionId={currentSession.id}
                 session={currentSession}
                 rewriteUnits={currentSession.rewriteUnits}
-                segmentationPreset={effectiveSegmentationPreset}
                 documentView={documentView}
                 documentFormat={documentFormat}
                 rewriteEnabled={!rewriteBlockReason}

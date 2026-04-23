@@ -17,7 +17,7 @@ use super::{
         WritebackRegionTemplate,
     },
     numbering::{list_marker_for_paragraph, NumberingTracker},
-    package::{load_docx_document, DocxSupportData},
+    package::{format_docx_zip_error, load_docx_document, DocxSupportData},
     placeholders,
     signature::build_docx_writeback_model,
     specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
@@ -2929,8 +2929,7 @@ fn needs_space_preserve(text: &str) -> bool {
 
 fn replace_document_xml(docx_bytes: &[u8], updated_xml: &str) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
+    let mut archive = ZipArchive::new(cursor).map_err(format_docx_zip_error)?;
     let mut out = Cursor::new(Vec::new());
     let mut writer = ZipWriter::new(&mut out);
 

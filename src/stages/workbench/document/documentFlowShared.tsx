@@ -9,6 +9,8 @@ import {
   rewriteUnitHasEditableSlot
 } from "../../../lib/helpers";
 
+const nullSlot: WritebackSlot | null = null;
+
 export interface DocumentFlowBodyProps {
   session: DocumentSession;
   rewriteUnits: RewriteUnit[];
@@ -54,10 +56,11 @@ function renderSlotText(
   value: string,
   showMarkers: boolean,
   documentFormat: ClientDocumentFormat,
-  key: string
+  key: string,
+  slot: WritebackSlot | null
 ) {
   if (!showMarkers) return value;
-  return renderInlineProtectedText(value, documentFormat, key);
+  return renderInlineProtectedText(value, documentFormat, key, { slot });
 }
 
 function renderSlots(
@@ -69,7 +72,13 @@ function renderSlots(
   return slots.map((slot, index) => (
     <Fragment key={`${keyPrefix}-${slot.id}`}>
       <span className={slotPresentationClass(slot)}>
-        {renderSlotText(slot.text, showMarkers, documentFormat, `${keyPrefix}-${slot.id}`)}
+        {renderSlotText(
+          slot.text,
+          showMarkers,
+          documentFormat,
+          `${keyPrefix}-${slot.id}`,
+          slot
+        )}
       </span>
       {index < slots.length - 1 ? slot.separatorAfter : ""}
     </Fragment>
@@ -131,7 +140,8 @@ export function renderRewriteUnitContent(
               span.text,
               showMarkers,
               documentFormat,
-              `${rewriteUnit.id}-diff-${span.type}-${index}`
+              `${rewriteUnit.id}-diff-${span.type}-${index}`,
+              nullSlot
             )}
           </span>
         )
