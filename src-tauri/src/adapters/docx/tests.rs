@@ -184,6 +184,32 @@ fn extracts_plain_text_from_docx_document_xml() {
 }
 
 #[test]
+fn allows_body_level_bookmark_markers_without_rejecting_docx() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:bookmarkStart w:id="0" w:name="_GoBack"/>
+    <w:p><w:r><w:t>正文段落</w:t></w:r></w:p>
+    <w:bookmarkEnd w:id="0"/>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let source = DocxAdapter::extract_text(&bytes).expect("extract text");
+    let writeback_source =
+        DocxAdapter::extract_writeback_source_text(&bytes).expect("extract writeback source");
+    let rewritten =
+        DocxAdapter::write_updated_text(&bytes, &source, &source).expect("write updated text");
+    let rewritten_text = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+    let rewritten_document_xml = read_docx_entry(&rewritten, "word/document.xml");
+
+    assert_eq!(source, "正文段落");
+    assert_eq!(writeback_source, source);
+    assert_eq!(rewritten_text, source);
+    assert!(rewritten_document_xml.contains("<w:bookmarkStart"));
+    assert!(rewritten_document_xml.contains("<w:bookmarkEnd"));
+}
+
+#[test]
 fn imports_tabs_as_visible_text_during_import() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

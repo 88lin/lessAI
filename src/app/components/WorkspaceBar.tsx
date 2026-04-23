@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Copy,
   Download,
@@ -69,17 +68,7 @@ export const WorkspaceBar = memo(function WorkspaceBar({
   const rawPath = currentSession ? formatDisplayPath(currentSession.documentPath) : "";
 
   return (
-    <div
-      className="workspace-bar"
-      data-tauri-drag-region
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest?.('[data-tauri-drag-region="false"]')) return;
-        event.preventDefault();
-        void getCurrentWindow().startDragging();
-      }}
-    >
+    <div className="workspace-bar" data-tauri-drag-region>
       <div className="workspace-bar-left">
         <img className="brand-logo is-small" src={logoUrl} alt="LessAI" />
         <div className="workspace-bar-brand">

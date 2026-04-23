@@ -332,6 +332,10 @@ fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
     )
 }
 
+fn is_ignorable_body_name(name: &[u8]) -> bool {
+    is_ignorable_paragraph_name(name)
+}
+
 fn is_locked_inline_object_name(name: &[u8]) -> bool {
     is_inline_special_name(name)
 }
@@ -641,6 +645,9 @@ fn extract_writeback_paragraph_templates(
                                 block_events.clear();
                                 block_events.push(Event::Start(e));
                             }
+                            name if is_ignorable_body_name(name) => {
+                                body_depth += 1;
+                            }
                             _ => {
                                 return Err(format!(
                                     "当前仅支持文章语义相关的 docx：检测到不支持的正文结构 <{}>。",
@@ -671,6 +678,7 @@ fn extract_writeback_paragraph_templates(
                         b"sectPr" => {
                             blocks.push(parse_section_break_placeholder_block(&[Event::Empty(e)])?)
                         }
+                        name if is_ignorable_body_name(name) => {}
                         _ => {
                             return Err(format!(
                                 "当前仅支持文章语义相关的 docx：检测到不支持的正文结构 <{}>。",

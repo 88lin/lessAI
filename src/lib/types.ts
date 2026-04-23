@@ -112,7 +112,13 @@ export interface RewriteSuggestion {
   rewriteUnitId: string;
   beforeText: string;
   afterText: string;
-  diffSpans: DiffSpan[];
+  // Legacy sessions may only include `diffSpans`.
+  // Current backend shape is `diff: { spans, degradedReason }`.
+  diff?: {
+    spans: DiffSpan[];
+    degradedReason?: string | null;
+  } | null;
+  diffSpans?: DiffSpan[] | null;
   decision: SuggestionDecision;
   slotUpdates: SlotUpdate[];
   createdAt: string;

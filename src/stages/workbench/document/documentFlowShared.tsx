@@ -90,7 +90,7 @@ function rewriteUnitSeparatorText(slots: ReadonlyArray<WritebackSlot>) {
 }
 
 function trimTrailingSeparatorFromDiffSpans(
-  diffSpans: RewriteSuggestion["diffSpans"],
+  diffSpans: ReadonlyArray<{ type: string; text: string }>,
   separatorText: string
 ) {
   if (!separatorText) return diffSpans;
@@ -106,6 +106,11 @@ function trimTrailingSeparatorFromDiffSpans(
   }
 
   return trimmed.filter((span) => span.text.length > 0);
+}
+
+function suggestionDiffSpans(suggestion: RewriteSuggestion) {
+  const spans = suggestion.diff?.spans ?? suggestion.diffSpans ?? [];
+  return Array.isArray(spans) ? spans : [];
 }
 
 export interface RenderedRewriteUnitContent {
@@ -129,8 +134,9 @@ export function renderRewriteUnitContent(
   const separatorText = rewriteUnitSeparatorText(slots);
 
   if (documentView === "markup" && displaySuggestion) {
+    const spans = suggestionDiffSpans(displaySuggestion);
     return {
-      body: trimTrailingSeparatorFromDiffSpans(displaySuggestion.diffSpans, separatorText).map(
+      body: trimTrailingSeparatorFromDiffSpans(spans, separatorText).map(
         (span, index) => (
           <span
             key={`${rewriteUnit.id}-${span.type}-${index}-${span.text.length}`}
