@@ -62,6 +62,7 @@ fn textual_template_format(path: &Path) -> Result<models::DocumentFormat, String
 
 fn format_from_extension(extension: Option<&str>) -> models::DocumentFormat {
     match extension {
+        Some("docx") => models::DocumentFormat::Docx,
         Some("md" | "markdown") => models::DocumentFormat::Markdown,
         Some("tex" | "latex") => models::DocumentFormat::Tex,
         _ => models::DocumentFormat::PlainText,

@@ -97,10 +97,10 @@ fn refresh_session_from_loaded(
             draft.rebuild_structure(
                 writeback_slots,
                 expected_rewrite_units,
-                template_kind,
+                template_kind.clone(),
                 template_signature,
                 slot_structure_signature,
-                template_snapshot,
+                template_snapshot.clone(),
                 segmentation_preset,
                 rewrite_headings,
             );
@@ -109,6 +109,8 @@ fn refresh_session_from_loaded(
             return block_session_for_structure_change(existing, canonical);
         }
     }
+
+    draft.sync_template_metadata(template_kind, template_snapshot);
 
     draft.apply_capabilities(&capabilities);
     draft.finish()

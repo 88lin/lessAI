@@ -37,7 +37,7 @@ export const EditorReviewPane = memo(function EditorReviewPane({
   );
   const renderText = (value: string, key: string) => {
     if (!showMarkers) return value;
-    return renderInlineProtectedText(value, documentFormat, key);
+    return renderInlineProtectedText(value, documentFormat, key, { slot: null });
   };
 
   const {

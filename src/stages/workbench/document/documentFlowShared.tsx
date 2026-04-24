@@ -3,10 +3,13 @@ import type { DocumentSession, RewriteSuggestion, RewriteUnit, WritebackSlot } f
 import type { DocumentView } from "../hooks/useCopyDocument";
 import type { ClientDocumentFormat } from "../../../lib/protectedText";
 import { renderInlineProtectedText } from "../../../lib/protectedText";
+import { slotPresentationClass as buildSlotPresentationClass } from "./structuredEditorShared";
 import {
   rewriteUnitSlotsWithSuggestion,
   rewriteUnitHasEditableSlot
 } from "../../../lib/helpers";
+
+const nullSlot: WritebackSlot | null = null;
 
 export interface DocumentFlowBodyProps {
   session: DocumentSession;
@@ -28,17 +31,10 @@ export interface DocumentFlowBodyProps {
 }
 
 function slotPresentationClass(slot: WritebackSlot) {
-  const presentation = slot.presentation;
-  return [
-    "doc-paragraph-fragment",
-    slot.editable ? "" : "is-fragment-protected",
-    presentation?.bold ? "is-bold" : "",
-    presentation?.italic ? "is-italic" : "",
-    presentation?.underline ? "is-underline" : "",
-    presentation?.href ? "is-link" : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
+  return buildSlotPresentationClass(slot, {
+    baseClassName: "doc-paragraph-fragment",
+    protectedClassName: "is-fragment-protected"
+  });
 }
 
 export function rewriteUnitTitle(
@@ -60,10 +56,11 @@ function renderSlotText(
   value: string,
   showMarkers: boolean,
   documentFormat: ClientDocumentFormat,
-  key: string
+  key: string,
+  slot: WritebackSlot | null
 ) {
   if (!showMarkers) return value;
-  return renderInlineProtectedText(value, documentFormat, key);
+  return renderInlineProtectedText(value, documentFormat, key, { slot });
 }
 
 function renderSlots(
@@ -75,7 +72,13 @@ function renderSlots(
   return slots.map((slot, index) => (
     <Fragment key={`${keyPrefix}-${slot.id}`}>
       <span className={slotPresentationClass(slot)}>
-        {renderSlotText(slot.text, showMarkers, documentFormat, `${keyPrefix}-${slot.id}`)}
+        {renderSlotText(
+          slot.text,
+          showMarkers,
+          documentFormat,
+          `${keyPrefix}-${slot.id}`,
+          slot
+        )}
       </span>
       {index < slots.length - 1 ? slot.separatorAfter : ""}
     </Fragment>
@@ -87,7 +90,7 @@ function rewriteUnitSeparatorText(slots: ReadonlyArray<WritebackSlot>) {
 }
 
 function trimTrailingSeparatorFromDiffSpans(
-  diffSpans: RewriteSuggestion["diffSpans"],
+  diffSpans: ReadonlyArray<{ type: string; text: string }>,
   separatorText: string
 ) {
   if (!separatorText) return diffSpans;
@@ -103,6 +106,11 @@ function trimTrailingSeparatorFromDiffSpans(
   }
 
   return trimmed.filter((span) => span.text.length > 0);
+}
+
+function suggestionDiffSpans(suggestion: RewriteSuggestion) {
+  const spans = suggestion.diff?.spans ?? suggestion.diffSpans ?? [];
+  return Array.isArray(spans) ? spans : [];
 }
 
 export interface RenderedRewriteUnitContent {
@@ -126,8 +134,9 @@ export function renderRewriteUnitContent(
   const separatorText = rewriteUnitSeparatorText(slots);
 
   if (documentView === "markup" && displaySuggestion) {
+    const spans = suggestionDiffSpans(displaySuggestion);
     return {
-      body: trimTrailingSeparatorFromDiffSpans(displaySuggestion.diffSpans, separatorText).map(
+      body: trimTrailingSeparatorFromDiffSpans(spans, separatorText).map(
         (span, index) => (
           <span
             key={`${rewriteUnit.id}-${span.type}-${index}-${span.text.length}`}
@@ -137,7 +146,8 @@ export function renderRewriteUnitContent(
               span.text,
               showMarkers,
               documentFormat,
-              `${rewriteUnit.id}-diff-${span.type}-${index}`
+              `${rewriteUnit.id}-diff-${span.type}-${index}`,
+              nullSlot
             )}
           </span>
         )

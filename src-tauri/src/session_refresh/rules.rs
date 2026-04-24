@@ -1,6 +1,6 @@
 use crate::{
     models::{
-        DocumentSession, DocumentSnapshot, RewriteUnitStatus, RunningState, SegmentationPreset,
+        DocumentSession, DocumentSnapshot, SegmentationPreset,
     },
     rewrite_unit::{RewriteUnit, WritebackSlot},
 };
@@ -20,14 +20,7 @@ pub(super) fn source_snapshot_changed(
 }
 
 pub(super) fn session_can_rebuild_cleanly(session: &DocumentSession) -> bool {
-    session.status == RunningState::Idle
-        && session.suggestions.is_empty()
-        && session.rewrite_units.iter().all(|unit| {
-            matches!(
-                unit.status,
-                RewriteUnitStatus::Idle | RewriteUnitStatus::Done
-            )
-        })
+    session.capabilities.clean_session
 }
 
 pub(super) fn decide_segmentation_refresh(
@@ -70,13 +63,38 @@ fn should_rebuild_structure(
     segmentation_preset: SegmentationPreset,
     rewrite_headings: bool,
 ) -> bool {
+    let template_kind_mismatch = !template_kind_compatible(
+        session.template_kind.as_deref(),
+        expected_template_kind,
+        session.document_path.as_str(),
+    );
     session.segmentation_preset != Some(segmentation_preset)
         || session.rewrite_headings != Some(rewrite_headings)
-        || session.template_kind.as_deref() != expected_template_kind
+        || template_kind_mismatch
         || session.template_signature.as_deref() != expected_template_signature
         || session.slot_structure_signature.as_deref() != expected_slot_structure_signature
         || !writeback_slot_structures_match(&session.writeback_slots, expected_writeback_slots)
         || !rewrite_unit_structures_match(&session.rewrite_units, expected_rewrite_units)
+}
+
+fn template_kind_compatible(
+    current: Option<&str>,
+    expected: Option<&str>,
+    document_path: &str,
+) -> bool {
+    if current == expected {
+        return true;
+    }
+    if expected == Some("docx")
+        && current.is_none()
+        && document_path
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("docx"))
+    {
+        // Backward compatibility: old docx sessions persisted template_kind=None.
+        return true;
+    }
+    false
 }
 
 fn writeback_slot_structures_match(current: &[WritebackSlot], expected: &[WritebackSlot]) -> bool {
@@ -100,4 +118,25 @@ fn rewrite_unit_structures_match(current: &[RewriteUnit], expected: &[RewriteUni
                 && left.display_text == right.display_text
                 && left.segmentation_preset == right.segmentation_preset
         })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn template_kind_compatible_accepts_legacy_docx_none() {
+        assert!(super::template_kind_compatible(
+            None,
+            Some("docx"),
+            "/tmp/example.docx"
+        ));
+    }
+
+    #[test]
+    fn template_kind_compatible_rejects_non_docx_none() {
+        assert!(!super::template_kind_compatible(
+            None,
+            Some("markdown"),
+            "/tmp/example.md"
+        ));
+    }
 }

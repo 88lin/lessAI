@@ -8,7 +8,6 @@ import {
   summarizeRewriteUnitSuggestions
 } from "../../../lib/helpers";
 import { isRewriteUnitSelected } from "../../../lib/rewriteUnitSelection";
-import type { SegmentationPreset } from "../../../lib/types";
 import type { DocumentFlowBodyProps } from "./documentFlowShared";
 import {
   shouldScrollToActiveRewriteUnit,
@@ -21,7 +20,6 @@ import {
 
 interface ParagraphDocumentFlowProps extends DocumentFlowBodyProps {
   sessionId: string;
-  segmentationPreset: SegmentationPreset;
 }
 
 function buildRewriteUnitClassNames(
@@ -73,7 +71,6 @@ function findScrollContainer(node: HTMLSpanElement | null) {
 
 export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
   sessionId,
-  segmentationPreset,
   session,
   rewriteUnits,
   documentView,

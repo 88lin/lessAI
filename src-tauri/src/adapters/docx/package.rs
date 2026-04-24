@@ -47,8 +47,7 @@ pub(super) fn load_docx_parts(docx_bytes: &[u8]) -> Result<DocxParts, String> {
     }
 
     let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
+    let mut archive = ZipArchive::new(cursor).map_err(format_docx_zip_error)?;
 
     Ok(DocxParts {
         document_xml: read_required_xml_entry(
@@ -60,6 +59,22 @@ pub(super) fn load_docx_parts(docx_bytes: &[u8]) -> Result<DocxParts, String> {
         numbering_xml: read_optional_xml_entry(&mut archive, "word/numbering.xml")?,
         styles_xml: read_optional_xml_entry(&mut archive, "word/styles.xml")?,
     })
+}
+
+pub(super) fn format_docx_zip_error(error: zip::result::ZipError) -> String {
+    let detail = error.to_string();
+    let lower = detail.to_ascii_lowercase();
+    if lower.contains("eocd") {
+        return format!(
+            "无法解析 docx：压缩包尾部目录（EOCD）缺失或损坏。文件可能未下载完整、被截断，或并非真实 .docx。底层错误：{detail}"
+        );
+    }
+    if lower.contains("invalid zip archive") {
+        return format!(
+            "无法解析 docx：文件不是有效的 zip/docx 结构，可能是扩展名被改成 .docx。底层错误：{detail}"
+        );
+    }
+    format!("无法解析 docx（zip 结构错误）：{detail}")
 }
 
 fn build_docx_support_data(parts: &DocxParts) -> Result<DocxSupportData, String> {

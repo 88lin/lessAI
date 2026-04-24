@@ -59,6 +59,21 @@ impl SessionRefreshDraft {
         self.changed = true;
     }
 
+    pub(super) fn sync_template_metadata(
+        &mut self,
+        template_kind: Option<String>,
+        template_snapshot: Option<crate::textual_template::TextTemplate>,
+    ) {
+        if self.session.template_kind == template_kind
+            && self.session.template_snapshot == template_snapshot
+        {
+            return;
+        }
+        self.session.template_kind = template_kind;
+        self.session.template_snapshot = template_snapshot;
+        self.changed = true;
+    }
+
     pub(super) fn apply_capabilities(&mut self, capabilities: &SessionCapabilities) {
         if apply_session_capabilities(&mut self.session, capabilities) {
             self.changed = true;
@@ -67,6 +82,7 @@ impl SessionRefreshDraft {
 
     pub(super) fn finish(mut self) -> RefreshedSession {
         if self.changed {
+            crate::documents::hydrate_session_capabilities(&mut self.session);
             self.session.updated_at = Utc::now();
         }
         RefreshedSession {

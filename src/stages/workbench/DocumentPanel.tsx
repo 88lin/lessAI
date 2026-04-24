@@ -8,9 +8,13 @@ import type {
 import type { EditorSlotOverrides } from "../../lib/editorSlots";
 import type { SessionStats } from "../../lib/helpers";
 import {
+  editorEntryBlockedReason,
+  sessionIsClean,
+  sessionSupportsSourceWriteback
+} from "../../lib/documentCapabilities";
+import {
   canRewriteSession,
   countCharacters,
-  isPdfPath,
   rewriteBlockedReason
 } from "../../lib/helpers";
 import {
@@ -116,7 +120,7 @@ export const DocumentPanel = memo(function DocumentPanel({
 
   const rewriteRunning = currentSession?.status === "running";
   const rewritePaused = currentSession?.status === "paused";
-  const readOnlyDocument = Boolean(currentSession && isPdfPath(currentSession.documentPath));
+  const sourceWritebackSupported = currentSession ? sessionSupportsSourceWriteback(currentSession) : false;
   const anyBusy = Boolean(busyAction);
 
   const startKey = `start-${settings.rewriteMode}`;
@@ -132,7 +136,6 @@ export const DocumentPanel = memo(function DocumentPanel({
   const showCancelAction = rewriteRunning || rewritePaused;
   const hasAppliedEdits = Boolean(currentStats && currentStats.suggestionsApplied > 0);
   const hasRewriteUnitSelection = hasSelectedRewriteUnits(selectedRewriteUnitIds);
-  const effectiveSegmentationPreset = currentSession?.segmentationPreset ?? settings.segmentationPreset;
   const selectedDisplayCount = countSelectedRewriteUnits(selectedRewriteUnitIds);
   const rewriteBlockReason = rewriteBlockedReason(currentSession);
   const nextManualTargetRewriteUnit = useMemo(
@@ -209,38 +212,23 @@ export const DocumentPanel = memo(function DocumentPanel({
 
   const canEnterEditor = Boolean(
     currentSession &&
-      !readOnlyDocument &&
-      currentSession.plainTextEditorSafe &&
+      currentSession.capabilities.editorEntry.allowed &&
       !rewriteRunning &&
       !rewritePaused &&
-      currentSession.status === "idle" &&
-      currentSession.suggestions.length === 0 &&
-      currentSession.rewriteUnits.every(
-        (rewriteUnit) => rewriteUnit.status === "idle" || rewriteUnit.status === "done"
-      ) &&
       !anyBusy
   );
 
   const enterEditorTitle = useMemo(() => {
     if (!currentSession) return "请先打开一个文档";
-    if (isPdfPath(currentSession.documentPath)) {
-      return "pdf 目前仅支持导入/改写/导出，暂不支持终稿编辑或写回覆盖";
-    }
-    if (!currentSession.plainTextEditorSafe) {
-      return currentSession.plainTextEditorBlockReason ?? "当前文档暂不支持进入编辑模式。";
+    if (!currentSession.capabilities.editorEntry.allowed) {
+      return editorEntryBlockedReason(currentSession) ?? "当前文档暂不支持进入编辑模式。";
     }
     if (rewriteRunning || rewritePaused) {
       return "请先取消自动任务后再编辑终稿";
     }
     if (anyBusy) return "当前有操作在执行，请稍后再试";
-    if (currentSession.status !== "idle") {
-      return "当前文档状态不是空闲，暂不可编辑终稿";
-    }
-    if (currentSession.suggestions.length > 0) {
-      return "该文档存在修订记录，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑";
-    }
-    if (currentSession.rewriteUnits.some((rewriteUnit) => !["idle", "done"].includes(rewriteUnit.status))) {
-      return "该文档存在生成进度/失败片段，为避免冲突，请先“覆写并清理记录”或“重置记录”后再编辑";
+    if (!sessionIsClean(currentSession)) {
+      return currentSession.capabilities.editorEntry.blockReason ?? "当前文档暂不支持进入编辑模式。";
     }
     return "编辑终稿（仅在无修订记录时开放）";
   }, [anyBusy, currentSession, rewritePaused, rewriteRunning]);
@@ -252,12 +240,12 @@ export const DocumentPanel = memo(function DocumentPanel({
     rewriteRunning ||
     rewritePaused ||
     !hasAppliedEdits ||
-    readOnlyDocument;
+    !sourceWritebackSupported;
 
   const finalizeTitle = useMemo(() => {
     if (finalizeBusy) return "正在写回原文件…";
-    if (currentSession && isPdfPath(currentSession.documentPath)) {
-      return "pdf 暂不支持写回覆盖，请导出为 .txt 后再进行后续排版";
+    if (currentSession && !sourceWritebackSupported) {
+      return currentSession.capabilities.sourceWriteback.blockReason ?? "当前文档暂不支持写回覆盖。";
     }
     if (rewriteRunning || rewritePaused) {
       return "请先取消自动任务后再写回原文件";
@@ -267,7 +255,14 @@ export const DocumentPanel = memo(function DocumentPanel({
       return "还没有已应用的修改（先在右侧点“应用”）";
     }
     return "覆盖原文件并清理记录（不可撤销）";
-  }, [currentSession, currentStats, finalizeBusy, rewritePaused, rewriteRunning]);
+  }, [
+    currentSession,
+    currentStats,
+    finalizeBusy,
+    rewritePaused,
+    rewriteRunning,
+    sourceWritebackSupported
+  ]);
 
   const { canCopy, copyState, copyTitle, handleCopyDocument } = useCopyDocument({
     editorMode,
@@ -423,7 +418,6 @@ export const DocumentPanel = memo(function DocumentPanel({
                 sessionId={currentSession.id}
                 session={currentSession}
                 rewriteUnits={currentSession.rewriteUnits}
-                segmentationPreset={effectiveSegmentationPreset}
                 documentView={documentView}
                 documentFormat={documentFormat}
                 rewriteEnabled={!rewriteBlockReason}

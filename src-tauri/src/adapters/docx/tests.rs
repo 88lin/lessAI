@@ -184,6 +184,32 @@ fn extracts_plain_text_from_docx_document_xml() {
 }
 
 #[test]
+fn allows_body_level_bookmark_markers_without_rejecting_docx() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:bookmarkStart w:id="0" w:name="_GoBack"/>
+    <w:p><w:r><w:t>正文段落</w:t></w:r></w:p>
+    <w:bookmarkEnd w:id="0"/>
+  </w:body>
+</w:document>"#;
+    let bytes = build_minimal_docx(xml);
+    let source = DocxAdapter::extract_text(&bytes).expect("extract text");
+    let writeback_source =
+        DocxAdapter::extract_writeback_source_text(&bytes).expect("extract writeback source");
+    let rewritten =
+        DocxAdapter::write_updated_text(&bytes, &source, &source).expect("write updated text");
+    let rewritten_text = DocxAdapter::extract_text(&rewritten).expect("extract rewritten text");
+    let rewritten_document_xml = read_docx_entry(&rewritten, "word/document.xml");
+
+    assert_eq!(source, "正文段落");
+    assert_eq!(writeback_source, source);
+    assert_eq!(rewritten_text, source);
+    assert!(rewritten_document_xml.contains("<w:bookmarkStart"));
+    assert!(rewritten_document_xml.contains("<w:bookmarkEnd"));
+}
+
+#[test]
 fn imports_tabs_as_visible_text_during_import() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -1667,16 +1693,8 @@ fn writes_back_hyperlink_display_text_without_touching_url() {
         .and_then(|region| region.presentation.clone())
         .expect("hyperlink presentation");
     let updated_regions = vec![
-        TextRegion {
-            body: "访问".to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        },
-        TextRegion {
-            body: "新版链接".to_string(),
-            skip_rewrite: false,
-            presentation: Some(hyperlink_presentation),
-        },
+        TextRegion::editable("访问"),
+        TextRegion::editable("新版链接").with_presentation(Some(hyperlink_presentation)),
     ];
 
     let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &updated_regions)
@@ -1723,11 +1741,8 @@ fn writes_back_styled_run_text_without_dropping_run_properties() {
         .and_then(|region| region.presentation.clone())
         .expect("writeback presentation");
     assert_eq!(presentation, writeback_presentation);
-    let updated_regions = vec![TextRegion {
-        body: "更新样式文本".to_string(),
-        skip_rewrite: false,
-        presentation: Some(presentation),
-    }];
+    let updated_regions =
+        vec![TextRegion::editable("更新样式文本").with_presentation(Some(presentation))];
 
     let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &updated_regions)
         .expect("write updated regions");
@@ -1766,28 +1781,16 @@ fn writes_back_regions_around_locked_formula_without_touching_formula_xml() {
     let bytes = build_minimal_docx(xml);
     let source = DocxAdapter::extract_text(&bytes).expect("extract text");
     let updated_regions = vec![
-        TextRegion {
-            body: "更新正文".to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        },
-        TextRegion {
-            body: "E=mc^2".to_string(),
-            skip_rewrite: true,
-            presentation: Some(TextPresentation {
+        TextRegion::editable("更新正文"),
+        TextRegion::inline_object("E=mc^2").with_presentation(Some(TextPresentation {
                 bold: false,
                 italic: false,
                 underline: false,
                 href: None,
                 protect_kind: Some("formula".to_string()),
                 writeback_key: None,
-            }),
-        },
-        TextRegion {
-            body: "更新结论".to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        },
+            })),
+        TextRegion::editable("更新结论"),
     ];
 
     let rewritten = DocxAdapter::write_updated_regions(&bytes, &source, &updated_regions)
@@ -1895,23 +1898,15 @@ fn rejects_region_writeback_when_locked_formula_text_changes() {
     let bytes = build_minimal_docx(xml);
     let source = DocxAdapter::extract_text(&bytes).expect("extract text");
     let updated_regions = vec![
-        TextRegion {
-            body: "正文".to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        },
-        TextRegion {
-            body: "被改坏的公式".to_string(),
-            skip_rewrite: true,
-            presentation: Some(TextPresentation {
+        TextRegion::editable("正文"),
+        TextRegion::inline_object("被改坏的公式").with_presentation(Some(TextPresentation {
                 bold: false,
                 italic: false,
                 underline: false,
                 href: None,
                 protect_kind: Some("formula".to_string()),
                 writeback_key: None,
-            }),
-        },
+            })),
     ];
 
     let error = DocxAdapter::write_updated_regions(&bytes, &source, &updated_regions)
@@ -1943,14 +1938,14 @@ fn writes_back_updated_text_for_simple_docx() {
 }
 
 #[test]
-fn validates_plain_text_editor_for_docx_with_single_styled_region_per_paragraph() {
+fn validates_editor_writeback_for_docx_with_single_styled_region_per_paragraph() {
     let bytes = build_rfonts_hint_fragmented_docx();
 
-    DocxAdapter::validate_plain_text_editor(&bytes).expect("plain text editor should be allowed");
+    DocxAdapter::validate_editor_writeback(&bytes).expect("plain text editor should be allowed");
 }
 
 #[test]
-fn validates_plain_text_editor_for_docx_with_multiple_editable_regions() {
+fn validates_editor_writeback_for_docx_with_multiple_editable_regions() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
@@ -1962,7 +1957,7 @@ fn validates_plain_text_editor_for_docx_with_multiple_editable_regions() {
 </w:document>"#;
     let bytes = build_minimal_docx(xml);
 
-    DocxAdapter::validate_plain_text_editor(&bytes).expect("plain text editor should be allowed");
+    DocxAdapter::validate_editor_writeback(&bytes).expect("plain text editor should be allowed");
 }
 
 #[test]
@@ -2026,14 +2021,14 @@ fn rejects_updated_text_for_docx_when_edit_crosses_style_boundary() {
 }
 
 #[test]
-fn validates_plain_text_editor_for_report_template() {
+fn validates_editor_writeback_for_report_template() {
     let bytes = load_repo_docx_fixture("04-3 作品报告（大数据应用赛，2025版）模板.docx");
 
-    DocxAdapter::validate_plain_text_editor(&bytes).expect("plain text editor should be allowed");
+    DocxAdapter::validate_editor_writeback(&bytes).expect("plain text editor should be allowed");
 }
 
 #[test]
-fn validates_plain_text_editor_for_docx_with_inline_locked_formula() {
+fn validates_editor_writeback_for_docx_with_inline_locked_formula() {
     let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -2048,7 +2043,7 @@ fn validates_plain_text_editor_for_docx_with_inline_locked_formula() {
 </w:document>"#;
     let bytes = build_minimal_docx(xml);
 
-    DocxAdapter::validate_plain_text_editor(&bytes).expect("plain text editor should be allowed");
+    DocxAdapter::validate_editor_writeback(&bytes).expect("plain text editor should be allowed");
 }
 
 #[test]
