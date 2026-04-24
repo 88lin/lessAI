@@ -57,8 +57,9 @@ pub(super) fn find_matching_emphasis(
 ) -> Option<(usize, usize, usize)> {
     let pair_lengths = emphasis_pair_lengths(open.marker, open.end - open.start);
     for pair_len in pair_lengths.into_iter().flatten() {
-        let close_start = find_matching_emphasis_close(text, open, pair_len)?;
-        return Some((pair_len, close_start, pair_len));
+        if let Some(close_start) = find_matching_emphasis_close(text, open, pair_len) {
+            return Some((pair_len, close_start, pair_len));
+        }
     }
     None
 }
@@ -140,5 +141,20 @@ fn is_markdown_punctuation(ch: Option<char>) -> bool {
     match ch {
         Some(value) => !value.is_whitespace() && !value.is_alphanumeric(),
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{find_matching_emphasis, parse_emphasis_delimiter_run};
+
+    #[test]
+    fn find_matching_emphasis_falls_back_to_single_delimiter_when_double_missing() {
+        let text = "***a*";
+        let open = parse_emphasis_delimiter_run(text, 0).expect("open delimiter");
+
+        let matched = find_matching_emphasis(text, open).expect("should match single fallback");
+
+        assert_eq!(matched, (1, 4, 1));
     }
 }

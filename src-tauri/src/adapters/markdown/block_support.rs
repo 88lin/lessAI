@@ -1,5 +1,5 @@
 use super::syntax::{
-    detect_fence_marker, is_atx_heading_line, is_html_like_line, is_horizontal_rule_line,
+    detect_fence_marker, is_atx_heading_line, is_horizontal_rule_line, is_html_like_line,
     is_indented_code_line, is_list_or_quote_line, is_markdown_table_delimiter,
     is_math_block_delimiter_line, is_reference_definition_line, is_setext_underline_line,
     is_yaml_front_matter_close, is_yaml_front_matter_open,
@@ -111,11 +111,7 @@ pub(super) fn starts_standalone_markdown_block(lines: &[IndexedLine<'_>], index:
             && is_setext_underline_line(lines[index + 1].line))
 }
 
-pub(super) fn continues_list_or_quote_block(
-    kind: &str,
-    first_line: &str,
-    next_line: &str,
-) -> bool {
+pub(super) fn continues_list_or_quote_block(kind: &str, first_line: &str, next_line: &str) -> bool {
     if kind == "quote" {
         return next_line.trim_start().starts_with('>');
     }

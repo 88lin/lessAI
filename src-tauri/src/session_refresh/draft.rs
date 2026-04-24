@@ -3,14 +3,13 @@ use std::path::Path;
 use chrono::Utc;
 
 use crate::{
-    models::{DocumentSession, RunningState, SegmentationPreset},
+    models::{DocumentSession, RunningState},
     rewrite,
-    rewrite_unit::{RewriteUnit, WritebackSlot},
 };
 
 use super::{
     capabilities::{apply_session_capabilities, SessionCapabilities},
-    RefreshedSession,
+    RefreshedSession, SessionStructureData,
 };
 
 pub(super) struct SessionRefreshDraft {
@@ -35,26 +34,16 @@ impl SessionRefreshDraft {
         self.changed = true;
     }
 
-    pub(super) fn rebuild_structure(
-        &mut self,
-        writeback_slots: Vec<WritebackSlot>,
-        rewrite_units: Vec<RewriteUnit>,
-        template_kind: Option<String>,
-        template_signature: Option<String>,
-        slot_structure_signature: Option<String>,
-        template_snapshot: Option<crate::textual_template::TextTemplate>,
-        segmentation_preset: SegmentationPreset,
-        rewrite_headings: bool,
-    ) {
+    pub(super) fn rebuild_structure(&mut self, structure: SessionStructureData) {
         self.session.normalized_text = rewrite::normalize_text(&self.session.source_text);
-        self.session.template_kind = template_kind;
-        self.session.template_signature = template_signature;
-        self.session.slot_structure_signature = slot_structure_signature;
-        self.session.template_snapshot = template_snapshot;
-        self.session.writeback_slots = writeback_slots;
-        self.session.rewrite_units = rewrite_units;
-        self.session.segmentation_preset = Some(segmentation_preset);
-        self.session.rewrite_headings = Some(rewrite_headings);
+        self.session.template_kind = structure.template_kind;
+        self.session.template_signature = structure.template_signature;
+        self.session.slot_structure_signature = structure.slot_structure_signature;
+        self.session.template_snapshot = structure.template_snapshot;
+        self.session.writeback_slots = structure.writeback_slots;
+        self.session.rewrite_units = structure.rewrite_units;
+        self.session.segmentation_preset = Some(structure.segmentation_preset);
+        self.session.rewrite_headings = Some(structure.rewrite_headings);
         self.session.status = RunningState::Idle;
         self.changed = true;
     }
@@ -102,7 +91,7 @@ mod tests {
     use crate::{
         models::{RewriteUnitStatus, RunningState, SegmentationPreset},
         rewrite_unit::{RewriteUnit, WritebackSlot},
-        session_refresh::test_support::sample_session,
+        session_refresh::{test_support::sample_session, SessionStructureData},
     };
 
     #[test]
@@ -132,9 +121,9 @@ mod tests {
         session.rewrite_headings = Some(false);
 
         let mut draft = SessionRefreshDraft::new(session);
-        draft.rebuild_structure(
-            vec![WritebackSlot::editable("slot-0", 0, "第一句。第二句。")],
-            vec![RewriteUnit {
+        draft.rebuild_structure(SessionStructureData {
+            writeback_slots: vec![WritebackSlot::editable("slot-0", 0, "第一句。第二句。")],
+            rewrite_units: vec![RewriteUnit {
                 id: "unit-0".to_string(),
                 order: 0,
                 slot_ids: vec!["slot-0".to_string()],
@@ -143,13 +132,13 @@ mod tests {
                 status: RewriteUnitStatus::Idle,
                 error_message: None,
             }],
-            Some("plain_text".to_string()),
-            Some("template-signature".to_string()),
-            Some("slot-signature".to_string()),
-            None,
-            SegmentationPreset::Sentence,
-            true,
-        );
+            template_kind: Some("plain_text".to_string()),
+            template_signature: Some("template-signature".to_string()),
+            slot_structure_signature: Some("slot-signature".to_string()),
+            template_snapshot: None,
+            segmentation_preset: SegmentationPreset::Sentence,
+            rewrite_headings: true,
+        });
         let refreshed = draft.finish();
 
         assert!(refreshed.changed);

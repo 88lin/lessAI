@@ -36,6 +36,6 @@ mod xml;
 #[path = "docx/xml_tests.rs"]
 mod xml_tests;
 
+pub(crate) use signature::DocxWritebackModel;
 pub use simple::DocxAdapter;
 pub(crate) use simple::LoadedDocxWritebackSource;
-pub(crate) use signature::DocxWritebackModel;

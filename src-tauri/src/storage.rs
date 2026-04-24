@@ -6,8 +6,8 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    documents::hydrated_session_clone,
     atomic_write::write_bytes_atomically,
+    documents::hydrated_session_clone,
     models::{AppSettings, DocumentSession},
     settings_validation::validate_numeric_settings,
 };
@@ -179,8 +179,10 @@ mod tests {
 
     #[test]
     fn validate_numeric_settings_rejects_zero_units_per_batch() {
-        let mut settings = AppSettings::default();
-        settings.units_per_batch = 0;
+        let settings = AppSettings {
+            units_per_batch: 0,
+            ..AppSettings::default()
+        };
 
         let error = validate_numeric_settings(&settings).expect_err("expected invalid batch size");
 

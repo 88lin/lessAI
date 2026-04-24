@@ -1,0 +1,605 @@
+.theme-toggle {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 110;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: var(--border);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 241, 0.98), rgba(245, 239, 228, 0.94));
+  box-shadow: var(--panel-shadow-sm);
+  backdrop-filter: blur(14px);
+  color: var(--ink);
+  transition:
+    transform var(--transition),
+    background-color var(--transition),
+    box-shadow var(--transition),
+    color var(--transition);
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.theme-toggle:hover:not(:disabled) {
+  transform: translate(-2px, -2px);
+}
+
+.theme-toggle:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0f1117;
+  --paper-strong: #171b24;
+  --paper-muted: #202635;
+  --ink: #e5e7eb;
+  --muted: #9ca3af;
+  --line: rgba(148, 163, 184, 0.24);
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --yellow: #f59e0b;
+  --green: #22c55e;
+  --insert: #8ed8ab;
+  --insert-bg: rgba(34, 197, 94, 0.14);
+  --delete: #f3b0b0;
+  --delete-bg: rgba(239, 68, 68, 0.14);
+  --border: 1px solid rgba(148, 163, 184, 0.18);
+  --panel-shadow: 0 20px 40px rgba(2, 6, 23, 0.34);
+  --panel-shadow-sm: 0 12px 24px rgba(2, 6, 23, 0.24);
+  --focus: 0 0 0 3px rgba(96, 165, 250, 0.28);
+  --app-bg:
+    radial-gradient(circle at 16% 18%, rgba(59, 130, 246, 0.12), transparent 22%),
+    radial-gradient(circle at 84% 12%, rgba(16, 185, 129, 0.08), transparent 18%),
+    linear-gradient(180deg, #0c111b 0%, #101623 48%, #0f1724 100%);
+  --theme-surface-2: rgba(25, 31, 43, 0.96);
+  --theme-surface-3: rgba(31, 39, 54, 0.98);
+  --theme-surface-4: rgba(36, 45, 62, 0.98);
+  --theme-info-bg: rgba(59, 130, 246, 0.16);
+  --theme-info-border: rgba(96, 165, 250, 0.26);
+  --theme-success-bg: rgba(34, 197, 94, 0.16);
+  --theme-success-border: rgba(74, 222, 128, 0.24);
+  --theme-warning-bg: rgba(245, 158, 11, 0.16);
+  --theme-warning-border: rgba(251, 191, 36, 0.24);
+  --theme-danger-bg: rgba(239, 68, 68, 0.16);
+  --theme-danger-border: rgba(248, 113, 113, 0.24);
+  --theme-neutral-bg: rgba(148, 163, 184, 0.1);
+  --theme-neutral-border: rgba(148, 163, 184, 0.2);
+  --theme-protected-bg: rgba(148, 163, 184, 0.12);
+  --theme-protected-border: rgba(148, 163, 184, 0.18);
+  --mark-editable-bg: rgba(59, 130, 246, 0.12);
+  --mark-editable-ring: rgba(96, 165, 250, 0.2);
+  --mark-editable-hover-bg: rgba(59, 130, 246, 0.18);
+  --mark-editable-hover-ring: rgba(96, 165, 250, 0.26);
+  --mark-active-bg: rgba(59, 130, 246, 0.22);
+  --mark-active-ring: rgba(96, 165, 250, 0.32);
+  --mark-selected-bg: rgba(245, 158, 11, 0.18);
+  --mark-selected-ring: rgba(251, 191, 36, 0.28);
+  --mark-protected-bg: rgba(148, 163, 184, 0.16);
+  --mark-protected-ring: rgba(148, 163, 184, 0.22);
+  --mark-running-bg: rgba(168, 85, 247, 0.16);
+  --mark-running-ring: rgba(192, 132, 252, 0.24);
+  --mark-running-pulse-from: rgba(168, 85, 247, 0.14);
+  --mark-running-pulse-to: rgba(168, 85, 247, 0.22);
+  --mark-failed-bg: rgba(239, 68, 68, 0.14);
+  --mark-failed-ring: rgba(248, 113, 113, 0.22);
+}
+
+:root[data-theme="dark"] ::selection {
+  background: rgba(59, 130, 246, 0.28);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .app-shell {
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 22px 48px rgba(2, 6, 23, 0.42);
+}
+
+:root[data-theme="dark"] .workspace-bar,
+:root[data-theme="dark"] .boot-card,
+:root[data-theme="dark"] .brand-block,
+:root[data-theme="dark"] .topbar-summary,
+:root[data-theme="dark"] .topbar-actions,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .context-strip,
+:root[data-theme="dark"] .assistant-card,
+:root[data-theme="dark"] .editor-paper,
+:root[data-theme="dark"] .review-minimap,
+:root[data-theme="dark"] .unit-ribbon,
+:root[data-theme="dark"] .action-card,
+:root[data-theme="dark"] .lane-card,
+:root[data-theme="dark"] .helper-note,
+:root[data-theme="dark"] .assistant-note,
+:root[data-theme="dark"] .metric-tile,
+:root[data-theme="dark"] .info-row,
+:root[data-theme="dark"] .bullet-list > div,
+:root[data-theme="dark"] .empty-inline,
+:root[data-theme="dark"] .error-card,
+:root[data-theme="dark"] .text-card,
+:root[data-theme="dark"] .preview-text,
+:root[data-theme="dark"] .diff-view {
+  background:
+    linear-gradient(180deg, var(--theme-surface-2), rgba(18, 22, 31, 0.96));
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .modal-overlay {
+  background: rgba(2, 6, 23, 0.56);
+}
+
+:root[data-theme="dark"] .modal-card,
+:root[data-theme="dark"] .dialog-card,
+:root[data-theme="dark"] .settings-content,
+:root[data-theme="dark"] .field-block,
+:root[data-theme="dark"] .workbench-editor-paper {
+  background:
+    linear-gradient(180deg, rgba(25, 31, 43, 0.98), rgba(16, 20, 29, 0.98));
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .dialog-message,
+:root[data-theme="dark"] .modal-footer,
+:root[data-theme="dark"] .dialog-footer,
+:root[data-theme="dark"] .paper-content {
+  background:
+    linear-gradient(180deg, rgba(18, 22, 31, 0.98), rgba(13, 17, 24, 0.98));
+}
+
+:root[data-theme="dark"] .modal-footer,
+:root[data-theme="dark"] .dialog-footer {
+  border-top-color: rgba(148, 163, 184, 0.14);
+}
+
+:root[data-theme="dark"] .paper-content {
+  border-color: rgba(148, 163, 184, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.04);
+}
+
+:root[data-theme="dark"] .window-controls {
+  border-left-color: rgba(148, 163, 184, 0.14);
+}
+
+:root[data-theme="dark"] .assistant-note,
+:root[data-theme="dark"] .legend-chip,
+:root[data-theme="dark"] .inline-protected,
+:root[data-theme="dark"] .doc-paragraph-fragment.is-fragment-protected {
+  border-color: var(--theme-protected-border);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] .window-control-button,
+:root[data-theme="dark"] .icon-button,
+:root[data-theme="dark"] .toolbar-button,
+:root[data-theme="dark"] .button,
+:root[data-theme="dark"] .notice-dismiss,
+:root[data-theme="dark"] .settings-nav-item,
+:root[data-theme="dark"] .segment-card,
+:root[data-theme="dark"] .workflow-tab,
+:root[data-theme="dark"] .mini-step,
+:root[data-theme="dark"] .session-row,
+:root[data-theme="dark"] .queue-row,
+:root[data-theme="dark"] .suggestion-row,
+:root[data-theme="dark"] .switch-chip,
+:root[data-theme="dark"] .context-chip,
+:root[data-theme="dark"] .session-pill,
+:root[data-theme="dark"] .status-badge,
+:root[data-theme="dark"] .editor-chip,
+:root[data-theme="dark"] .review-suggestion-row-action,
+:root[data-theme="dark"] .review-suggestion-row-menu,
+:root[data-theme="dark"] .review-marker,
+:root[data-theme="dark"] .unit-pill,
+:root[data-theme="dark"] .assistant-stat,
+:root[data-theme="dark"] .theme-toggle {
+  background: var(--theme-surface-2);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .review-suggestion-row-menu-item:hover:not(:disabled),
+:root[data-theme="dark"] .review-suggestion-row-menu-item:active:not(:disabled),
+:root[data-theme="dark"] .window-control-button:hover:not(:disabled),
+:root[data-theme="dark"] .icon-button:hover:not(:disabled),
+:root[data-theme="dark"] .toolbar-button:hover:not(:disabled),
+:root[data-theme="dark"] .button:hover:not(:disabled),
+:root[data-theme="dark"] .settings-nav-item:hover:not(:disabled),
+:root[data-theme="dark"] .segment-card:hover:not(:disabled),
+:root[data-theme="dark"] .workflow-tab:hover:not(:disabled),
+:root[data-theme="dark"] .mini-step:hover:not(:disabled),
+:root[data-theme="dark"] .session-row:hover:not(:disabled),
+:root[data-theme="dark"] .queue-row:hover:not(:disabled),
+:root[data-theme="dark"] .suggestion-row:hover:not(:disabled),
+:root[data-theme="dark"] .switch-chip:hover:not(:disabled),
+:root[data-theme="dark"] .review-marker:hover:not(:disabled),
+:root[data-theme="dark"] .unit-pill:hover:not(:disabled),
+:root[data-theme="dark"] .assistant-stat:hover:not(:disabled),
+:root[data-theme="dark"] .session-pill:hover:not(:disabled),
+:root[data-theme="dark"] .theme-toggle:hover:not(:disabled) {
+  background: var(--theme-surface-4);
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: rgba(156, 163, 175, 0.9);
+}
+
+:root[data-theme="dark"] .window-control-button.is-close:hover {
+  background: rgba(239, 68, 68, 0.84);
+  color: #fff;
+}
+
+:root[data-theme="dark"] .button-secondary {
+  background: var(--theme-surface-3);
+}
+
+:root[data-theme="dark"] .button-primary,
+:root[data-theme="dark"] .toolbar-button.is-primary {
+  background: var(--blue);
+  color: #eff6ff;
+}
+
+:root[data-theme="dark"] .button-danger,
+:root[data-theme="dark"] .icon-button.is-danger {
+  background: rgba(239, 68, 68, 0.88);
+  color: #fff5f5;
+}
+
+:root[data-theme="dark"] .toolbar-button.is-warning,
+:root[data-theme="dark"] .switch-chip.is-active {
+  background: rgba(245, 158, 11, 0.9);
+  color: #111827;
+}
+
+:root[data-theme="dark"] .notice,
+:root[data-theme="dark"] .notice.toast {
+  background:
+    linear-gradient(180deg, rgba(24, 29, 40, 0.98), rgba(17, 21, 29, 0.96));
+  border-color: var(--theme-neutral-border);
+}
+
+:root[data-theme="dark"] .progress-track {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+:root[data-theme="dark"] .notice.is-info {
+  border-color: var(--theme-info-border);
+}
+
+:root[data-theme="dark"] .notice.is-success {
+  border-color: var(--theme-success-border);
+}
+
+:root[data-theme="dark"] .notice.is-warning {
+  border-color: var(--theme-warning-border);
+}
+
+:root[data-theme="dark"] .notice.is-error {
+  border-color: var(--theme-danger-border);
+}
+
+:root[data-theme="dark"] .status-badge.is-info {
+  background: var(--theme-info-bg);
+  border-color: var(--theme-info-border);
+}
+
+:root[data-theme="dark"] .status-badge.is-success {
+  background: var(--theme-success-bg);
+  border-color: var(--theme-success-border);
+}
+
+:root[data-theme="dark"] .status-badge.is-warning {
+  background: var(--theme-warning-bg);
+  border-color: var(--theme-warning-border);
+}
+
+:root[data-theme="dark"] .status-badge.is-error {
+  background: var(--theme-danger-bg);
+  border-color: var(--theme-danger-border);
+}
+
+:root[data-theme="dark"] .workflow-tab.is-active,
+:root[data-theme="dark"] .mini-step.is-active,
+:root[data-theme="dark"] .suggestion-row.is-active,
+:root[data-theme="dark"] .segment-card.is-active,
+:root[data-theme="dark"] .review-marker.is-active,
+:root[data-theme="dark"] .unit-pill.is-active,
+:root[data-theme="dark"] .session-row.is-active {
+  background:
+    linear-gradient(135deg, var(--theme-info-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-info-border);
+}
+
+:root[data-theme="dark"] .workflow-tab.is-done,
+:root[data-theme="dark"] .session-pill.is-active,
+:root[data-theme="dark"] .settings-nav-item.is-active {
+  background:
+    linear-gradient(135deg, var(--theme-warning-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-warning-border);
+}
+
+:root[data-theme="dark"] .queue-row.is-active {
+  background:
+    linear-gradient(135deg, var(--theme-info-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-info-border);
+}
+
+:root[data-theme="dark"] .queue-row.is-failed,
+:root[data-theme="dark"] .error-card {
+  background:
+    linear-gradient(135deg, var(--theme-danger-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-danger-border);
+}
+
+:root[data-theme="dark"] .review-suggestion-row {
+  background: var(--theme-surface-2);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+:root[data-theme="dark"] .review-suggestion-row:hover {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: var(--theme-surface-3);
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-proposed {
+  background:
+    linear-gradient(135deg, var(--theme-warning-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-warning-border);
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-applied {
+  background:
+    linear-gradient(135deg, var(--theme-success-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-success-border);
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-dismissed {
+  background:
+    linear-gradient(135deg, rgba(148, 163, 184, 0.08), rgba(21, 25, 34, 0.96));
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-active {
+  background:
+    linear-gradient(135deg, var(--theme-info-bg), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-info-border);
+}
+
+:root[data-theme="dark"] .review-suggestion-row-state-dot {
+  background: rgba(148, 163, 184, 0.48);
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-proposed .review-suggestion-row-state-dot {
+  background: #fbbf24;
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-applied .review-suggestion-row-state-dot {
+  background: #4ade80;
+}
+
+:root[data-theme="dark"] .review-suggestion-row.is-dismissed .review-suggestion-row-state-dot {
+  background: rgba(148, 163, 184, 0.72);
+}
+
+:root[data-theme="dark"] .review-suggestion-row-action.is-apply {
+  color: #86efac;
+}
+
+:root[data-theme="dark"] .review-suggestion-row-action.is-dismiss {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .review-suggestion-row-action.is-delete {
+  color: #fda4af;
+}
+
+:root[data-theme="dark"] .metric-tile.is-blue,
+:root[data-theme="dark"] .action-card.is-blue,
+:root[data-theme="dark"] .lane-card.is-blue,
+:root[data-theme="dark"] .assistant-stat.is-blue {
+  background:
+    linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-info-border);
+}
+
+:root[data-theme="dark"] .metric-tile.is-yellow,
+:root[data-theme="dark"] .action-card.is-yellow,
+:root[data-theme="dark"] .lane-card.is-yellow,
+:root[data-theme="dark"] .assistant-stat.is-yellow {
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-warning-border);
+}
+
+:root[data-theme="dark"] .metric-tile.is-red,
+:root[data-theme="dark"] .action-card.is-red,
+:root[data-theme="dark"] .lane-card.is-red,
+:root[data-theme="dark"] .assistant-stat.is-red,
+:root[data-theme="dark"] .unit-pill.is-failed,
+:root[data-theme="dark"] .review-marker.is-failed {
+  background:
+    linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(21, 25, 34, 0.98));
+  border-color: var(--theme-danger-border);
+}
+
+:root[data-theme="dark"] .metric-tile.is-neutral,
+:root[data-theme="dark"] .assistant-stat.is-neutral,
+:root[data-theme="dark"] .action-card.is-neutral,
+:root[data-theme="dark"] .lane-card.is-neutral,
+:root[data-theme="dark"] .review-marker.is-rejected,
+:root[data-theme="dark"] .unit-pill.is-rejected {
+  background: var(--theme-surface-2);
+  border-color: var(--theme-neutral-border);
+}
+
+:root[data-theme="dark"] .unit-pill.is-pending,
+:root[data-theme="dark"] .review-marker.is-pending {
+  border-color: var(--theme-warning-border);
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(21, 25, 34, 0.94));
+}
+
+:root[data-theme="dark"] .unit-pill.is-approved,
+:root[data-theme="dark"] .review-marker.is-approved {
+  border-color: var(--theme-success-border);
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(21, 25, 34, 0.94));
+}
+
+:root[data-theme="dark"] .context-chip,
+:root[data-theme="dark"] .session-pill,
+:root[data-theme="dark"] .editor-chip {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+:root[data-theme="dark"] .inline-protected,
+:root[data-theme="dark"] .legend-chip.is-protected,
+:root[data-theme="dark"] .structured-editor-unit.is-protected,
+:root[data-theme="dark"] .structured-editor-slot.is-locked,
+:root[data-theme="dark"] .doc-unit.is-protected,
+:root[data-theme="dark"] .doc-paragraph-fragment.is-fragment-protected {
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
+  color: #d6dce5;
+}
+
+:root[data-theme="dark"] .structured-editor-unit {
+  background: var(--mark-editable-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-ring);
+}
+
+:root[data-theme="dark"] .structured-editor-unit:focus-within {
+  background: var(--mark-active-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-active-ring);
+}
+
+:root[data-theme="dark"] .structured-editor-slot.is-editable,
+:root[data-theme="dark"] .legend-chip.is-editable {
+  background: var(--mark-editable-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-ring);
+}
+
+:root[data-theme="dark"] .structured-editor-slot.is-editable:focus {
+  background: var(--mark-active-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-active-ring);
+}
+
+:root[data-theme="dark"] .structured-editor-slot.is-link {
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .diff-span.is-insert,
+:root[data-theme="dark"] .legend-chip.is-insert {
+  background: var(--insert-bg);
+  color: var(--insert);
+}
+
+:root[data-theme="dark"] .diff-span.is-delete,
+:root[data-theme="dark"] .legend-chip.is-delete {
+  background: var(--delete-bg);
+  color: var(--delete);
+}
+
+:root[data-theme="dark"] .legend-chip.is-selected {
+  background: var(--mark-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-selected-ring);
+}
+
+:root[data-theme="dark"] .legend-chip.is-running {
+  background: var(--mark-running-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-running-ring);
+}
+
+:root[data-theme="dark"] .doc-unit {
+  background: var(--mark-editable-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-ring);
+}
+
+:root[data-theme="dark"] .doc-unit:hover,
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit:hover {
+  background: var(--mark-editable-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-hover-ring);
+}
+
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit {
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .doc-unit.is-active,
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit.is-active {
+  background: var(--mark-active-bg);
+  box-shadow: 0 0 0 2px var(--mark-active-ring);
+}
+
+:root[data-theme="dark"] .doc-unit.is-selected,
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit.is-selected {
+  background: var(--mark-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-selected-ring);
+}
+
+:root[data-theme="dark"] .doc-unit.is-active.is-selected,
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit.is-active.is-selected {
+  background: var(--mark-selected-bg);
+  box-shadow:
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-selected-ring);
+}
+
+:root[data-theme="dark"] .doc-unit.is-active.is-protected {
+  box-shadow:
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-protected-ring);
+}
+
+:root[data-theme="dark"] .doc-unit.is-running,
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit.is-running,
+:root[data-theme="dark"] .doc-paragraph-fragment.is-fragment-running {
+  background: var(--mark-running-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-running-ring);
+}
+
+:root[data-theme="dark"] .doc-unit.is-active.is-running {
+  box-shadow:
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-running-ring);
+}
+
+:root[data-theme="dark"] .doc-unit.is-proposed {
+  background: var(--theme-warning-bg);
+}
+
+:root[data-theme="dark"] .doc-unit.is-applied {
+  background: var(--theme-success-bg);
+}
+
+:root[data-theme="dark"] .doc-unit.is-failed,
+:root[data-theme="dark"] .document-flow-wrap.is-quiet .doc-unit.is-failed,
+:root[data-theme="dark"] .doc-paragraph-fragment.is-fragment-failed {
+  background: var(--mark-failed-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-failed-ring);
+}
+
+:root[data-theme="dark"] .scroll-region::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .workflow-tabs::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+}
+
+@media (max-width: 860px) {
+  .theme-toggle {
+    right: 14px;
+    bottom: 14px;
+    width: 44px;
+    height: 44px;
+  }
+}

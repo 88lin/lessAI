@@ -59,7 +59,7 @@ fn strip_trailing_spaces_per_line(text: &str) -> String {
         if index > 0 {
             out.push('\n');
         }
-        let trimmed = line.trim_end_matches(|ch| ch == ' ' || ch == '\t');
+        let trimmed = line.trim_end_matches([' ', '\t']);
         out.push_str(trimmed);
     }
 

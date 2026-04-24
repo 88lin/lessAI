@@ -3,15 +3,16 @@ use std::{
     path::Path,
 };
 
+use crate::session_capability_models::DocumentEditorMode;
 use crate::{
     documents::{
-        ensure_capability_allowed, execute_document_writeback, normalize_text_against_source_layout,
-        DocumentWritebackContext, OwnedDocumentWriteback, WritebackMode,
+        ensure_capability_allowed, execute_document_writeback,
+        normalize_text_against_source_layout, DocumentWritebackContext, OwnedDocumentWriteback,
+        WritebackMode,
     },
     models::{DocumentSession, EditorSlotEdit},
     rewrite_unit::{apply_slot_updates, SlotUpdate},
 };
-use crate::session_capability_models::DocumentEditorMode;
 
 pub(crate) type EditorWritebackPayload = OwnedDocumentWriteback;
 
@@ -39,13 +40,9 @@ pub(crate) fn build_full_text_editor_writeback(
     match session.capabilities.editor_mode {
         DocumentEditorMode::FullText => {}
         DocumentEditorMode::SlotBased => {
-            return Err(
-                "结构化编辑模式必须按槽位保存，不能再走整篇纯文本写回。".to_string(),
-            )
+            return Err("结构化编辑模式必须按槽位保存，不能再走整篇纯文本写回。".to_string())
         }
-        DocumentEditorMode::None => {
-            return Err("当前文档暂不支持整篇纯文本编辑写回。".to_string())
-        }
+        DocumentEditorMode::None => return Err("当前文档暂不支持整篇纯文本编辑写回。".to_string()),
     }
 
     Ok(EditorWritebackPayload::Text(

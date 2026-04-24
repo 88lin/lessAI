@@ -42,11 +42,7 @@ fn push_span_text(spans: &mut Vec<DiffSpan>, kind: DiffType, text: &str) {
     });
 }
 
-fn myers_diff<T: Eq + Copy>(
-    before: &[T],
-    after: &[T],
-    max_trace_bytes: usize,
-) -> DiffOpsResult<T> {
+fn myers_diff<T: Eq + Copy>(before: &[T], after: &[T], max_trace_bytes: usize) -> DiffOpsResult<T> {
     let n = before.len();
     let m = after.len();
     let max = n.saturating_add(m);
@@ -131,7 +127,11 @@ fn myers_diff<T: Eq + Copy>(
             } else {
                 // 向右走：删除 before[x]
                 let Some(minus_index) = checked_index(v_len, offset + k - 1) else {
-                    return degrade_to_prefix_suffix_diff(before, after, "invalid_right_step_index");
+                    return degrade_to_prefix_suffix_diff(
+                        before,
+                        after,
+                        "invalid_right_step_index",
+                    );
                 };
                 v[minus_index] + 1
             };

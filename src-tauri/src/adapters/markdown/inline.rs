@@ -4,9 +4,7 @@ use crate::{
     textual_template::models::{TextRegionSplitMode, TextTemplateRegion},
 };
 
-use super::inline_lines::{
-    process_markdown_line, push_text_region, split_lines_with_endings,
-};
+use super::inline_lines::{process_markdown_line, push_text_region, split_lines_with_endings};
 use super::inline_scans::find_matching_bracket;
 use super::inline_spans::find_markdown_link_end;
 use super::syntax::markdown_line_prefix_len;
@@ -147,17 +145,17 @@ fn split_locked_link_region(text: &str) -> Option<Vec<TextRegion>> {
     out.push(TextRegion::syntax_token(&core[..label_start]));
 
     let label = &core[label_start..label_end];
-    for region in mark_editable_regions_atomic(parse_block_regions_for_kind(
-        label,
-        "paragraph",
-        true,
-    )) {
+    for region in
+        mark_editable_regions_atomic(parse_block_regions_for_kind(label, "paragraph", true))
+    {
         push_text_region(&mut out, region);
     }
 
     out.push(TextRegion::syntax_token(&core[label_end..target_start + 1]));
     if target_end > target_start {
-        out.push(TextRegion::inline_object(&core[target_start + 1..target_end]));
+        out.push(TextRegion::inline_object(
+            &core[target_start + 1..target_end],
+        ));
     }
 
     let mut closing = TextRegion::syntax_token(&core[target_end..]);

@@ -3,7 +3,7 @@ import type { DocumentSession, RewriteSuggestion, RewriteUnit, WritebackSlot } f
 import type { DocumentView } from "../hooks/useCopyDocument";
 import type { ClientDocumentFormat } from "../../../lib/protectedText";
 import { renderInlineProtectedText } from "../../../lib/protectedText";
-import { slotPresentationClass as buildSlotPresentationClass } from "./structuredEditorShared";
+import { slotPresentationClass } from "./structuredEditorShared";
 import {
   rewriteUnitSlotsWithSuggestion,
   rewriteUnitHasEditableSlot
@@ -28,13 +28,6 @@ export interface DocumentFlowBodyProps {
   selectedRewriteUnitIds: string[];
   onSelectRewriteUnit: (rewriteUnitId: string, options?: { multiSelect?: boolean }) => void;
   onSelectSuggestion: (suggestionId: string, options?: { forceScroll?: boolean }) => void;
-}
-
-function slotPresentationClass(slot: WritebackSlot) {
-  return buildSlotPresentationClass(slot, {
-    baseClassName: "doc-paragraph-fragment",
-    protectedClassName: "is-fragment-protected"
-  });
 }
 
 export function rewriteUnitTitle(
@@ -71,7 +64,12 @@ function renderSlots(
 ) {
   return slots.map((slot, index) => (
     <Fragment key={`${keyPrefix}-${slot.id}`}>
-      <span className={slotPresentationClass(slot)}>
+      <span
+        className={slotPresentationClass(slot, {
+          baseClassName: "doc-paragraph-fragment",
+          protectedClassName: "is-fragment-protected"
+        })}
+      >
         {renderSlotText(
           slot.text,
           showMarkers,

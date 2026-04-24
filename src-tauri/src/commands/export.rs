@@ -48,7 +48,7 @@ pub fn finalize_document(
             &session_id,
             crate::session_flow::allow_session,
         )
-            .with_active_job_error(ACTIVE_JOB_FINALIZE_ERROR),
+        .with_active_job_error(ACTIVE_JOB_FINALIZE_ERROR),
         |session| {
             execute_session_writeback(&session, WritebackMode::Write)?;
 

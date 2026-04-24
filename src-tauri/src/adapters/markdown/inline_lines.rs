@@ -165,10 +165,7 @@ fn push_rewriteable_markdown_text(out: &mut Vec<TextRegion>, text: &str) {
 }
 
 fn push_editable_markdown_text(out: &mut Vec<TextRegion>, text: &str) {
-    push_text_region(
-        out,
-        TextRegion::editable(text),
-    );
+    push_text_region(out, TextRegion::editable(text));
 }
 
 fn push_locked_markdown_text(out: &mut Vec<TextRegion>, text: &str) {
@@ -176,11 +173,11 @@ fn push_locked_markdown_text(out: &mut Vec<TextRegion>, text: &str) {
 }
 
 fn protected_markdown_region(text: &str) -> TextRegion {
-    if text.starts_with('<') {
+    if let Some(stripped) = text.strip_prefix('<') {
         if text.starts_with("<!--")
-            || text[1..].starts_with("http://")
-            || text[1..].starts_with("https://")
-            || text[1..].starts_with("mailto:")
+            || stripped.starts_with("http://")
+            || stripped.starts_with("https://")
+            || stripped.starts_with("mailto:")
         {
             return TextRegion::inline_object(text);
         }

@@ -29,8 +29,12 @@ pub fn apply_suggestion(
         |session| {
             let now = chrono::Utc::now();
             apply_suggestion_by_id(session, &suggestion_id, now)?;
-            execute_session_writeback(&session, WritebackMode::Validate)?;
-            Ok(SessionMutation::save(session, now, hydrated_session_clone(session)))
+            execute_session_writeback(session, WritebackMode::Validate)?;
+            Ok(SessionMutation::save(
+                session,
+                now,
+                hydrated_session_clone(session),
+            ))
         },
     )
 }
@@ -54,7 +58,11 @@ pub fn dismiss_suggestion(
 
             suggestion.decision = SuggestionDecision::Dismissed;
             suggestion.updated_at = now;
-            Ok(SessionMutation::save(session, now, hydrated_session_clone(session)))
+            Ok(SessionMutation::save(
+                session,
+                now,
+                hydrated_session_clone(session),
+            ))
         },
     )
 }
@@ -97,7 +105,11 @@ pub fn delete_suggestion(
                 }
             }
 
-            Ok(SessionMutation::save(session, now, hydrated_session_clone(session)))
+            Ok(SessionMutation::save(
+                session,
+                now,
+                hydrated_session_clone(session),
+            ))
         },
     )
 }

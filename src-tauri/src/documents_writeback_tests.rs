@@ -2,8 +2,8 @@ use super::{
     execute_document_writeback, load_document_source, DocumentWriteback, DocumentWritebackContext,
     WritebackMode,
 };
-use crate::test_support::{build_minimal_docx, cleanup_dir, write_temp_file};
 use crate::document_snapshot::capture_document_snapshot;
+use crate::test_support::{build_minimal_docx, cleanup_dir, write_temp_file};
 
 fn textual_writeback_context<'a>(
     loaded: &'a super::LoadedDocumentSource,

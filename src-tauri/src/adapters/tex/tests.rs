@@ -77,7 +77,8 @@ fn marks_href_as_skip_rewrite() {
     let regions = TexAdapter::parse_regions(text, false);
     assert!(regions
         .iter()
-        .any(|region| region.role == WritebackSlotRole::SyntaxToken && region.body.contains("\\href{")));
+        .any(|region| region.role == WritebackSlotRole::SyntaxToken
+            && region.body.contains("\\href{")));
     assert!(regions.iter().any(|region| {
         region.role == WritebackSlotRole::InlineObject
             && region.body.contains("https://example.com/docs")
@@ -136,7 +137,8 @@ fn marks_path_as_skip_rewrite() {
 
 #[test]
 fn marks_bibliography_environment_as_skip_rewrite() {
-    let text = "前文。\n\\begin{thebibliography}{9}\n\\bibitem{a} A.\n\\end{thebibliography}\n后文。";
+    let text =
+        "前文。\n\\begin{thebibliography}{9}\n\\bibitem{a} A.\n\\end{thebibliography}\n后文。";
     let regions = TexAdapter::parse_regions(text, false);
     assert!(regions
         .iter()
@@ -198,7 +200,10 @@ fn build_template_locks_verbatim_environment_as_single_locked_block() {
 
     assert_eq!(template.blocks.len(), 1);
     assert_eq!(template.blocks[0].kind, "locked_block");
-    assert!(template.blocks[0].regions.iter().all(|region| !region.editable));
+    assert!(template.blocks[0]
+        .regions
+        .iter()
+        .all(|region| !region.editable));
 }
 
 #[test]
@@ -216,7 +221,8 @@ fn build_template_keeps_href_url_opaque_and_label_atomic() {
     assert!(built
         .slots
         .iter()
-        .any(|slot| slot.role == WritebackSlotRole::InlineObject && slot.text.contains("https://example.com")));
+        .any(|slot| slot.role == WritebackSlotRole::InlineObject
+            && slot.text.contains("https://example.com")));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 mod block_support;
 mod blocks;
-mod inline_emphasis;
 mod inline;
+mod inline_emphasis;
 mod inline_lines;
 mod inline_scans;
 mod inline_spans;

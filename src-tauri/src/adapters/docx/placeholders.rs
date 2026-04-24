@@ -15,6 +15,7 @@ pub(super) const DOCX_CONTENT_CONTROL_PLACEHOLDER: &str = "[内容控件]";
 pub(super) const DOCX_TABLE_PLACEHOLDER: &str = "[表格]";
 pub(super) const DOCX_SECTION_BREAK_PLACEHOLDER: &str = "[分节符]";
 pub(super) const DOCX_FIELD_PLACEHOLDER: &str = "[字段]";
+pub(super) const DOCX_PAGE_BREAK_PLACEHOLDER: &str = "[分页符]";
 
 pub(super) fn placeholder_presentation(kind: &str) -> Option<TextPresentation> {
     Some(TextPresentation {

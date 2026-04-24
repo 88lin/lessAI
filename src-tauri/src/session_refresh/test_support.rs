@@ -4,8 +4,7 @@ use crate::{
     documents::LoadedDocumentSource,
     models::{
         DiffResult, DocumentSession, DocumentSnapshot, RewriteUnitStatus, RunningState,
-        SegmentationPreset,
-        SuggestionDecision,
+        SegmentationPreset, SuggestionDecision,
     },
     rewrite_unit::{RewriteSuggestion, RewriteUnit, SlotUpdate, WritebackSlot},
     session_capability_models::{CapabilityGate, DocumentSessionCapabilities},

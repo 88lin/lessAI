@@ -120,7 +120,13 @@ fn sample_markdown_session() -> DocumentSession {
             editable_slot("slot-4", 4, "。"),
         ],
         rewrite_units: vec![
-            rewrite_unit("unit-0", 0, &["slot-0", "slot-1"], "# 标题", RewriteUnitStatus::Idle),
+            rewrite_unit(
+                "unit-0",
+                0,
+                &["slot-0", "slot-1"],
+                "# 标题",
+                RewriteUnitStatus::Idle,
+            ),
             rewrite_unit(
                 "unit-1",
                 1,
@@ -260,7 +266,10 @@ fn build_full_text_editor_writeback_rejects_slot_based_markdown_session() {
     let error = build_full_text_editor_writeback(&session, "# 新标题\n新正文")
         .expect_err("slot-based markdown session should reject full-text writeback");
 
-    assert_eq!(error, "结构化编辑模式必须按槽位保存，不能再走整篇纯文本写回。");
+    assert_eq!(
+        error,
+        "结构化编辑模式必须按槽位保存，不能再走整篇纯文本写回。"
+    );
 }
 
 #[test]

@@ -62,12 +62,10 @@ fn pdf_is_not_allowed_to_write_back() {
 
 #[test]
 fn pdf_is_allowed_to_continue_ai_rewrite_without_writeback() {
-    assert!(
-        super::writeback::ensure_document_can_ai_rewrite(
-            &crate::session_capability_models::CapabilityGate::allowed(),
-        )
-        .is_ok()
-    );
+    assert!(super::writeback::ensure_document_can_ai_rewrite(
+        &crate::session_capability_models::CapabilityGate::allowed(),
+    )
+    .is_ok());
 }
 
 #[test]

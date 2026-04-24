@@ -267,6 +267,23 @@ fn validate_batch_results(
     Ok(())
 }
 
+fn validate_single_slot_update(
+    slot_permissions: &HashMap<&str, bool>,
+    seen: &mut HashSet<String>,
+    update: &RawSlotUpdate,
+) -> Result<(), String> {
+    let editable = slot_permissions
+        .get(update.slot_id.as_str())
+        .ok_or_else(|| format!("未知 slot_id：{}。", update.slot_id))?;
+    if !editable {
+        return Err(format!("locked slot 不允许修改：{}。", update.slot_id));
+    }
+    if !seen.insert(update.slot_id.clone()) {
+        return Err(format!("slot_id 重复：{}。", update.slot_id));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::RewriteUnitSlot;
@@ -304,21 +321,4 @@ mod tests {
 
         assert_eq!(request.display_text, "# 标题\n正文");
     }
-}
-
-fn validate_single_slot_update(
-    slot_permissions: &HashMap<&str, bool>,
-    seen: &mut HashSet<String>,
-    update: &RawSlotUpdate,
-) -> Result<(), String> {
-    let editable = slot_permissions
-        .get(update.slot_id.as_str())
-        .ok_or_else(|| format!("未知 slot_id：{}。", update.slot_id))?;
-    if !editable {
-        return Err(format!("locked slot 不允许修改：{}。", update.slot_id));
-    }
-    if !seen.insert(update.slot_id.clone()) {
-        return Err(format!("slot_id 重复：{}。", update.slot_id));
-    }
-    Ok(())
 }

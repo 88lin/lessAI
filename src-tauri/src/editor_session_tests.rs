@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
 
 use super::{
     ensure_editor_base_snapshot_matches_path, EDITOR_BASE_SNAPSHOT_EXPIRED_ERROR,
@@ -12,7 +9,7 @@ use crate::{
     test_support::{cleanup_dir, sample_clean_session, unique_test_dir},
 };
 
-fn sample_session(path: &PathBuf) -> crate::models::DocumentSession {
+fn sample_session(path: &Path) -> crate::models::DocumentSession {
     sample_clean_session("session-1", &path.to_string_lossy(), "正文")
 }
 

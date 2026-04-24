@@ -6,21 +6,39 @@ use crate::{
 
 use super::scan::{
     consume_whitespace, find_closing_double_dollar, find_closing_single_dollar,
-    find_command_span_end, find_inline_delimited_command_end, find_inline_verb_end,
-    find_line_end, find_skip_environment_span, find_substring, is_escaped, parse_brace_group,
-    parse_bracket_group,
+    find_command_span_end, find_inline_delimited_command_end, find_inline_verb_end, find_line_end,
+    find_skip_environment_span, find_substring, is_escaped, parse_brace_group, parse_bracket_group,
 };
 
 const HEADING_COMMANDS: &[&str] = &[
-    "section", "subsection", "subsubsection", "paragraph", "subparagraph", "chapter", "part",
-    "title", "subtitle", "caption",
+    "section",
+    "subsection",
+    "subsubsection",
+    "paragraph",
+    "subparagraph",
+    "chapter",
+    "part",
+    "title",
+    "subtitle",
+    "caption",
 ];
 const TEXT_COMMANDS: &[&str] = &[
-    "footnote", "emph", "textbf", "textit", "underline", "textrm", "textsf", "textsc",
+    "footnote",
+    "emph",
+    "textbf",
+    "textit",
+    "underline",
+    "textrm",
+    "textsf",
+    "textsc",
 ];
 const LINK_TEXT_COMMANDS: &[&str] = &["href"];
 
-pub(super) fn build_regions(block_anchor: &str, text: &str, rewrite_headings: bool) -> Vec<TextTemplateRegion> {
+pub(super) fn build_regions(
+    block_anchor: &str,
+    text: &str,
+    rewrite_headings: bool,
+) -> Vec<TextTemplateRegion> {
     parse_regions(text, rewrite_headings)
         .into_iter()
         .enumerate()
@@ -132,7 +150,8 @@ pub(super) fn parse_regions(text: &str, rewrite_headings: bool) -> Vec<TextRegio
                 continue;
             }
 
-            if let Some((span_end, pieces)) = split_text_command_regions(text, index, rewrite_headings)
+            if let Some((span_end, pieces)) =
+                split_text_command_regions(text, index, rewrite_headings)
             {
                 push_region(&mut regions, TextRegion::editable(&text[last..index]));
                 for piece in pieces {
@@ -193,7 +212,11 @@ fn push_region(regions: &mut Vec<TextRegion>, region: TextRegion) {
     regions.push(region);
 }
 
-fn split_text_command_regions(text: &str, index: usize, rewrite_headings: bool) -> Option<(usize, Vec<TextRegion>)> {
+fn split_text_command_regions(
+    text: &str,
+    index: usize,
+    rewrite_headings: bool,
+) -> Option<(usize, Vec<TextRegion>)> {
     let (name, mut pos) = parse_command_name(text, index)?;
     let name = name?;
 

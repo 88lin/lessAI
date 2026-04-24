@@ -1,10 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::session_capability_models::{
-    CapabilityGate, DocumentSessionCapabilities,
-};
 use crate::rewrite_unit::{RewriteSuggestion, RewriteUnit, WritebackSlot};
+use crate::session_capability_models::{CapabilityGate, DocumentSessionCapabilities};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -337,7 +335,8 @@ fn merge_legacy_capability_gate(
     match legacy_allowed.unwrap_or(default_allowed) {
         true => CapabilityGate::allowed(),
         false => CapabilityGate::blocked(
-            legacy_block_reason.unwrap_or_else(|| "当前文档能力状态不一致，缺少阻断原因。".to_string()),
+            legacy_block_reason
+                .unwrap_or_else(|| "当前文档能力状态不一致，缺少阻断原因。".to_string()),
         ),
     }
 }

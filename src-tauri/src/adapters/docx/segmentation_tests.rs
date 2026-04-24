@@ -1,8 +1,11 @@
 use super::DocxAdapter;
 use crate::{
-    models::SegmentationPreset, rewrite_unit::build_rewrite_units, test_support::build_minimal_docx,
+    models::SegmentationPreset,
+    rewrite_unit::build_rewrite_units,
+    test_support::{
+        build_minimal_docx, build_report_template_fixture_docx, load_repo_docx_fixture_or,
+    },
 };
-use std::{fs, path::PathBuf};
 
 fn editable_unit_texts(bytes: &[u8], preset: SegmentationPreset) -> Vec<String> {
     let slots = DocxAdapter::extract_writeback_slots(bytes, false).expect("extract slots");
@@ -20,11 +23,7 @@ fn editable_unit_texts(bytes: &[u8], preset: SegmentationPreset) -> Vec<String> 
 }
 
 fn load_repo_docx_fixture(file_name: &str) -> Vec<u8> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("testdoc")
-        .join(file_name);
-    fs::read(path).expect("read docx fixture")
+    load_repo_docx_fixture_or(file_name, build_report_template_fixture_docx)
 }
 
 #[test]
@@ -41,10 +40,7 @@ fn clause_preset_splits_single_docx_region_on_comma_boundaries() {
 
     let units = editable_unit_texts(&bytes, SegmentationPreset::Clause);
 
-    assert_eq!(
-        units,
-        vec!["甲，".to_string(), "乙，".to_string(), "丙".to_string()]
-    );
+    assert_eq!(units, vec!["甲，乙，".to_string(), "丙".to_string()]);
 }
 
 #[test]

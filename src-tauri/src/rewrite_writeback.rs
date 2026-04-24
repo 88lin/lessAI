@@ -3,6 +3,7 @@ use std::path::Path;
 
 use log::{error, info};
 
+use crate::session_capability_models::DocumentBackendKind;
 use crate::{
     documents::{
         ensure_capability_allowed, ensure_document_can_ai_rewrite, execute_document_writeback,
@@ -14,7 +15,6 @@ use crate::{
     rewrite_projection::{apply_preview_suggestion, build_applied_slot_projection},
     rewrite_unit::{merged_text_from_slots, RewriteUnitResponse},
 };
-use crate::session_capability_models::DocumentBackendKind;
 
 type SessionWritebackPlan = OwnedDocumentWriteback;
 

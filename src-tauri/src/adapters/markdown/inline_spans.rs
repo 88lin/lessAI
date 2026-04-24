@@ -228,8 +228,7 @@ fn is_bare_url_stop(ch: char) -> bool {
     ch.is_whitespace()
         || matches!(
             ch,
-            '<'
-                | '>'
+            '<' | '>'
                 | '"'
                 | '\''
                 | '['
@@ -266,8 +265,7 @@ fn is_bare_url_stop(ch: char) -> bool {
 fn is_trailing_bare_url_punctuation(ch: char) -> bool {
     matches!(
         ch,
-        '.'
-            | ','
+        '.' | ','
             | ';'
             | ':'
             | '!'

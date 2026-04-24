@@ -54,7 +54,13 @@ fn build_writeback_slot(
         order: index,
         text,
         editable,
-        role: slot_role(region, text_empty, editable, whitespace_only, &separator_after),
+        role: slot_role(
+            region,
+            text_empty,
+            editable,
+            whitespace_only,
+            &separator_after,
+        ),
         presentation,
         anchor: None,
         separator_after,
@@ -80,7 +86,7 @@ fn slot_role(
     region.role.clone()
 }
 
-fn split_region_slot_chunks<'a>(region: &'a adapters::TextRegion) -> Vec<&'a str> {
+fn split_region_slot_chunks(region: &adapters::TextRegion) -> Vec<&str> {
     if region.skip_rewrite {
         return split_text_chunks_by_paragraph_separator(&region.body);
     }

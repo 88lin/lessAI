@@ -72,7 +72,10 @@ fn build_template_locks_fenced_code_block_as_single_locked_block() {
 
     assert_eq!(template.blocks.len(), 1);
     assert_eq!(template.blocks[0].kind, "locked_block");
-    assert!(template.blocks[0].regions.iter().all(|region| !region.editable));
+    assert!(template.blocks[0]
+        .regions
+        .iter()
+        .all(|region| !region.editable));
 }
 
 #[test]
@@ -175,7 +178,8 @@ fn leaves_unmatched_or_space_padded_markers_editable() {
 
 #[test]
 fn keeps_link_label_atomic_when_building_slots() {
-    let template = MarkdownAdapter::build_template("[第一句，第二句](https://example.com)\n", false);
+    let template =
+        MarkdownAdapter::build_template("[第一句，第二句](https://example.com)\n", false);
     let built = build_slots(&template);
     let editable_slots = built
         .slots

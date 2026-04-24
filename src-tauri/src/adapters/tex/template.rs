@@ -1,6 +1,4 @@
-use crate::textual_template::{
-    models::{TextTemplate, TextTemplateBlock},
-};
+use crate::textual_template::models::{TextTemplate, TextTemplateBlock};
 
 use super::{blocks, commands};
 

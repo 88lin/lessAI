@@ -41,7 +41,10 @@ fn rebuilds_clean_session_when_snapshot_changes_even_if_text_is_same() {
     assert_eq!(refreshed.session.writeback_slots.len(), 3);
     assert_eq!(refreshed.session.rewrite_units.len(), 1);
     assert!(refreshed.session.capabilities.source_writeback.allowed);
-    assert_eq!(refreshed.session.capabilities.source_writeback.block_reason, None);
+    assert_eq!(
+        refreshed.session.capabilities.source_writeback.block_reason,
+        None
+    );
 }
 
 #[test]

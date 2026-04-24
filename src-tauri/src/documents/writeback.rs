@@ -2,12 +2,12 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::session_capability_models::{CapabilityGate, DocumentBackendKind};
 use crate::{
     adapters, atomic_write::write_bytes_atomically,
     document_snapshot::ensure_document_snapshot_matches, models, rewrite,
     rewrite_unit::WritebackSlot, textual_template,
 };
-use crate::session_capability_models::{CapabilityGate, DocumentBackendKind};
 
 use super::{
     capabilities::{document_backend_kind, ensure_capability_allowed},
@@ -173,8 +173,10 @@ fn load_verified_writeback_source(
         }
         DocumentBackendKind::Docx => {
             let source = adapters::docx::DocxAdapter::load_writeback_source(&source_bytes)?;
-            let model =
-                adapters::docx::DocxAdapter::extract_writeback_model_from_source(&source, rewrite_headings);
+            let model = adapters::docx::DocxAdapter::extract_writeback_model_from_source(
+                &source,
+                rewrite_headings,
+            );
             Ok(VerifiedWritebackSource::Docx {
                 bytes: source_bytes,
                 source,
@@ -201,11 +203,11 @@ fn build_text_writeback_bytes(
             source,
             ..
         } => adapters::docx::DocxAdapter::write_updated_text_with_source(
-                current_bytes,
-                source,
-                expected_source_text,
-                updated_text,
-            ),
+            current_bytes,
+            source,
+            expected_source_text,
+            updated_text,
+        ),
     }
 }
 

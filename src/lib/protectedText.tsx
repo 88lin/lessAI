@@ -82,8 +82,27 @@ function resolveProtectedSegments(
   return null;
 }
 
-const DOCX_PLACEHOLDER_PATTERN =
-  /\[(?:图片|文本框|图表|图形|组合图形|内容控件|表格|分节符|字段|分页符)\]/g;
+const DOCX_PLACEHOLDER_LABELS = [
+  "图片",
+  "文本框",
+  "图表",
+  "图形",
+  "组合图形",
+  "内容控件",
+  "表格",
+  "分节符",
+  "字段",
+  "分页符"
+] as const;
+
+const DOCX_PLACEHOLDER_PATTERN = new RegExp(
+  `\\[(?:${DOCX_PLACEHOLDER_LABELS.map(escapeRegExpLiteral).join("|")})\\]`,
+  "g"
+);
+
+function escapeRegExpLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function splitDocxPlaceholders(text: string): ProtectedSegment[] | null {
   if (!text.includes("[")) return null;

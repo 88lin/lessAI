@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "icons:generate": "pnpm exec tauri icon src-tauri/icons/lessai-logo.svg",
     "tauri": "pnpm exec tauri",
-    "tauri:dev": "pnpm exec tauri dev",
+    "tauri:dev": "pnpm exec tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build": "pnpm exec tauri build",
     "typecheck": "tsc --noEmit"
   },

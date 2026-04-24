@@ -1,7 +1,5 @@
 use crate::{
-    models::{
-        DocumentSession, DocumentSnapshot, SegmentationPreset,
-    },
+    models::{DocumentSession, DocumentSnapshot, SegmentationPreset},
     rewrite_unit::{RewriteUnit, WritebackSlot},
 };
 
@@ -10,6 +8,17 @@ pub(super) enum SegmentationRefreshAction {
     Keep,
     Rebuild,
     Block,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct SegmentationRefreshExpectation<'a> {
+    pub(super) expected_template_kind: Option<&'a str>,
+    pub(super) expected_template_signature: Option<&'a str>,
+    pub(super) expected_slot_structure_signature: Option<&'a str>,
+    pub(super) expected_writeback_slots: &'a [WritebackSlot],
+    pub(super) expected_rewrite_units: &'a [RewriteUnit],
+    pub(super) segmentation_preset: SegmentationPreset,
+    pub(super) rewrite_headings: bool,
 }
 
 pub(super) fn source_snapshot_changed(
@@ -25,24 +34,9 @@ pub(super) fn session_can_rebuild_cleanly(session: &DocumentSession) -> bool {
 
 pub(super) fn decide_segmentation_refresh(
     session: &DocumentSession,
-    expected_template_kind: Option<&str>,
-    expected_template_signature: Option<&str>,
-    expected_slot_structure_signature: Option<&str>,
-    expected_writeback_slots: &[WritebackSlot],
-    expected_rewrite_units: &[RewriteUnit],
-    segmentation_preset: SegmentationPreset,
-    rewrite_headings: bool,
+    expected: SegmentationRefreshExpectation<'_>,
 ) -> SegmentationRefreshAction {
-    if should_rebuild_structure(
-        session,
-        expected_template_kind,
-        expected_template_signature,
-        expected_slot_structure_signature,
-        expected_writeback_slots,
-        expected_rewrite_units,
-        segmentation_preset,
-        rewrite_headings,
-    ) {
+    if should_rebuild_structure(session, expected) {
         return if session_can_rebuild_cleanly(session) {
             SegmentationRefreshAction::Rebuild
         } else {
@@ -55,26 +49,23 @@ pub(super) fn decide_segmentation_refresh(
 
 fn should_rebuild_structure(
     session: &DocumentSession,
-    expected_template_kind: Option<&str>,
-    expected_template_signature: Option<&str>,
-    expected_slot_structure_signature: Option<&str>,
-    expected_writeback_slots: &[WritebackSlot],
-    expected_rewrite_units: &[RewriteUnit],
-    segmentation_preset: SegmentationPreset,
-    rewrite_headings: bool,
+    expected: SegmentationRefreshExpectation<'_>,
 ) -> bool {
     let template_kind_mismatch = !template_kind_compatible(
         session.template_kind.as_deref(),
-        expected_template_kind,
+        expected.expected_template_kind,
         session.document_path.as_str(),
     );
-    session.segmentation_preset != Some(segmentation_preset)
-        || session.rewrite_headings != Some(rewrite_headings)
+    session.segmentation_preset != Some(expected.segmentation_preset)
+        || session.rewrite_headings != Some(expected.rewrite_headings)
         || template_kind_mismatch
-        || session.template_signature.as_deref() != expected_template_signature
-        || session.slot_structure_signature.as_deref() != expected_slot_structure_signature
-        || !writeback_slot_structures_match(&session.writeback_slots, expected_writeback_slots)
-        || !rewrite_unit_structures_match(&session.rewrite_units, expected_rewrite_units)
+        || session.template_signature.as_deref() != expected.expected_template_signature
+        || session.slot_structure_signature.as_deref() != expected.expected_slot_structure_signature
+        || !writeback_slot_structures_match(
+            &session.writeback_slots,
+            expected.expected_writeback_slots,
+        )
+        || !rewrite_unit_structures_match(&session.rewrite_units, expected.expected_rewrite_units)
 }
 
 fn template_kind_compatible(

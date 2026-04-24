@@ -59,7 +59,8 @@ pub(super) fn find_locked_block_end(
 
     let mut end = start + 1;
     while end < lines.len() {
-        if end_environment_name(lines[end].line.trim_start()).is_some_and(|candidate| candidate == name)
+        if end_environment_name(lines[end].line.trim_start())
+            .is_some_and(|candidate| candidate == name)
         {
             return Some((end + 1, kind));
         }
@@ -68,10 +69,7 @@ pub(super) fn find_locked_block_end(
     Some((lines.len(), kind))
 }
 
-pub(super) fn classify_text_block_kind(
-    text: &str,
-    fallback: Option<&'static str>,
-) -> &'static str {
+pub(super) fn classify_text_block_kind(text: &str, fallback: Option<&'static str>) -> &'static str {
     let trimmed = text.trim_start();
     if trimmed.is_empty() || trimmed.starts_with('%') {
         return "locked_block";

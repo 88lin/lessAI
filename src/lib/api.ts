@@ -12,6 +12,15 @@ type EditorWritebackMode = "validate" | "write";
 export type EditorWritebackInput =
   | { kind: "text"; content: string }
   | { kind: "slotEdits"; edits: EditorSlotEdit[] };
+export type WindowResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West";
 
 type CommandPayload = Record<string, unknown>;
 
@@ -122,4 +131,24 @@ export async function rewriteSelection(
     text,
     editorBaseSnapshot
   });
+}
+
+export async function isMainWindowMaximized() {
+  return invokeCommand<boolean>("is_main_window_maximized");
+}
+
+export async function minimizeMainWindow() {
+  return invokeCommand<void>("minimize_main_window");
+}
+
+export async function toggleMaximizeMainWindow() {
+  return invokeCommand<void>("toggle_maximize_main_window");
+}
+
+export async function closeMainWindow() {
+  return invokeCommand<void>("close_main_window");
+}
+
+export async function startResizeMainWindow(direction: WindowResizeDirection) {
+  return invokeCommand<void>("start_resize_main_window", { direction });
 }

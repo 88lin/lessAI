@@ -29,8 +29,10 @@ mod tests {
 
     #[test]
     fn rejects_timeout_below_minimum() {
-        let mut settings = AppSettings::default();
-        settings.timeout_ms = 999;
+        let settings = AppSettings {
+            timeout_ms: 999,
+            ..AppSettings::default()
+        };
 
         let error = validate_numeric_settings(&settings).expect_err("expected invalid timeout");
 
@@ -39,8 +41,10 @@ mod tests {
 
     #[test]
     fn rejects_temperature_out_of_range() {
-        let mut settings = AppSettings::default();
-        settings.temperature = 2.1;
+        let settings = AppSettings {
+            temperature: 2.1,
+            ..AppSettings::default()
+        };
 
         let error = validate_numeric_settings(&settings).expect_err("expected invalid temperature");
 
@@ -49,8 +53,10 @@ mod tests {
 
     #[test]
     fn rejects_zero_units_per_batch() {
-        let mut settings = AppSettings::default();
-        settings.units_per_batch = 0;
+        let settings = AppSettings {
+            units_per_batch: 0,
+            ..AppSettings::default()
+        };
 
         let error = validate_numeric_settings(&settings).expect_err("expected invalid batch size");
 
@@ -59,8 +65,10 @@ mod tests {
 
     #[test]
     fn rejects_max_concurrency_above_limit() {
-        let mut settings = AppSettings::default();
-        settings.max_concurrency = MAX_CONCURRENCY_LIMIT + 1;
+        let settings = AppSettings {
+            max_concurrency: MAX_CONCURRENCY_LIMIT + 1,
+            ..AppSettings::default()
+        };
 
         let error = validate_numeric_settings(&settings).expect_err("expected invalid concurrency");
 

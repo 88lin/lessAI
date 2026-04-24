@@ -78,7 +78,7 @@ fn unsupported_textual_format_error(extension: Option<&str>) -> String {
 }
 
 fn decode_utf16_payload(payload: &[u8], little_endian: bool) -> Result<String, String> {
-    if payload.len() % 2 != 0 {
+    if !payload.len().is_multiple_of(2) {
         return Err("文本编码疑似为 UTF-16，但字节长度不是 2 的倍数，无法解码。".to_string());
     }
 

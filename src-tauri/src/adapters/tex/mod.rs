@@ -1,5 +1,5 @@
-mod blocks;
 mod block_support;
+mod blocks;
 mod commands;
 mod environments;
 mod scan;

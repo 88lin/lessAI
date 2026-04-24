@@ -30,7 +30,10 @@ fn refreshes_stale_editor_writeback_capability() {
 
     assert!(refreshed.changed);
     assert!(refreshed.session.capabilities.editor_writeback.allowed);
-    assert_eq!(refreshed.session.capabilities.editor_writeback.block_reason, None);
+    assert_eq!(
+        refreshed.session.capabilities.editor_writeback.block_reason,
+        None
+    );
     assert_eq!(
         refreshed
             .session

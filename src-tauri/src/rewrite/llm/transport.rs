@@ -64,10 +64,7 @@ pub(super) async fn call_chat_model(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format_reqwest_error(error))?;
+    let body = response.text().await.map_err(format_reqwest_error)?;
 
     if !status.is_success() {
         return Err(format_chat_api_error(status, &body));
@@ -301,10 +298,7 @@ fn extract_response_content(value: &Value, mode: ResponseContentMode) -> Option<
         ][..],
     };
 
-    extract_choice_text(
-        &value["choices"][0],
-        paths,
-    )
+    extract_choice_text(&value["choices"][0], paths)
 }
 
 #[derive(Clone, Copy)]

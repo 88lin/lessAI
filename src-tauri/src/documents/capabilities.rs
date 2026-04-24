@@ -20,10 +20,7 @@ pub(crate) struct DocumentCapabilityPolicy {
 }
 
 impl DocumentCapabilityPolicy {
-    pub(crate) fn new(
-        source_writeback: CapabilityGate,
-        editor_writeback: CapabilityGate,
-    ) -> Self {
+    pub(crate) fn new(source_writeback: CapabilityGate, editor_writeback: CapabilityGate) -> Self {
         Self {
             source_writeback,
             editor_writeback,
@@ -61,10 +58,7 @@ pub(crate) fn capability_gate(allowed: bool, block_reason: Option<&str>) -> Capa
     if allowed {
         CapabilityGate::allowed()
     } else {
-        CapabilityGate::blocked(
-            block_reason
-                .unwrap_or("当前文档能力状态不一致，缺少阻断原因。"),
-        )
+        CapabilityGate::blocked(block_reason.unwrap_or("当前文档能力状态不一致，缺少阻断原因。"))
     }
 }
 
@@ -83,8 +77,7 @@ pub(crate) fn apply_capability_policy(
     policy: &DocumentCapabilityPolicy,
 ) -> bool {
     let source_writeback_changed = session.capabilities.source_writeback != policy.source_writeback;
-    let editor_writeback_changed =
-        session.capabilities.editor_writeback != policy.editor_writeback;
+    let editor_writeback_changed = session.capabilities.editor_writeback != policy.editor_writeback;
     if !source_writeback_changed && !editor_writeback_changed {
         return false;
     }
@@ -129,7 +122,10 @@ fn compute_clean_session(session: &DocumentSession) -> bool {
     session.status == RunningState::Idle
         && session.suggestions.is_empty()
         && session.rewrite_units.iter().all(|unit| {
-            matches!(unit.status, RewriteUnitStatus::Idle | RewriteUnitStatus::Done)
+            matches!(
+                unit.status,
+                RewriteUnitStatus::Idle | RewriteUnitStatus::Done
+            )
         })
 }
 
@@ -325,18 +321,20 @@ mod tests {
     fn hydrate_session_capabilities_marks_dirty_editor_entry() {
         let mut session = sample_session("/tmp/example.md");
         session.template_kind = Some("markdown".to_string());
-        session.suggestions.push(crate::rewrite_unit::RewriteSuggestion {
-            id: "s-1".to_string(),
-            sequence: 1,
-            rewrite_unit_id: "unit-1".to_string(),
-            before_text: "原文".to_string(),
-            after_text: "改文".to_string(),
-            diff: crate::models::DiffResult::default(),
-            decision: crate::models::SuggestionDecision::Proposed,
-            slot_updates: Vec::new(),
-            created_at: session.created_at,
-            updated_at: session.updated_at,
-        });
+        session
+            .suggestions
+            .push(crate::rewrite_unit::RewriteSuggestion {
+                id: "s-1".to_string(),
+                sequence: 1,
+                rewrite_unit_id: "unit-1".to_string(),
+                before_text: "原文".to_string(),
+                after_text: "改文".to_string(),
+                diff: crate::models::DiffResult::default(),
+                decision: crate::models::SuggestionDecision::Proposed,
+                slot_updates: Vec::new(),
+                created_at: session.created_at,
+                updated_at: session.updated_at,
+            });
 
         super::hydrate_session_capabilities(&mut session);
 

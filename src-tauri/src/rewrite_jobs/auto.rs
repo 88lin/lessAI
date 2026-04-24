@@ -20,6 +20,8 @@ use super::{
 };
 use crate::rewrite_jobs::auto_loop::run_auto_loop;
 
+type StartedAutoRewriteSession = (DocumentSession, Option<HashSet<String>>, Arc<JobControl>);
+
 pub(crate) fn run_auto_rewrite(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -37,7 +39,7 @@ fn start_auto_rewrite_session(
     state: &AppState,
     session_id: &str,
     target_rewrite_unit_ids: Option<Vec<String>>,
-) -> Result<(DocumentSession, Option<HashSet<String>>, Arc<JobControl>), String> {
+) -> Result<StartedAutoRewriteSession, String> {
     access_current_session(
         rewrite_session_request(app, state, session_id, RewriteSessionAccess::ExternalEntry),
         |mut session| {
@@ -135,7 +137,7 @@ fn start_auto_rewrite_session_steps<Reserve, Save, Rollback>(
     save: Save,
     rollback: Rollback,
     updated_at: DateTime<Utc>,
-) -> Result<(DocumentSession, Option<HashSet<String>>, Arc<JobControl>), String>
+) -> Result<StartedAutoRewriteSession, String>
 where
     Reserve: FnOnce(&str) -> Result<Arc<JobControl>, String>,
     Save: FnOnce(&DocumentSession) -> Result<(), String>,

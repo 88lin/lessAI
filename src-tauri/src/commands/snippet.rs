@@ -4,11 +4,12 @@ use tauri::{AppHandle, State};
 
 use crate::{
     documents::{document_format, ensure_document_source_matches_session},
-    editor_session::{ensure_editor_base_snapshot_matches_path, ACTIVE_EDITOR_SESSION_ERROR},
+    editor_session::ensure_editor_base_snapshot_matches_path,
     editor_writeback::ensure_session_can_use_editor_writeback,
     models::{DocumentSession, DocumentSnapshot},
     rewrite,
     session_access::{access_current_session, CurrentSessionRequest},
+    session_messages::ACTIVE_EDITOR_SESSION_ERROR,
     state::AppState,
     storage,
 };

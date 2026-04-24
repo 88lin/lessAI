@@ -136,7 +136,11 @@ mod tests {
         );
         assert!(!session.capabilities.source_writeback.allowed);
         assert_eq!(
-            session.capabilities.source_writeback.block_reason.as_deref(),
+            session
+                .capabilities
+                .source_writeback
+                .block_reason
+                .as_deref(),
             Some("blocked")
         );
         assert!(!session.capabilities.editor_writeback.allowed);

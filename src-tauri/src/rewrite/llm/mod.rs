@@ -13,7 +13,8 @@ pub(in crate::rewrite) mod transport;
 mod validate;
 
 pub fn build_client(settings: &AppSettings) -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder().timeout(Duration::from_millis(settings.timeout_ms));
+    let mut builder =
+        reqwest::Client::builder().timeout(Duration::from_millis(settings.timeout_ms));
 
     if let Some(proxy_url) = normalize_proxy_url(&settings.update_proxy) {
         let proxy = reqwest::Proxy::all(&proxy_url)

@@ -1,5 +1,7 @@
 use crate::{
-    documents::{apply_capability_policy, capability_gate, DocumentCapabilityPolicy, LoadedDocumentSource},
+    documents::{
+        apply_capability_policy, capability_gate, DocumentCapabilityPolicy, LoadedDocumentSource,
+    },
     models::DocumentSession,
 };
 
@@ -49,12 +51,20 @@ mod tests {
         assert!(changed);
         assert!(!session.capabilities.source_writeback.allowed);
         assert_eq!(
-            session.capabilities.source_writeback.block_reason.as_deref(),
+            session
+                .capabilities
+                .source_writeback
+                .block_reason
+                .as_deref(),
             Some("write blocked")
         );
         assert!(!session.capabilities.editor_writeback.allowed);
         assert_eq!(
-            session.capabilities.editor_writeback.block_reason.as_deref(),
+            session
+                .capabilities
+                .editor_writeback
+                .block_reason
+                .as_deref(),
             Some("write blocked")
         );
     }
@@ -72,19 +82,25 @@ mod tests {
             capability_policy: crate::documents::DocumentCapabilityPolicy::new(
                 crate::documents::capability_gate(
                     session.capabilities.source_writeback.allowed,
-                    session.capabilities.source_writeback.block_reason.as_deref(),
+                    session
+                        .capabilities
+                        .source_writeback
+                        .block_reason
+                        .as_deref(),
                 ),
                 crate::documents::capability_gate(
                     session.capabilities.editor_writeback.allowed,
-                    session.capabilities.editor_writeback.block_reason.as_deref(),
+                    session
+                        .capabilities
+                        .editor_writeback
+                        .block_reason
+                        .as_deref(),
                 ),
             ),
         };
 
-        let changed = apply_session_capabilities(
-            &mut session,
-            &SessionCapabilities::from_loaded(&loaded),
-        );
+        let changed =
+            apply_session_capabilities(&mut session, &SessionCapabilities::from_loaded(&loaded));
 
         assert!(!changed);
     }

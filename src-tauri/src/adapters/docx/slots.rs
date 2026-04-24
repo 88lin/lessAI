@@ -258,10 +258,7 @@ pub(super) fn paragraph_is_locked(
     region.skip_rewrite()
 }
 
-pub(super) fn region_role(
-    region: &WritebackRegionTemplate,
-    editable: bool,
-) -> WritebackSlotRole {
+pub(super) fn region_role(region: &WritebackRegionTemplate, editable: bool) -> WritebackSlotRole {
     if editable {
         return WritebackSlotRole::EditableText;
     }

@@ -47,8 +47,9 @@ fn load_docx_parts_reports_eocd_hint_for_truncated_or_non_zip_docx() {
 #[test]
 fn format_docx_zip_error_reports_eocd_hint() {
     let detail = "invalid Zip archive: Could not find EOCD";
-    let error =
-        format_docx_zip_error(zip::result::ZipError::InvalidArchive(detail.to_string().into()));
+    let error = format_docx_zip_error(zip::result::ZipError::InvalidArchive(
+        detail.to_string().into(),
+    ));
 
     assert!(error.contains("EOCD"), "unexpected error: {error}");
 }

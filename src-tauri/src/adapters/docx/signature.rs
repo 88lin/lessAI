@@ -2,8 +2,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    rewrite_unit::WritebackSlot,
-    textual_template::signature::compute_slot_structure_signature,
+    rewrite_unit::WritebackSlot, textual_template::signature::compute_slot_structure_signature,
 };
 
 use super::{

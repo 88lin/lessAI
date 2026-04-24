@@ -16,23 +16,20 @@ on:
       - "v*"
 
 jobs:
-  bundle:
-    name: Bundle (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
+  preflight:
+    name: Preflight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      build_sha: ${{ steps.resolve-build.outputs.build_sha }}
+      release_tag: ${{ steps.resolve-build.outputs.release_tag }}
+      release_version: ${{ steps.resolve-build.outputs.release_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Resolve build ref & release version
+        id: resolve-build
         shell: bash
         env:
           INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
@@ -40,8 +37,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # workflow_dispatch 默认会 checkout 到触发 workflow 的分支。
-          # 但如果你填了 release_tag / ref，我们需要切到对应 ref 才能保证“tag 对应的代码”和“打包产物版本”一致。
           build_ref=""
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             if [[ -n "${INPUT_REF}" ]]; then
@@ -65,7 +60,6 @@ jobs:
             fi
           fi
 
-          # 仅在“tag push”或“手动指定 release_tag”时认为是 release 构建。
           release_tag=""
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             release_tag="${INPUT_RELEASE_TAG}"
@@ -83,13 +77,119 @@ jobs:
             version="${normalized_tag#v}"
           fi
 
-          echo "RELEASE_TAG=${normalized_tag}" >> "${GITHUB_ENV}"
-          echo "RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
+          build_sha="$(git rev-parse HEAD)"
+          echo "[INFO] Preflight build SHA: ${build_sha}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${INPUT_REF}" && -n "${INPUT_RELEASE_TAG}" ]]; then
+            tag_for_check="${INPUT_RELEASE_TAG}"
+            if [[ "${tag_for_check}" != v* ]]; then
+              tag_for_check="v${tag_for_check}"
+            fi
+
+            tag_commit="$(git rev-parse --verify "${tag_for_check}^{commit}" 2>/dev/null || true)"
+            if [[ -z "${tag_commit}" ]]; then
+              echo "[ERROR] workflow_dispatch 同时指定 ref 与 release_tag 时，release_tag 必须已存在并指向可解析的提交：${tag_for_check}" >&2
+              echo "[HINT] 如需使用新版本号，请先创建并推送该 tag，或在本次构建中仅填写 ref（不填 release_tag）。" >&2
+              exit 1
+            fi
+
+            if [[ "${tag_commit}" != "${build_sha}" ]]; then
+              echo "[ERROR] workflow_dispatch 输入不一致：ref 与 release_tag 指向不同提交。" >&2
+              echo "[HINT] ref(${INPUT_REF}) -> ${build_sha}" >&2
+              echo "[HINT] release_tag(${tag_for_check}) -> ${tag_commit}" >&2
+              exit 1
+            fi
+            echo "[INFO] ref/release_tag consistency check passed: ${build_sha}"
+          fi
 
           if [[ -n "${version}" ]]; then
-            echo "{ \"version\": \"${version}\" }" > src-tauri/tauri.release.conf.json
             echo "[INFO] Release tag: ${normalized_tag}"
             echo "[INFO] Release version: ${version}"
+          else
+            echo "[INFO] Not a release build (no tag detected / no release_tag input)."
+          fi
+
+          echo "build_sha=${build_sha}" >> "${GITHUB_OUTPUT}"
+          echo "release_tag=${normalized_tag}" >> "${GITHUB_OUTPUT}"
+          echo "release_version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            librsvg2-dev \
+            patchelf
+
+          # Ubuntu variants may expose different package names.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend typecheck
+        run: pnpm run typecheck
+
+      - name: Frontend build
+        run: pnpm run build
+
+      - name: Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Scripts regression
+        run: bash scripts/run-regression-tests.sh
+
+  bundle:
+    name: Bundle (${{ matrix.os }})
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.release_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.preflight.outputs.build_sha }}
+
+      - name: Prepare release version override
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${RELEASE_VERSION}" ]]; then
+            echo "{ \"version\": \"${RELEASE_VERSION}\" }" > src-tauri/tauri.release.conf.json
+            echo "[INFO] Release tag: ${RELEASE_TAG}"
+            echo "[INFO] Release version: ${RELEASE_VERSION}"
           else
             echo "[INFO] Not a release build (no tag detected / no release_tag input)."
           fi
@@ -219,32 +319,25 @@ jobs:
   release:
     name: Release (GitHub)
     if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') }}
-    needs: bundle
+    needs: [preflight, bundle]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.release_version }}
     permissions:
       contents: write
 
     steps:
-      - name: Resolve release tag
+      - name: Validate release metadata
         shell: bash
-        env:
-          INPUT_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
         run: |
           set -euo pipefail
-
-          tag="${INPUT_RELEASE_TAG}"
-          if [[ -z "${tag}" ]]; then
-            tag="${GITHUB_REF_NAME}"
+          if [[ -z "${RELEASE_TAG}" ]] || [[ -z "${RELEASE_VERSION}" ]]; then
+            echo "[ERROR] Missing release metadata from preflight outputs." >&2
+            exit 1
           fi
-          if [[ "${tag}" != v* ]]; then
-            tag="v${tag}"
-          fi
-
-          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
-          echo "RELEASE_VERSION=${tag#v}" >> "${GITHUB_ENV}"
-
-          echo "[INFO] Release tag resolved to: ${tag}"
-          echo "[INFO] Release version: ${tag#v}"
+          echo "[INFO] Release tag: ${RELEASE_TAG}"
+          echo "[INFO] Release version: ${RELEASE_VERSION}"
 
       - name: Download bundles
         uses: actions/download-artifact@v4

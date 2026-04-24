@@ -1,4 +1,7 @@
-use super::{execute_document_writeback, load_document_source, DocumentWriteback, DocumentWritebackContext, WritebackMode};
+use super::{
+    execute_document_writeback, load_document_source, DocumentWriteback, DocumentWritebackContext,
+    WritebackMode,
+};
 use crate::{
     document_snapshot::capture_document_snapshot,
     rewrite_unit::WritebackSlot,
@@ -80,11 +83,12 @@ fn docx_roundtrip_preserves_slot_structure_signature() {
 
     execute_document_writeback(
         &path,
-        DocumentWritebackContext::new(&loaded.source_text, Some(&snapshot)).with_structure_signatures(
-            loaded.template_signature.as_deref(),
-            loaded.slot_structure_signature.as_deref(),
-            false,
-        ),
+        DocumentWritebackContext::new(&loaded.source_text, Some(&snapshot))
+            .with_structure_signatures(
+                loaded.template_signature.as_deref(),
+                loaded.slot_structure_signature.as_deref(),
+                false,
+            ),
         DocumentWriteback::Slots(&updated_slots),
         WritebackMode::Write,
     )
@@ -95,7 +99,10 @@ fn docx_roundtrip_preserves_slot_structure_signature() {
         reloaded.slot_structure_signature,
         loaded.slot_structure_signature
     );
-    assert_eq!(editable_slot_count(&reloaded.writeback_slots), editable_slot_count(&loaded.writeback_slots));
+    assert_eq!(
+        editable_slot_count(&reloaded.writeback_slots),
+        editable_slot_count(&loaded.writeback_slots)
+    );
     assert!(reloaded.source_text.contains("〔改〕"));
 
     cleanup_dir(&root);
@@ -109,11 +116,12 @@ fn assert_text_roundtrip_fixture(fixture: &TextFixture) {
 
     execute_document_writeback(
         &path,
-        DocumentWritebackContext::new(&loaded.source_text, Some(&snapshot)).with_structure_signatures(
-            loaded.template_signature.as_deref(),
-            loaded.slot_structure_signature.as_deref(),
-            fixture.rewrite_headings,
-        ),
+        DocumentWritebackContext::new(&loaded.source_text, Some(&snapshot))
+            .with_structure_signatures(
+                loaded.template_signature.as_deref(),
+                loaded.slot_structure_signature.as_deref(),
+                fixture.rewrite_headings,
+            ),
         DocumentWriteback::Slots(&updated_slots),
         WritebackMode::Write,
     )
@@ -125,7 +133,10 @@ fn assert_text_roundtrip_fixture(fixture: &TextFixture) {
         loaded.slot_structure_signature
     );
     assert_eq!(reloaded.writeback_slots.len(), loaded.writeback_slots.len());
-    assert_eq!(editable_slot_count(&reloaded.writeback_slots), editable_slot_count(&loaded.writeback_slots));
+    assert_eq!(
+        editable_slot_count(&reloaded.writeback_slots),
+        editable_slot_count(&loaded.writeback_slots)
+    );
     assert!(reloaded.source_text.contains("〔改〕"));
 
     cleanup_dir(&root);

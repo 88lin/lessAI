@@ -6,7 +6,7 @@ use crate::{
     document_snapshot::{capture_document_snapshot, SNAPSHOT_MISMATCH_ERROR},
     documents::{load_document_source, LoadedDocumentSource},
     models::{DocumentSession, DocumentSnapshot, SegmentationPreset},
-    rewrite_unit::build_rewrite_units,
+    rewrite_unit::{build_rewrite_units, RewriteUnit, WritebackSlot},
     session_builder::{build_clean_session, CleanSessionBuildInput},
     storage,
 };
@@ -25,6 +25,36 @@ use rules::{
 pub(crate) struct RefreshedSession {
     pub session: DocumentSession,
     pub changed: bool,
+}
+
+pub(super) struct SessionStructureData {
+    pub(super) writeback_slots: Vec<WritebackSlot>,
+    pub(super) rewrite_units: Vec<RewriteUnit>,
+    pub(super) template_kind: Option<String>,
+    pub(super) template_signature: Option<String>,
+    pub(super) slot_structure_signature: Option<String>,
+    pub(super) template_snapshot: Option<crate::textual_template::TextTemplate>,
+    pub(super) segmentation_preset: SegmentationPreset,
+    pub(super) rewrite_headings: bool,
+}
+
+impl SessionStructureData {
+    fn from_loaded(
+        loaded: &LoadedDocumentSource,
+        segmentation_preset: SegmentationPreset,
+        rewrite_headings: bool,
+    ) -> Self {
+        Self {
+            writeback_slots: loaded.writeback_slots.clone(),
+            rewrite_units: build_rewrite_units(&loaded.writeback_slots, segmentation_preset),
+            template_kind: loaded.template_kind.clone(),
+            template_signature: loaded.template_signature.clone(),
+            slot_structure_signature: loaded.slot_structure_signature.clone(),
+            template_snapshot: loaded.template_snapshot.clone(),
+            segmentation_preset,
+            rewrite_headings,
+        }
+    }
 }
 
 const SESSION_STRUCTURE_MISMATCH_ERROR: &str =
@@ -75,42 +105,34 @@ fn refresh_session_from_loaded(
     let mut draft = SessionRefreshDraft::new(existing.clone());
     draft.sync_document_path(canonical);
 
-    let expected_rewrite_units = build_rewrite_units(&loaded.writeback_slots, segmentation_preset);
-    let template_kind = loaded.template_kind.clone();
-    let template_signature = loaded.template_signature.clone();
-    let slot_structure_signature = loaded.slot_structure_signature.clone();
-    let template_snapshot = loaded.template_snapshot.clone();
-    let writeback_slots = loaded.writeback_slots.clone();
+    let structure =
+        SessionStructureData::from_loaded(&loaded, segmentation_preset, rewrite_headings);
 
     match decide_segmentation_refresh(
         &draft.session,
-        template_kind.as_deref(),
-        template_signature.as_deref(),
-        slot_structure_signature.as_deref(),
-        &writeback_slots,
-        &expected_rewrite_units,
-        segmentation_preset,
-        rewrite_headings,
+        rules::SegmentationRefreshExpectation {
+            expected_template_kind: structure.template_kind.as_deref(),
+            expected_template_signature: structure.template_signature.as_deref(),
+            expected_slot_structure_signature: structure.slot_structure_signature.as_deref(),
+            expected_writeback_slots: &structure.writeback_slots,
+            expected_rewrite_units: &structure.rewrite_units,
+            segmentation_preset: structure.segmentation_preset,
+            rewrite_headings: structure.rewrite_headings,
+        },
     ) {
-        SegmentationRefreshAction::Keep => {}
-        SegmentationRefreshAction::Rebuild => {
-            draft.rebuild_structure(
-                writeback_slots,
-                expected_rewrite_units,
-                template_kind.clone(),
-                template_signature,
-                slot_structure_signature,
-                template_snapshot.clone(),
-                segmentation_preset,
-                rewrite_headings,
+        SegmentationRefreshAction::Keep => {
+            draft.sync_template_metadata(
+                structure.template_kind.clone(),
+                structure.template_snapshot.clone(),
             );
+        }
+        SegmentationRefreshAction::Rebuild => {
+            draft.rebuild_structure(structure);
         }
         SegmentationRefreshAction::Block => {
             return block_session_for_structure_change(existing, canonical);
         }
     }
-
-    draft.sync_template_metadata(template_kind, template_snapshot);
 
     draft.apply_capabilities(&capabilities);
     draft.finish()

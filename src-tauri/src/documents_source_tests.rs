@@ -41,8 +41,9 @@ fn writeback_slots_lock_whitespace_only_regions_even_when_region_is_editable() {
         protect_kind: None,
         writeback_key: Some("r:underline".to_string()),
     });
-    let slots = writeback_slots_from_regions(&[TextRegion::editable("　　　\n\n")
-        .with_presentation(underline.clone())]);
+    let slots = writeback_slots_from_regions(&[
+        TextRegion::editable("　　　\n\n").with_presentation(underline.clone())
+    ]);
 
     assert_eq!(slots.len(), 1);
     assert_eq!(slots[0].text, "　　　");
@@ -278,7 +279,7 @@ fn load_tex_source_splits_section_command_and_body_into_distinct_blocks_without_
     let (root, path) = write_temp_file("tex-section-body", "tex", tex.as_bytes());
 
     let loaded = load_document_source(&path, false).expect("load tex");
-    let block_anchors = slot_block_anchors(&loaded);
+    let block_anchors = unique_block_anchors(&loaded);
 
     assert_eq!(block_anchors, vec!["tex:b0", "tex:b1"]);
     assert!(loaded.writeback_slots.iter().any(|slot| slot

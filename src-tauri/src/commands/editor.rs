@@ -3,16 +3,16 @@ use tauri::{AppHandle, State};
 
 use crate::{
     documents::WritebackMode,
-    editor_session::{ensure_editor_base_snapshot_matches_path, ACTIVE_EDITOR_SESSION_ERROR},
+    editor_session::ensure_editor_base_snapshot_matches_path,
     editor_writeback::{
-        build_full_text_editor_writeback, build_slot_editor_writeback,
-        execute_editor_writeback,
+        build_full_text_editor_writeback, build_slot_editor_writeback, execute_editor_writeback,
         EditorWritebackPayload,
     },
     models::{DocumentSession, DocumentSnapshot, EditorSlotEdit},
     persist,
     session_access::{access_current_session, CurrentSessionRequest},
     session_loader::load_clean_session_from_existing,
+    session_messages::ACTIVE_EDITOR_SESSION_ERROR,
     state::AppState,
     storage,
 };

@@ -11,8 +11,6 @@ pub(crate) const EDITOR_BASE_SNAPSHOT_MISSING_ERROR: &str =
     "当前编辑器缺少打开时的文件快照，无法确认保存安全性。请重新进入编辑模式后再试。";
 pub(crate) const EDITOR_BASE_SNAPSHOT_EXPIRED_ERROR: &str =
     "编辑器基准已过期，原文件已在外部发生变化。请重新进入编辑模式后再试。";
-pub(crate) const ACTIVE_EDITOR_SESSION_ERROR: &str =
-    "当前文档正在执行自动任务，请先暂停并取消后再继续编辑。";
 
 pub(crate) fn ensure_editor_base_snapshot_matches_path(
     path: &Path,
