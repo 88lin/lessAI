@@ -61,7 +61,7 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
-  background: var(--paper);
+  background: transparent;
 }
 
 body {
@@ -70,12 +70,13 @@ body {
 }
 
 #root {
-  background: var(--paper);
+  background: transparent;
 }
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -85,19 +86,22 @@ button {
 
 button,
 input,
-textarea {
+textarea,
+select {
   border-radius: var(--radius-sm);
 }
 
 button:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: none;
   box-shadow: var(--focus);
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: var(--border);
   background: rgba(255, 255, 255, 0.78);

@@ -162,3 +162,14 @@ export interface ProviderCheckResult {
   ok: boolean;
   message: string;
 }
+
+export interface ReleaseVersionSummary {
+  tag: string;
+  version: string;
+  name: string | null;
+  body: string | null;
+  htmlUrl: string;
+  publishedAt: string | null;
+  prerelease: boolean;
+  updaterAvailable: boolean;
+}

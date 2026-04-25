@@ -136,7 +136,18 @@ export default function App() {
     handleCloseWindow,
     handleResizeWindow
   } = useWindowControls(showNotice);
-  const { handleCheckUpdate } = useUpdateChecker({
+  const {
+    currentVersion,
+    releaseVersions,
+    selectedReleaseTag,
+    selectedRelease,
+    selectedReleaseIsCurrent,
+    releaseListLoadedAt,
+    handleCheckUpdate,
+    handleRefreshReleaseVersions,
+    handleSelectReleaseTag,
+    handleSwitchSelectedRelease
+  } = useUpdateChecker({
     updateProxy: settings.updateProxy,
     showNotice,
     dismissNotice,
@@ -768,10 +779,19 @@ export default function App() {
             onUpdatePromptPresetId={handleUpdatePromptPresetId}
             onUpsertCustomPrompt={handleUpsertCustomPrompt}
             onDeleteCustomPrompt={handleDeleteCustomPrompt}
+            currentVersion={currentVersion}
+            releaseVersions={releaseVersions}
+            selectedReleaseTag={selectedReleaseTag}
+            selectedRelease={selectedRelease}
+            selectedReleaseIsCurrent={selectedReleaseIsCurrent}
+            releaseListLoadedAt={releaseListLoadedAt}
             onConfirm={requestConfirm}
             onTestProvider={handleTestProvider}
             onSaveSettings={handleSaveSettings}
             onCheckUpdate={() => void handleCheckUpdate()}
+            onRefreshReleaseVersions={() => void handleRefreshReleaseVersions()}
+            onSelectReleaseTag={handleSelectReleaseTag}
+            onSwitchSelectedRelease={() => void handleSwitchSelectedRelease()}
           />
         </main>
       </div>

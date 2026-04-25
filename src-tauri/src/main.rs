@@ -38,11 +38,11 @@ mod textual_template;
 
 use commands::{
     apply_suggestion, cancel_rewrite, close_main_window, delete_suggestion, dismiss_suggestion,
-    export_document, finalize_document, is_main_window_maximized, load_session, load_settings,
-    minimize_main_window, open_document, pause_rewrite, reset_session, resume_rewrite,
-    retry_rewrite_unit, rewrite_selection, run_document_writeback, save_settings,
-    start_drag_main_window, start_resize_main_window, start_rewrite, test_provider,
-    toggle_maximize_main_window,
+    export_document, finalize_document, is_main_window_maximized, list_release_versions,
+    load_session, load_settings, minimize_main_window, open_document, pause_rewrite, reset_session,
+    resume_rewrite, retry_rewrite_unit, rewrite_selection, run_document_writeback, save_settings,
+    start_drag_main_window, start_resize_main_window, start_rewrite, switch_release_version,
+    test_provider, toggle_maximize_main_window,
 };
 use state::AppState;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
@@ -192,6 +192,8 @@ fn main() {
             load_settings,
             save_settings,
             test_provider,
+            list_release_versions,
+            switch_release_version,
             open_document,
             load_session,
             reset_session,

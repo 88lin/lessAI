@@ -5,6 +5,7 @@ import type {
   DocumentSnapshot,
   EditorSlotEdit,
   ProviderCheckResult,
+  ReleaseVersionSummary,
   RewriteMode
 } from "./types";
 
@@ -46,6 +47,14 @@ export async function saveSettings(settings: AppSettings) {
 
 export async function testProvider(settings: AppSettings) {
   return invokeCommand<ProviderCheckResult>("test_provider", { settings });
+}
+
+export async function listReleaseVersions(proxy?: string) {
+  return invokeCommand<ReleaseVersionSummary[]>("list_release_versions", { proxy });
+}
+
+export async function switchReleaseVersion(tag: string, proxy?: string) {
+  return invokeCommand<string>("switch_release_version", { tag, proxy });
 }
 
 export async function openDocument(path: string) {

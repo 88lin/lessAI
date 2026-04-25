@@ -5,6 +5,7 @@ mod session;
 mod settings;
 mod snippet;
 mod suggestions;
+mod update;
 mod window;
 
 pub use editor::run_document_writeback;
@@ -16,6 +17,7 @@ pub use session::{load_session, open_document, reset_session};
 pub use settings::{load_settings, save_settings, test_provider};
 pub use snippet::rewrite_selection;
 pub use suggestions::{apply_suggestion, delete_suggestion, dismiss_suggestion};
+pub use update::{list_release_versions, switch_release_version};
 pub use window::{
     close_main_window, is_main_window_maximized, minimize_main_window, start_drag_main_window,
     start_resize_main_window, toggle_maximize_main_window,

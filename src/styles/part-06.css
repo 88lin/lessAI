@@ -178,6 +178,7 @@
 
 :root[data-theme="dark"] input,
 :root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select,
 :root[data-theme="dark"] .window-control-button,
 :root[data-theme="dark"] .icon-button,
 :root[data-theme="dark"] .toolbar-button,

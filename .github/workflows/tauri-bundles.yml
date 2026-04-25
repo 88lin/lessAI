@@ -226,7 +226,8 @@ jobs:
             libgtk-3-dev \
             librsvg2-dev \
             patchelf \
-            rpm
+            rpm \
+            xvfb
 
           # WebKitGTK: Ubuntu 22.04 uses 4.0, newer versions use 4.1
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
@@ -267,6 +268,11 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
         run: |
+          # linuxdeploy strip may break on modern ELF sections (.relr.dyn) in AppImage pipeline.
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            export NO_STRIP=1
+          fi
+
           args=(-c src-tauri/tauri.updater.conf.json)
           if [ -f src-tauri/tauri.release.conf.json ]; then
             args+=(-c src-tauri/tauri.release.conf.json)
@@ -279,11 +285,54 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
         run: |
+          # linuxdeploy strip may break on modern ELF sections (.relr.dyn) in AppImage pipeline.
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            export NO_STRIP=1
+          fi
+
           args=()
           if [ -f src-tauri/tauri.release.conf.json ]; then
             args+=(-c src-tauri/tauri.release.conf.json)
           fi
           pnpm exec tauri build "${args[@]}"
+
+      - name: Linux AppImage smoke test
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          appimage="$(ls src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -n 1 || true)"
+          if [ -z "${appimage}" ]; then
+            echo "[ERROR] AppImage not found after bundle step." >&2
+            exit 1
+          fi
+
+          echo "[INFO] Smoke testing ${appimage}"
+          chmod +x "${appimage}"
+
+          # Avoid fuse dependency in runner and enforce conservative graphics path for CI validation.
+          set +e
+          xvfb-run -a env \
+            APPIMAGE_EXTRACT_AND_RUN=1 \
+            LESSAI_LINUX_GRAPHICS_MODE=safe \
+            timeout 20s "${appimage}" > /tmp/lessai-appimage-smoke.log 2>&1
+          code=$?
+          set -e
+
+          tail -n 200 /tmp/lessai-appimage-smoke.log || true
+
+          if grep -Eqi "(segmentation fault|core dumped|EGL_BAD_ALLOC|HandshakeFailure)" /tmp/lessai-appimage-smoke.log; then
+            echo "[ERROR] AppImage smoke test detected fatal runtime signature." >&2
+            exit 1
+          fi
+
+          # timeout(124) means process stayed alive long enough, which is expected for GUI app.
+          # 0 means it started and exited gracefully (still acceptable for smoke check).
+          if [ "${code}" -ne 124 ] && [ "${code}" -ne 0 ]; then
+            echo "[ERROR] AppImage smoke test failed with exit code ${code}." >&2
+            exit "${code}"
+          fi
 
       - name: Write bundle metadata
         shell: bash
