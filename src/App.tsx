@@ -391,6 +391,14 @@ export default function App() {
     document.documentElement.dataset.theme = themeMode;
   }, [themeMode]);
 
+  useLayoutEffect(() => {
+    const root = document.getElementById("root");
+    if (!root) {
+      return;
+    }
+    root.dataset.runtime = desktopRuntime ? "desktop" : "web";
+  }, [desktopRuntime]);
+
   useEffect(() => {
     try {
       window.localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);

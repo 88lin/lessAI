@@ -44,6 +44,14 @@
   --mark-failed-ring: rgba(214, 45, 32, 0.22);
   --focus: 0 0 0 3px rgba(23, 68, 207, 0.22);
   --transition: 180ms ease;
+  --web-page-bg:
+    radial-gradient(circle at 14% 16%, rgba(239, 193, 34, 0.22), transparent 26%),
+    radial-gradient(circle at 86% 14%, rgba(23, 68, 207, 0.16), transparent 24%),
+    linear-gradient(180deg, rgba(236, 227, 211, 0.62) 0%, rgba(245, 239, 228, 0.88) 100%);
+  --web-shell-border: rgba(20, 20, 20, 0.16);
+  --web-shell-shadow:
+    0 26px 56px rgba(20, 20, 20, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.36) inset;
   --app-bg:
     radial-gradient(circle at 14% 18%, rgba(239, 193, 34, 0.3), transparent 18%),
     radial-gradient(circle at 86% 12%, rgba(23, 68, 207, 0.22), transparent 18%),
@@ -71,6 +79,10 @@ body {
 
 #root {
   background: transparent;
+}
+
+#root[data-runtime="web"] {
+  background: var(--web-page-bg);
 }
 
 button,
@@ -202,7 +214,8 @@ p {
   height: min(920px, calc(100vh - 56px));
   margin: 28px auto;
   border-radius: 24px;
-  border: 1px solid rgba(20, 20, 20, 0.12);
+  border: 1px solid var(--web-shell-border);
+  box-shadow: var(--web-shell-shadow);
 }
 
 .app-shell.is-maximized {
