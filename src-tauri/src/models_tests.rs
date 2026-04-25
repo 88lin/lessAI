@@ -32,24 +32,26 @@ fn accepts_current_segmentation_preset_values() {
 #[test]
 fn fills_missing_app_settings_fields_from_defaults() {
     let base = serde_json::json!({
-        "baseUrl": "https://api.openai.com/v1",
+        "baseUrl": "https://cliproxy.eqing.tech/v1",
         "apiKey": "",
-        "model": "gpt-4.1-mini",
+        "model": "gpt-5.5",
         "updateProxy": "",
         "timeoutMs": 45000,
         "temperature": 0.8,
-        "segmentationPreset": "paragraph",
+        "segmentationPreset": "sentence",
         "rewriteHeadings": false,
-        "rewriteMode": "manual",
+        "rewriteMode": "auto",
         "maxConcurrency": 2,
-        "unitsPerBatch": 1,
+        "unitsPerBatch": 2,
         "promptPresetId": "humanizer_zh",
         "customPrompts": []
     });
 
     for field in [
         "updateProxy",
+        "segmentationPreset",
         "rewriteHeadings",
+        "rewriteMode",
         "maxConcurrency",
         "unitsPerBatch",
         "promptPresetId",
@@ -68,7 +70,11 @@ fn fills_missing_app_settings_fields_from_defaults() {
         let defaults = AppSettings::default();
         match field {
             "updateProxy" => assert_eq!(parsed.update_proxy, defaults.update_proxy),
+            "segmentationPreset" => {
+                assert_eq!(parsed.segmentation_preset, defaults.segmentation_preset)
+            }
             "rewriteHeadings" => assert_eq!(parsed.rewrite_headings, defaults.rewrite_headings),
+            "rewriteMode" => assert_eq!(parsed.rewrite_mode, defaults.rewrite_mode),
             "maxConcurrency" => assert_eq!(parsed.max_concurrency, defaults.max_concurrency),
             "unitsPerBatch" => assert_eq!(parsed.units_per_batch, defaults.units_per_batch),
             "promptPresetId" => assert_eq!(parsed.prompt_preset_id, defaults.prompt_preset_id),

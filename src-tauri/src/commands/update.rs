@@ -9,9 +9,9 @@ use tauri::{utils::config::BundleType, utils::platform::bundle_type, AppHandle};
 use tauri_plugin_updater::UpdaterExt;
 
 const GITHUB_RELEASES_API_URL: &str =
-    "https://api.github.com/repos/GTJasonMK/lessAI/releases?per_page=50";
+    "https://api.github.com/repos/88lin/lessAI/releases?per_page=50";
 const RELEASE_MANIFEST_URL_TEMPLATE: &str =
-    "https://github.com/GTJasonMK/lessAI/releases/download/{tag}/latest.json";
+    "https://github.com/88lin/lessAI/releases/download/{tag}/latest.json";
 const RELEASES_USER_AGENT: &str = "LessAI-VersionManager/1.0";
 
 #[derive(Debug, Clone, Serialize)]

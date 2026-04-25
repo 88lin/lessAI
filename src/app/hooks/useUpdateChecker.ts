@@ -9,7 +9,7 @@ import type { ConfirmModalOptions } from "../../components/ConfirmModal";
 import type { ShowNotice, WithBusy } from "./sessionActionShared";
 
 const UPDATE_MANIFEST_URL =
-  "https://github.com/GTJasonMK/lessAI/releases/latest/download/latest.json";
+  "https://github.com/88lin/lessAI/releases/latest/download/latest.json";
 
 function normalizeProxy(rawProxy: string) {
   const proxy = rawProxy.trim();
