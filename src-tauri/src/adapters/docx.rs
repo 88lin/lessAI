@@ -14,6 +14,8 @@ mod placeholders;
 #[cfg(test)]
 #[path = "docx/segmentation_tests.rs"]
 mod segmentation_tests;
+#[path = "docx/signature.rs"]
+mod signature;
 #[path = "docx/simple.rs"]
 mod simple;
 #[path = "docx/slots.rs"]
@@ -34,4 +36,6 @@ mod xml;
 #[path = "docx/xml_tests.rs"]
 mod xml_tests;
 
+pub(crate) use signature::DocxWritebackModel;
 pub use simple::DocxAdapter;
+pub(crate) use simple::LoadedDocxWritebackSource;

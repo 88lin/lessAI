@@ -1,6 +1,11 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { ArrowUpCircle, Check, X } from "lucide-react";
-import type { AppSettings, PromptTemplate, ProviderCheckResult } from "../lib/types";
+import type {
+  AppSettings,
+  PromptTemplate,
+  ProviderCheckResult,
+  ReleaseVersionSummary
+} from "../lib/types";
 import type { NoticeTone } from "../lib/constants";
 import { isSettingsReady } from "../lib/helpers";
 import { ActionButton } from "./ActionButton";
@@ -36,10 +41,19 @@ interface SettingsModalProps {
   onUpdatePromptPresetId: (value: AppSettings["promptPresetId"]) => void;
   onUpsertCustomPrompt: (value: PromptTemplate) => void;
   onDeleteCustomPrompt: (templateId: string) => void;
+  currentVersion: string;
+  releaseVersions: ReleaseVersionSummary[];
+  selectedReleaseTag: string;
+  selectedRelease: ReleaseVersionSummary | null;
+  selectedReleaseIsCurrent: boolean;
+  releaseListLoadedAt: string | null;
   onConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
   onTestProvider: () => void;
   onSaveSettings: () => void;
   onCheckUpdate: () => void;
+  onRefreshReleaseVersions: () => void;
+  onSelectReleaseTag: (tag: string) => void;
+  onSwitchSelectedRelease: () => void;
 }
 
 export const SettingsModal = memo(function SettingsModal({
@@ -58,10 +72,19 @@ export const SettingsModal = memo(function SettingsModal({
   onUpdatePromptPresetId,
   onUpsertCustomPrompt,
   onDeleteCustomPrompt,
+  currentVersion,
+  releaseVersions,
+  selectedReleaseTag,
+  selectedRelease,
+  selectedReleaseIsCurrent,
+  releaseListLoadedAt,
   onConfirm,
   onTestProvider,
   onSaveSettings,
-  onCheckUpdate
+  onCheckUpdate,
+  onRefreshReleaseVersions,
+  onSelectReleaseTag,
+  onSwitchSelectedRelease
 }: SettingsModalProps) {
   const [page, setPage] = useState<SettingsPage>("provider");
 
@@ -92,6 +115,7 @@ export const SettingsModal = memo(function SettingsModal({
   return (
     <div
       className="modal-overlay"
+      data-window-drag-exclude="true"
       role="dialog"
       aria-modal="true"
       aria-label="设置"
@@ -158,9 +182,26 @@ export const SettingsModal = memo(function SettingsModal({
                 testProviderDisabled={
                   Boolean(busyAction) && busyAction !== "test-provider"
                 }
+                currentVersion={currentVersion}
+                releaseVersions={releaseVersions}
+                selectedReleaseTag={selectedReleaseTag}
+                selectedRelease={selectedRelease}
+                selectedReleaseIsCurrent={selectedReleaseIsCurrent}
+                releaseListLoadedAt={releaseListLoadedAt}
+                refreshReleasesBusy={busyAction === "list-releases"}
+                refreshReleasesDisabled={
+                  Boolean(busyAction) && busyAction !== "list-releases"
+                }
+                switchReleaseBusy={busyAction === "switch-release-version"}
+                switchReleaseDisabled={
+                  Boolean(busyAction) && busyAction !== "switch-release-version"
+                }
                 onTestProvider={onTestProvider}
                 onUpdateStringSetting={onUpdateStringSetting}
                 onUpdateNumberSetting={onUpdateNumberSetting}
+                onRefreshReleaseVersions={onRefreshReleaseVersions}
+                onSelectReleaseTag={onSelectReleaseTag}
+                onSwitchSelectedRelease={onSwitchSelectedRelease}
               />
             ) : null}
 

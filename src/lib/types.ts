@@ -5,6 +5,8 @@ export type RewriteUnitStatus = "idle" | "running" | "done" | "failed";
 export type DiffType = "unchanged" | "insert" | "delete";
 export type RunningState = "idle" | "running" | "paused" | "completed" | "cancelled" | "failed";
 export type SuggestionDecision = "proposed" | "applied" | "dismissed";
+export type DocumentBackendKind = "textual" | "docx" | "pdf";
+export type DocumentEditorMode = "none" | "fullText" | "slotBased";
 export type WritebackSlotRole =
   | "editableText"
   | "lockedText"
@@ -23,7 +25,7 @@ export interface AppSettings {
   apiKey: string;
   model: string;
   /**
-   * 检查更新/下载更新使用的代理（可选）。
+   * 统一网络代理（可选），用于 AI 请求与更新检查/下载。
    * 为空字符串表示直连。
    */
   updateProxy: string;
@@ -42,6 +44,7 @@ export interface AppSettings {
 export interface DiffSpan {
   type: DiffType;
   text: string;
+  degradedReason?: string | null;
 }
 
 export interface TextPresentation {
@@ -55,6 +58,21 @@ export interface TextPresentation {
 
 export interface DocumentSnapshot {
   sha256: string;
+}
+
+export interface CapabilityGate {
+  allowed: boolean;
+  blockReason: string | null;
+}
+
+export interface DocumentSessionCapabilities {
+  backendKind: DocumentBackendKind;
+  editorMode: DocumentEditorMode;
+  cleanSession: boolean;
+  sourceWriteback: CapabilityGate;
+  aiRewrite: CapabilityGate;
+  editorWriteback: CapabilityGate;
+  editorEntry: CapabilityGate;
 }
 
 export interface WritebackSlot {
@@ -94,7 +112,13 @@ export interface RewriteSuggestion {
   rewriteUnitId: string;
   beforeText: string;
   afterText: string;
-  diffSpans: DiffSpan[];
+  // Legacy sessions may only include `diffSpans`.
+  // Current backend shape is `diff: { spans, degradedReason }`.
+  diff?: {
+    spans: DiffSpan[];
+    degradedReason?: string | null;
+  } | null;
+  diffSpans?: DiffSpan[] | null;
   decision: SuggestionDecision;
   slotUpdates: SlotUpdate[];
   createdAt: string;
@@ -107,11 +131,11 @@ export interface DocumentSession {
   documentPath: string;
   sourceText: string;
   sourceSnapshot?: DocumentSnapshot | null;
+  templateKind?: string | null;
+  templateSignature?: string | null;
+  slotStructureSignature?: string | null;
   normalizedText: string;
-  writeBackSupported: boolean;
-  writeBackBlockReason: string | null;
-  plainTextEditorSafe: boolean;
-  plainTextEditorBlockReason: string | null;
+  capabilities: DocumentSessionCapabilities;
   segmentationPreset?: SegmentationPreset | null;
   rewriteHeadings?: boolean | null;
   writebackSlots: WritebackSlot[];
@@ -137,4 +161,15 @@ export interface RewriteProgress {
 export interface ProviderCheckResult {
   ok: boolean;
   message: string;
+}
+
+export interface ReleaseVersionSummary {
+  tag: string;
+  version: string;
+  name: string | null;
+  body: string | null;
+  htmlUrl: string;
+  publishedAt: string | null;
+  prerelease: boolean;
+  updaterAvailable: boolean;
 }

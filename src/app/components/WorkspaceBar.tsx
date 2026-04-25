@@ -1,5 +1,4 @@
-import { memo } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { memo, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Copy,
   Download,
@@ -16,6 +15,7 @@ import {
   formatSessionStatus,
   statusTone
 } from "../../lib/helpers";
+import { isWindowDragExcludedTarget } from "../../lib/windowDrag";
 import { StatusBadge } from "../../components/StatusBadge";
 
 interface WorkspaceBarProps {
@@ -32,6 +32,7 @@ interface WorkspaceBarProps {
   onOpenDocument: () => void;
   onOpenSettings: () => void;
   onExport: () => void;
+  onStartWindowDrag: () => void;
   onMinimizeWindow: () => void;
   onToggleMaximizeWindow: () => void;
   onCloseWindow: () => void;
@@ -51,6 +52,7 @@ export const WorkspaceBar = memo(function WorkspaceBar({
   onOpenDocument,
   onOpenSettings,
   onExport,
+  onStartWindowDrag,
   onMinimizeWindow,
   onToggleMaximizeWindow,
   onCloseWindow
@@ -67,21 +69,28 @@ export const WorkspaceBar = memo(function WorkspaceBar({
     Boolean(currentSession && ["running", "paused"].includes(currentSession.status));
 
   const rawPath = currentSession ? formatDisplayPath(currentSession.documentPath) : "";
+  const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !event.isPrimary) {
+      return;
+    }
+
+    if (isWindowDragExcludedTarget(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void onStartWindowDrag();
+  };
 
   return (
     <div
       className="workspace-bar"
-      data-tauri-drag-region
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest?.('[data-tauri-drag-region="false"]')) return;
-        event.preventDefault();
-        void getCurrentWindow().startDragging();
-      }}
+      onPointerDown={handleHeaderPointerDown}
+      onDoubleClick={(event) => event.preventDefault()}
     >
       <div className="workspace-bar-left">
-        <img className="brand-logo is-small" src={logoUrl} alt="LessAI" />
+        <img className="brand-logo is-small" src={logoUrl} alt="LessAI" draggable={false} />
         <div className="workspace-bar-brand">
           <strong>LessAI</strong>
           <span className="workspace-bar-view">
@@ -92,7 +101,11 @@ export const WorkspaceBar = memo(function WorkspaceBar({
 
       <div className="workspace-bar-center">
         <div className="workspace-bar-status-row">
-          <div className="workspace-bar-chips scroll-region" data-tauri-drag-region="false">
+          <div
+            className="workspace-bar-chips scroll-region"
+            data-tauri-drag-region="false"
+            data-window-drag-exclude="true"
+          >
             <StatusBadge
               tone={
                 currentSession ? statusTone(currentSession.status) : settingsReady ? "info" : "warning"
@@ -123,7 +136,11 @@ export const WorkspaceBar = memo(function WorkspaceBar({
         ) : null}
       </div>
 
-      <div className="workspace-bar-actions" data-tauri-drag-region="false">
+      <div
+        className="workspace-bar-actions"
+        data-tauri-drag-region="false"
+        data-window-drag-exclude="true"
+      >
         <button
           type="button"
           className="icon-button"
@@ -156,7 +173,11 @@ export const WorkspaceBar = memo(function WorkspaceBar({
         </button>
       </div>
 
-      <div className="window-controls" data-tauri-drag-region="false">
+      <div
+        className="window-controls"
+        data-tauri-drag-region="false"
+        data-window-drag-exclude="true"
+      >
         <button
           type="button"
           className="window-control-button"

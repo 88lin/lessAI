@@ -32,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build_ref: ${{ steps.meta.outputs.build_ref }}
+      build_sha: ${{ steps.meta.outputs.build_sha }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
       release_version: ${{ steps.meta.outputs.release_version }}
       release_enabled: ${{ steps.meta.outputs.release_enabled }}
@@ -133,16 +134,94 @@ jobs:
             release_version="$(release_version_from_tag "${release_tag}")"
           fi
 
+          build_sha="$(git rev-parse HEAD)"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${INPUT_REF}" && -n "${INPUT_RELEASE_TAG}" ]]; then
+            tag_for_check="${INPUT_RELEASE_TAG}"
+            if [[ "${tag_for_check}" != v* ]]; then
+              tag_for_check="v${tag_for_check}"
+            fi
+
+            tag_commit="$(git rev-parse --verify "${tag_for_check}^{commit}" 2>/dev/null || true)"
+            if [[ -n "${tag_commit}" && "${tag_commit}" != "${build_sha}" ]]; then
+              echo "[ERROR] workflow_dispatch input mismatch: ref and release_tag point to different commits." >&2
+              echo "[HINT] ref(${INPUT_REF}) -> ${build_sha}" >&2
+              echo "[HINT] release_tag(${tag_for_check}) -> ${tag_commit}" >&2
+              exit 1
+            elif [[ -z "${tag_commit}" ]]; then
+              echo "[WARN] Release tag ${tag_for_check} does not exist yet; GitHub release creation will target the checked-out ref."
+            else
+              echo "[INFO] ref/release_tag consistency check passed: ${build_sha}"
+            fi
+          fi
+
+          if [[ "${release_version}" == *-* ]]; then
+            release_prerelease="true"
+          fi
+
           echo "[INFO] Build ref: ${build_ref:-<event-ref>}"
+          echo "[INFO] Build SHA: ${build_sha}"
           echo "[INFO] Release enabled: ${release_enabled}"
           echo "[INFO] Release tag: ${release_tag:-<none>}"
           echo "[INFO] Release version: ${release_version:-<none>}"
 
           echo "build_ref=${build_ref}" >> "${GITHUB_OUTPUT}"
+          echo "build_sha=${build_sha}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
           echo "release_enabled=${release_enabled}" >> "${GITHUB_OUTPUT}"
           echo "release_prerelease=${release_prerelease}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            patchelf
+
+          sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend typecheck
+        run: pnpm run typecheck
+
+      - name: Frontend build
+        run: pnpm run build
+
+      - name: Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Scripts regression
+        run: bash scripts/run-regression-tests.sh
 
   bundle:
     name: Bundle (${{ matrix.os }})
@@ -163,25 +242,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.build_sha }}
 
-      - name: Checkout build ref
-        if: ${{ needs.prepare.outputs.build_ref != '' }}
-        shell: bash
-        env:
-          BUILD_REF: ${{ needs.prepare.outputs.build_ref }}
-        run: |
-          set -euo pipefail
-          echo "[INFO] Checking out build ref: ${BUILD_REF}"
-          git checkout --force "${BUILD_REF}"
-
-      - name: Write release version override
-        if: ${{ needs.prepare.outputs.release_version != '' }}
+      - name: Prepare release version override
         shell: bash
         run: |
           set -euo pipefail
-          echo "{ \"version\": \"${RELEASE_VERSION}\" }" > src-tauri/tauri.release.conf.json
-          echo "[INFO] Release tag: ${RELEASE_TAG}"
-          echo "[INFO] Release version: ${RELEASE_VERSION}"
+          if [[ -n "${RELEASE_VERSION}" ]]; then
+            echo "{ \"version\": \"${RELEASE_VERSION}\" }" > src-tauri/tauri.release.conf.json
+            echo "[INFO] Release tag: ${RELEASE_TAG}"
+            echo "[INFO] Release version: ${RELEASE_VERSION}"
+          else
+            echo "[INFO] Not a release build (no tag detected / no release_tag input)."
+          fi
 
       - name: Write Windows prerelease bundle override
         if: ${{ matrix.os == 'windows-latest' && contains(env.RELEASE_VERSION, '-') }}
@@ -229,11 +302,37 @@ jobs:
             libgtk-3-dev \
             librsvg2-dev \
             patchelf \
-            rpm
+            rpm \
+            xvfb
 
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
           sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
           sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
+
+      - name: Prepare linuxdeploy tools
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_dir="$HOME/.cache/tauri"
+          mkdir -p "$cache_dir"
+
+          linuxdeploy="$cache_dir/linuxdeploy-x86_64.AppImage"
+          plugin_appimage="$cache_dir/linuxdeploy-plugin-appimage.AppImage"
+
+          if [[ ! -x "$linuxdeploy" ]]; then
+            curl -fL \
+              "https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage" \
+              -o "$linuxdeploy"
+            chmod +x "$linuxdeploy"
+          fi
+
+          if [[ ! -x "$plugin_appimage" ]]; then
+            curl -fL \
+              "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage" \
+              -o "$plugin_appimage"
+            chmod +x "$plugin_appimage"
+          fi
 
       - name: Install Windows bundlers
         if: matrix.os == 'windows-latest'
@@ -265,6 +364,10 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
         run: |
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            export NO_STRIP=1
+          fi
+
           args=(-c src-tauri/tauri.updater.conf.json)
           if [ -f src-tauri/tauri.release.conf.json ]; then
             args+=(-c src-tauri/tauri.release.conf.json)
@@ -280,6 +383,10 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
         run: |
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            export NO_STRIP=1
+          fi
+
           args=()
           if [ -f src-tauri/tauri.release.conf.json ]; then
             args+=(-c src-tauri/tauri.release.conf.json)
@@ -288,6 +395,47 @@ jobs:
             args+=(-c src-tauri/tauri.windows-prerelease.conf.json)
           fi
           pnpm exec tauri build "${args[@]}"
+
+      - name: Normalize Linux AppImage runtime
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          bash scripts/patch-linux-appimage.sh
+
+      - name: Linux AppImage smoke test
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          appimage="$(ls src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -n 1 || true)"
+          if [ -z "${appimage}" ]; then
+            echo "[ERROR] AppImage not found after bundle step." >&2
+            exit 1
+          fi
+
+          echo "[INFO] Smoke testing ${appimage}"
+          chmod +x "${appimage}"
+
+          set +e
+          xvfb-run -a env \
+            APPIMAGE_EXTRACT_AND_RUN=1 \
+            LESSAI_LINUX_GRAPHICS_MODE=safe \
+            timeout 20s "${appimage}" > /tmp/lessai-appimage-smoke.log 2>&1
+          code=$?
+          set -e
+
+          tail -n 200 /tmp/lessai-appimage-smoke.log || true
+
+          if grep -Eqi "(segmentation fault|core dumped|EGL_BAD_ALLOC|HandshakeFailure)" /tmp/lessai-appimage-smoke.log; then
+            echo "[ERROR] AppImage smoke test detected fatal runtime signature." >&2
+            exit 1
+          fi
+
+          if [ "${code}" -ne 124 ] && [ "${code}" -ne 0 ]; then
+            echo "[ERROR] AppImage smoke test failed with exit code ${code}." >&2
+            exit "${code}"
+          fi
 
       - name: Write bundle metadata
         shell: bash
@@ -332,6 +480,17 @@ jobs:
       RELEASE_VERSION: ${{ needs.prepare.outputs.release_version }}
 
     steps:
+      - name: Validate release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_TAG}" ]] || [[ -z "${RELEASE_VERSION}" ]]; then
+            echo "[ERROR] Missing release metadata from prepare outputs." >&2
+            exit 1
+          fi
+          echo "[INFO] Release tag: ${RELEASE_TAG}"
+          echo "[INFO] Release version: ${RELEASE_VERSION}"
+
       - name: Download bundles
         uses: actions/download-artifact@v4
         with:
@@ -559,6 +718,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ needs.prepare.outputs.build_sha }}
           files: release-assets/*
+          body: |
+            ## 文档兼容边界（重要）
+            - DOCX / PDF 当前采用“安全优先”的原文件写回策略。
+            - 能导入并查看，不等于一定允许写回原文件。
+            - 检测到结构歧义、锁定区变化或文本层定位不稳定时，会主动拒绝写回以保护原文。
+            - 如遇写回阻断，可先导出为新文件继续处理。
           generate_release_notes: true
           prerelease: ${{ needs.prepare.outputs.release_prerelease == 'true' }}

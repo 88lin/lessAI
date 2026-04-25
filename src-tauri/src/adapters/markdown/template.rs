@@ -12,7 +12,11 @@ pub(super) fn build_template(text: &str, rewrite_headings: bool) -> TextTemplate
     TextTemplate::new("markdown", blocks)
 }
 
-fn build_block(block_index: usize, block: MarkdownBlock, rewrite_headings: bool) -> TextTemplateBlock {
+fn build_block(
+    block_index: usize,
+    block: MarkdownBlock,
+    rewrite_headings: bool,
+) -> TextTemplateBlock {
     let block_anchor = format!("md:b{block_index}");
 
     TextTemplateBlock {

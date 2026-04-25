@@ -3,11 +3,11 @@ use chrono::Utc;
 use crate::{
     adapters::plain_text::PlainTextAdapter,
     document_snapshot::capture_document_snapshot,
-    documents::{OwnedDocumentWriteback, WritebackMode},
+    documents::{load_document_source, OwnedDocumentWriteback, WritebackMode},
     rewrite_unit::{RewriteUnitResponse, SlotUpdate},
     test_support::{
-        build_minimal_docx, cleanup_dir, editable_slot, locked_slot, rewrite_suggestion,
-        rewrite_unit, write_temp_file,
+        build_minimal_docx, build_minimal_pdf, cleanup_dir, editable_slot, locked_slot,
+        rewrite_suggestion, rewrite_unit, write_temp_file,
     },
 };
 
@@ -21,7 +21,7 @@ fn sample_plain_text_session(path: &std::path::Path) -> crate::models::DocumentS
     );
     let slot_id = built.slots[0].id.clone();
 
-    crate::models::DocumentSession {
+    let mut session = crate::models::DocumentSession {
         id: "session-text".to_string(),
         title: "示例".to_string(),
         document_path: path.to_string_lossy().to_string(),
@@ -32,10 +32,11 @@ fn sample_plain_text_session(path: &std::path::Path) -> crate::models::DocumentS
         slot_structure_signature: Some(built.slot_structure_signature.clone()),
         template_snapshot: Some(template),
         normalized_text: "原文\r\n下一行\r\n".to_string(),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            editor_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            ..Default::default()
+        },
         segmentation_preset: Some(crate::models::SegmentationPreset::Paragraph),
         rewrite_headings: Some(false),
         writeback_slots: built.slots,
@@ -53,12 +54,14 @@ fn sample_plain_text_session(path: &std::path::Path) -> crate::models::DocumentS
         status: crate::models::RunningState::Idle,
         created_at: now,
         updated_at: now,
-    }
+    };
+    crate::documents::hydrate_session_capabilities(&mut session);
+    session
 }
 
 fn sample_docx_session(path: &std::path::Path) -> crate::models::DocumentSession {
     let now = Utc::now();
-    crate::models::DocumentSession {
+    let mut session = crate::models::DocumentSession {
         id: "session-docx".to_string(),
         title: "示例".to_string(),
         document_path: path.to_string_lossy().to_string(),
@@ -69,10 +72,13 @@ fn sample_docx_session(path: &std::path::Path) -> crate::models::DocumentSession
         slot_structure_signature: None,
         template_snapshot: None,
         normalized_text: "前文[公式]后文".to_string(),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: false,
-        plain_text_editor_block_reason: Some("docx 仅支持槽位编辑".to_string()),
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            editor_writeback: crate::session_capability_models::CapabilityGate::blocked(
+                "docx 仅支持槽位编辑",
+            ),
+            ..Default::default()
+        },
         segmentation_preset: Some(crate::models::SegmentationPreset::Paragraph),
         rewrite_headings: Some(false),
         writeback_slots: vec![
@@ -92,7 +98,62 @@ fn sample_docx_session(path: &std::path::Path) -> crate::models::DocumentSession
         status: crate::models::RunningState::Idle,
         created_at: now,
         updated_at: now,
-    }
+    };
+    crate::documents::hydrate_session_capabilities(&mut session);
+    session
+}
+
+fn sample_pdf_session(path: &std::path::Path) -> crate::models::DocumentSession {
+    let now = Utc::now();
+    let loaded = load_document_source(path, false).expect("load pdf");
+    let rewrite_units = crate::rewrite_unit::build_rewrite_units(
+        &loaded.writeback_slots,
+        crate::models::SegmentationPreset::Paragraph,
+    );
+    let slot_id = loaded
+        .writeback_slots
+        .iter()
+        .find(|slot| slot.editable)
+        .expect("editable pdf slot")
+        .id
+        .clone();
+
+    let mut session = crate::models::DocumentSession {
+        id: "session-pdf".to_string(),
+        title: "示例".to_string(),
+        document_path: path.to_string_lossy().to_string(),
+        source_text: loaded.source_text.clone(),
+        source_snapshot: Some(capture_document_snapshot(path).expect("capture snapshot")),
+        template_kind: loaded.template_kind.clone(),
+        template_signature: loaded.template_signature.clone(),
+        slot_structure_signature: loaded.slot_structure_signature.clone(),
+        template_snapshot: loaded.template_snapshot.clone(),
+        normalized_text: loaded.source_text.clone(),
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: loaded.capability_policy.source_writeback.clone(),
+            editor_writeback: loaded.capability_policy.editor_writeback.clone(),
+            ..Default::default()
+        },
+        segmentation_preset: Some(crate::models::SegmentationPreset::Paragraph),
+        rewrite_headings: Some(false),
+        writeback_slots: loaded.writeback_slots,
+        rewrite_units,
+        suggestions: vec![rewrite_suggestion(
+            "suggestion-1",
+            1,
+            "unit-0",
+            "Alpha line\n",
+            "Alpha revised\n",
+            crate::models::SuggestionDecision::Applied,
+            vec![SlotUpdate::new(&slot_id, "Alpha revised")],
+        )],
+        next_suggestion_sequence: 2,
+        status: crate::models::RunningState::Idle,
+        created_at: now,
+        updated_at: now,
+    };
+    crate::documents::hydrate_session_capabilities(&mut session);
+    session
 }
 
 #[test]
@@ -199,8 +260,8 @@ fn execute_session_writeback_returns_block_error_before_loading_source() {
     let bytes = build_minimal_docx(xml);
     let (root, target) = write_temp_file("blocked-session", "docx", &bytes);
     let mut session = sample_docx_session(&target);
-    session.write_back_supported = false;
-    session.write_back_block_reason = Some("blocked".to_string());
+    session.capabilities.source_writeback =
+        crate::session_capability_models::CapabilityGate::blocked("blocked");
     session.suggestions.push(rewrite_suggestion(
         "suggestion-1",
         1,
@@ -210,6 +271,7 @@ fn execute_session_writeback_returns_block_error_before_loading_source() {
         crate::models::SuggestionDecision::Applied,
         vec![SlotUpdate::new("slot-0", "改写后")],
     ));
+    crate::documents::hydrate_session_capabilities(&mut session);
 
     let error = super::execute_session_writeback(&session, WritebackMode::Validate)
         .expect_err("blocked session should short-circuit");
@@ -229,6 +291,43 @@ fn execute_session_writeback_validates_plain_text_slot_projection() {
 
     super::execute_session_writeback(&session, WritebackMode::Validate)
         .expect("plain-text slot projection should validate");
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn build_session_writeback_plan_returns_slots_for_safe_pdf() {
+    let bytes = build_minimal_pdf(&["Alpha line", "Beta line"]);
+    let (root, target) = write_temp_file("pdf-plan-safe", "pdf", &bytes);
+    let session = sample_pdf_session(&target);
+
+    match super::build_session_writeback_plan(&session) {
+        Ok(OwnedDocumentWriteback::Slots(slots)) => {
+            assert_eq!(slots[0].text, "Alpha revised");
+        }
+        Ok(OwnedDocumentWriteback::Text(_)) => panic!("expected safe pdf slots output"),
+        Err(error) => panic!("unexpected error: {error}"),
+    }
+
+    cleanup_dir(&root);
+}
+
+#[test]
+fn build_session_writeback_plan_keeps_slot_shape_for_unsafe_pdf() {
+    let bytes = build_minimal_pdf(&["Repeat", "Repeat"]);
+    let (root, target) = write_temp_file("pdf-plan-unsafe", "pdf", &bytes);
+    let mut session = sample_pdf_session(&target);
+    session.suggestions[0].slot_updates =
+        vec![SlotUpdate::new(&session.writeback_slots[0].id, "Rewritten")];
+    session.suggestions[0].after_text = "Rewritten\n".to_string();
+
+    match super::build_session_writeback_plan(&session) {
+        Ok(OwnedDocumentWriteback::Slots(slots)) => {
+            assert_eq!(slots[0].text, "Rewritten");
+        }
+        Ok(OwnedDocumentWriteback::Text(_)) => panic!("expected unsafe pdf slots output"),
+        Err(error) => panic!("unexpected error: {error}"),
+    }
 
     cleanup_dir(&root);
 }

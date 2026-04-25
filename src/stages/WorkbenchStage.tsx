@@ -11,7 +11,6 @@ import type {
 import type { SessionStats } from "../lib/helpers";
 import {
   buildRunningRewriteUnitIdSet,
-  findRewriteUnit,
   groupSuggestionsByRewriteUnit,
   isSettingsReady
 } from "../lib/helpers";

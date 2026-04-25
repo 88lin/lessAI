@@ -1,12 +1,12 @@
 use super::block_support::{
-    find_yaml_front_matter_range, is_table_row, is_table_start, push_block,
-    push_block_with_trailing_blanks, split_lines_with_offsets, starts_standalone_markdown_block,
-    MarkdownBlock,
+    continues_list_or_quote_block, find_yaml_front_matter_range, is_table_row, is_table_start,
+    push_block, push_block_with_trailing_blanks, split_lines_with_offsets,
+    starts_standalone_markdown_block, MarkdownBlock,
 };
 use super::syntax::{
-    detect_fence_marker, is_atx_heading_line, is_fence_close, is_html_like_line,
-    is_horizontal_rule_line, is_indented_code_line, is_list_or_quote_line,
-    is_math_block_delimiter_line, is_reference_definition_line, is_setext_underline_line,
+    detect_fence_marker, is_atx_heading_line, is_fence_close, is_horizontal_rule_line,
+    is_html_like_line, is_indented_code_line, is_list_or_quote_line, is_math_block_delimiter_line,
+    is_reference_definition_line, is_setext_underline_line,
 };
 
 pub(super) fn scan_blocks(text: &str) -> Vec<MarkdownBlock> {
@@ -150,7 +150,14 @@ pub(super) fn scan_blocks(text: &str) -> Vec<MarkdownBlock> {
             let mut end = index + 1;
             while end < lines.len() {
                 let next = lines[end].line;
-                if next.trim().is_empty() || starts_standalone_markdown_block(&lines, end) {
+                if next.trim().is_empty() {
+                    break;
+                }
+                if continues_list_or_quote_block(kind, line, next) {
+                    end += 1;
+                    continue;
+                }
+                if starts_standalone_markdown_block(&lines, end) {
                     break;
                 }
                 end += 1;
@@ -167,14 +174,7 @@ pub(super) fn scan_blocks(text: &str) -> Vec<MarkdownBlock> {
             }
             end += 1;
         }
-        index = push_block_with_trailing_blanks(
-            &mut blocks,
-            text,
-            &lines,
-            index,
-            end,
-            "paragraph",
-        );
+        index = push_block_with_trailing_blanks(&mut blocks, text, &lines, index, end, "paragraph");
     }
 
     blocks

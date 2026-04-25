@@ -5,6 +5,7 @@ import type {
   DocumentSnapshot,
   EditorSlotEdit,
   ProviderCheckResult,
+  ReleaseVersionSummary,
   RewriteMode
 } from "./types";
 
@@ -12,6 +13,15 @@ type EditorWritebackMode = "validate" | "write";
 export type EditorWritebackInput =
   | { kind: "text"; content: string }
   | { kind: "slotEdits"; edits: EditorSlotEdit[] };
+export type WindowResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West";
 
 type CommandPayload = Record<string, unknown>;
 
@@ -37,6 +47,14 @@ export async function saveSettings(settings: AppSettings) {
 
 export async function testProvider(settings: AppSettings) {
   return invokeCommand<ProviderCheckResult>("test_provider", { settings });
+}
+
+export async function listReleaseVersions(proxy?: string) {
+  return invokeCommand<ReleaseVersionSummary[]>("list_release_versions", { proxy });
+}
+
+export async function switchReleaseVersion(tag: string, proxy?: string) {
+  return invokeCommand<string>("switch_release_version", { tag, proxy });
 }
 
 export async function openDocument(path: string) {
@@ -122,4 +140,28 @@ export async function rewriteSelection(
     text,
     editorBaseSnapshot
   });
+}
+
+export async function isMainWindowMaximized() {
+  return invokeCommand<boolean>("is_main_window_maximized");
+}
+
+export async function minimizeMainWindow() {
+  return invokeCommand<void>("minimize_main_window");
+}
+
+export async function toggleMaximizeMainWindow() {
+  return invokeCommand<void>("toggle_maximize_main_window");
+}
+
+export async function closeMainWindow() {
+  return invokeCommand<void>("close_main_window");
+}
+
+export async function startDragMainWindow() {
+  return invokeCommand<void>("start_drag_main_window");
+}
+
+export async function startResizeMainWindow(direction: WindowResizeDirection) {
+  return invokeCommand<void>("start_resize_main_window", { direction });
 }

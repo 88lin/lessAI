@@ -1,7 +1,9 @@
 import {
+  type PointerEvent as ReactPointerEvent,
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
@@ -9,18 +11,18 @@ import {
 import { loadSession, loadSettings } from "./lib/api";
 import { DEFAULT_SETTINGS } from "./lib/constants";
 import { applyEditorSlotOverride, buildEditorTextFromSession, type EditorSlotOverrides } from "./lib/editorSlots";
+import { documentEditorMode } from "./lib/documentCapabilities";
 import {
   canRewriteSession,
   findRewriteUnit,
-  formatDisplayPath,
   getLatestSuggestion,
   getSessionStats,
-  isDocxPath,
   isSettingsReady,
   normalizeNewlines,
   readableError
 } from "./lib/helpers";
 import { normalizeSelectedRewriteUnitIds } from "./lib/rewriteUnitSelection";
+import { isWindowDragExcludedTarget } from "./lib/windowDrag";
 import type {
   AppSettings,
   DocumentSession,
@@ -35,6 +37,7 @@ import { ConfirmModal } from "./components/ConfirmModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { BootScreen } from "./app/components/BootScreen";
 import { NoticeToast } from "./app/components/NoticeToast";
+import { ThemeToggle } from "./app/components/ThemeToggle";
 import { WindowResizeLayer } from "./app/components/WindowResizeLayer";
 import { WorkspaceBar } from "./app/components/WorkspaceBar";
 import { useConfirmDialog } from "./app/hooks/useConfirmDialog";
@@ -54,9 +57,56 @@ import { WorkbenchStage } from "./stages/WorkbenchStage";
 import type { DocumentEditorHandle } from "./stages/workbench/document/DocumentEditor";
 import logoUrl from "../src-tauri/icons/lessai-logo.svg";
 
+type ThemeMode = "light" | "dark";
+type ThemePreference = ThemeMode | "system";
+
+const LEGACY_THEME_STORAGE_KEY = "lessai.theme";
+const THEME_PREFERENCE_STORAGE_KEY = "lessai.theme-preference";
+const DARK_THEME_MEDIA_QUERY = "(prefers-color-scheme: dark)";
+
+function resolveSystemThemeMode(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  if (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(DARK_THEME_MEDIA_QUERY).matches
+  ) {
+    return "dark";
+  }
+
+  return "light";
+}
+
+function resolveInitialThemePreference(): ThemePreference {
+  if (typeof window === "undefined") {
+    return "system";
+  }
+
+  try {
+    const storedThemePreference = window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY);
+    if (
+      storedThemePreference === "system" ||
+      storedThemePreference === "light" ||
+      storedThemePreference === "dark"
+    ) {
+      return storedThemePreference;
+    }
+  } catch {
+    // Ignore storage errors and fall back to system preference.
+  }
+
+  return "system";
+}
+
 export default function App() {
   const [stage, setStage] = useState<"workbench" | "editor">("workbench");
   const [booting, setBooting] = useState(true);
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>(() => resolveInitialThemePreference());
+  const [systemThemeMode, setSystemThemeMode] =
+    useState<ThemeMode>(() => resolveSystemThemeMode());
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [currentSession, setCurrentSession] = useState<DocumentSession | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -79,12 +129,25 @@ export default function App() {
     useDocumentScrollRestore();
   const {
     windowMaximized,
+    customResizeEnabled,
+    handleStartWindowDrag,
     handleMinimizeWindow,
     handleToggleMaximizeWindow,
     handleCloseWindow,
     handleResizeWindow
   } = useWindowControls(showNotice);
-  const { handleCheckUpdate } = useUpdateChecker({
+  const {
+    currentVersion,
+    releaseVersions,
+    selectedReleaseTag,
+    selectedRelease,
+    selectedReleaseIsCurrent,
+    releaseListLoadedAt,
+    handleCheckUpdate,
+    handleRefreshReleaseVersions,
+    handleSelectReleaseTag,
+    handleSwitchSelectedRelease
+  } = useUpdateChecker({
     updateProxy: settings.updateProxy,
     showNotice,
     dismissNotice,
@@ -121,7 +184,7 @@ export default function App() {
 
   const handleChangeEditorSlotText = useCallback((slotId: string, value: string) => {
     const session = currentSessionRef.current;
-    if (!session || !isDocxPath(session.documentPath)) return;
+    if (!session || documentEditorMode(session) !== "slotBased") return;
     const slot = session.writebackSlots.find((item) => item.id === slotId);
     if (!slot || !slot.editable) return;
 
@@ -142,6 +205,7 @@ export default function App() {
     () => (currentSession ? getSessionStats(currentSession) : null),
     [currentSession]
   );
+  const themeMode = themePreference === "system" ? systemThemeMode : themePreference;
 
   const activeRewriteUnit = useMemo(
     () => (currentSession ? findRewriteUnit(currentSession, activeRewriteUnitId) : null),
@@ -157,6 +221,21 @@ export default function App() {
   );
 
   const settingsReady = isSettingsReady(settings);
+
+  const handleWindowDragPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0 || !event.isPrimary) {
+        return;
+      }
+
+      if (isWindowDragExcludedTarget(event.target)) {
+        return;
+      }
+
+      void handleStartWindowDrag();
+    },
+    [handleStartWindowDrag]
+  );
 
   const { segmentationPresetLock, readSegmentationPresetLockedReason } = useSegmentationPresetLock({
     stage,
@@ -288,8 +367,59 @@ export default function App() {
     setSettingsOpen(false);
   }, []);
 
+  const handleToggleTheme = useCallback(() => {
+    setThemePreference((current) => {
+      if (current === "system") {
+        return themeMode === "dark" ? "light" : "dark";
+      }
+      return current === "dark" ? "light" : "dark";
+    });
+  }, [themeMode]);
+
   const requestRevealActiveRewriteUnit = useCallback(() => {
     setActiveReviewNavigationRequestId((current) => current + 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+  }, [themeMode]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+      if (themePreference === "system") {
+        window.localStorage.removeItem(THEME_PREFERENCE_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, themePreference);
+      }
+    } catch {
+      // Ignore storage errors and keep the in-memory theme selection.
+    }
+  }, [themePreference]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(DARK_THEME_MEDIA_QUERY);
+    const handleThemeChange = (event: MediaQueryListEvent) => {
+      setSystemThemeMode(event.matches ? "dark" : "light");
+    };
+
+    setSystemThemeMode(mediaQuery.matches ? "dark" : "light");
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleThemeChange);
+      return () => {
+        mediaQuery.removeEventListener("change", handleThemeChange);
+      };
+    }
+
+    mediaQuery.addListener(handleThemeChange);
+    return () => {
+      mediaQuery.removeListener(handleThemeChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -561,9 +691,9 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${windowMaximized ? " is-maximized" : ""}`}>
       <div className="body-shell">
-        <main className="workspace">
+        <main className="workspace" onPointerDown={handleWindowDragPointerDown}>
           <WorkspaceBar
             logoUrl={logoUrl}
             stage={stage}
@@ -578,6 +708,7 @@ export default function App() {
             onOpenDocument={() => void handleOpenDocument()}
             onOpenSettings={openSettings}
             onExport={() => void handleExport()}
+            onStartWindowDrag={() => void handleStartWindowDrag()}
             onMinimizeWindow={() => void handleMinimizeWindow()}
             onToggleMaximizeWindow={() => void handleToggleMaximizeWindow()}
             onCloseWindow={() => void handleCloseWindow()}
@@ -648,13 +779,24 @@ export default function App() {
             onUpdatePromptPresetId={handleUpdatePromptPresetId}
             onUpsertCustomPrompt={handleUpsertCustomPrompt}
             onDeleteCustomPrompt={handleDeleteCustomPrompt}
+            currentVersion={currentVersion}
+            releaseVersions={releaseVersions}
+            selectedReleaseTag={selectedReleaseTag}
+            selectedRelease={selectedRelease}
+            selectedReleaseIsCurrent={selectedReleaseIsCurrent}
+            releaseListLoadedAt={releaseListLoadedAt}
             onConfirm={requestConfirm}
             onTestProvider={handleTestProvider}
             onSaveSettings={handleSaveSettings}
             onCheckUpdate={() => void handleCheckUpdate()}
+            onRefreshReleaseVersions={() => void handleRefreshReleaseVersions()}
+            onSelectReleaseTag={handleSelectReleaseTag}
+            onSwitchSelectedRelease={() => void handleSwitchSelectedRelease()}
           />
         </main>
       </div>
+
+      <ThemeToggle themeMode={themeMode} onToggle={handleToggleTheme} />
 
       <ConfirmModal
         open={confirmDialog != null}
@@ -665,7 +807,9 @@ export default function App() {
         variant={confirmDialog?.variant}
         onResult={handleConfirmResult}
       />
-      <WindowResizeLayer onResize={handleResizeWindow} />
+      {customResizeEnabled && !windowMaximized ? (
+        <WindowResizeLayer onResize={handleResizeWindow} />
+      ) : null}
     </div>
   );
 }

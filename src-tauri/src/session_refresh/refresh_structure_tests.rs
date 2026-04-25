@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[test]
-fn refreshes_stale_plain_text_editor_capability() {
+fn refreshes_stale_editor_writeback_capability() {
     let existing = sample_session();
 
     let refreshed = refresh_session_from_loaded(
@@ -29,8 +29,11 @@ fn refreshes_stale_plain_text_editor_capability() {
     );
 
     assert!(refreshed.changed);
-    assert!(refreshed.session.plain_text_editor_safe);
-    assert_eq!(refreshed.session.plain_text_editor_block_reason, None);
+    assert!(refreshed.session.capabilities.editor_writeback.allowed);
+    assert_eq!(
+        refreshed.session.capabilities.editor_writeback.block_reason,
+        None
+    );
     assert_eq!(
         refreshed
             .session
@@ -44,7 +47,7 @@ fn refreshes_stale_plain_text_editor_capability() {
 #[test]
 fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
     let now = chrono::Utc::now();
-    let existing = crate::models::DocumentSession {
+    let mut existing = crate::models::DocumentSession {
         id: "session-2".to_string(),
         title: "示例".to_string(),
         document_path: "/tmp/example.docx".to_string(),
@@ -55,10 +58,11 @@ fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
         slot_structure_signature: None,
         template_snapshot: None,
         normalized_text: "第一句。第二句。".to_string(),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            editor_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            ..Default::default()
+        },
         segmentation_preset: None,
         rewrite_headings: None,
         writeback_slots: Vec::new(),
@@ -69,6 +73,7 @@ fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
         created_at: now,
         updated_at: now,
     };
+    crate::documents::hydrate_session_capabilities(&mut existing);
     let loaded = LoadedDocumentSource {
         source_text: "第一句。第二句。".to_string(),
         template_kind: None,
@@ -76,10 +81,10 @@ fn rebuilds_clean_session_when_segmentation_preset_metadata_is_missing() {
         slot_structure_signature: None,
         template_snapshot: None,
         writeback_slots: vec![editable_slot("slot-0", 0, "第一句。第二句。")],
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capability_policy: crate::documents::DocumentCapabilityPolicy::new(
+            crate::documents::capability_gate(true, None),
+            crate::documents::capability_gate(true, None),
+        ),
     };
 
     let refreshed = refresh_session_from_loaded(
@@ -135,7 +140,7 @@ fn rebuilds_clean_docx_session_when_chunk_structure_is_stale() {
 #[test]
 fn rebuilds_clean_session_when_rewrite_units_change() {
     let now = chrono::Utc::now();
-    let existing = crate::models::DocumentSession {
+    let mut existing = crate::models::DocumentSession {
         id: "session-3".to_string(),
         title: "示例".to_string(),
         document_path: "/tmp/example.docx".to_string(),
@@ -146,10 +151,11 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
         slot_structure_signature: None,
         template_snapshot: None,
         normalized_text: "第一句。第二句。".to_string(),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            editor_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            ..Default::default()
+        },
         segmentation_preset: Some(SegmentationPreset::Paragraph),
         rewrite_headings: Some(false),
         writeback_slots: vec![editable_slot("slot-0", 0, "第一句。第二句。")],
@@ -179,6 +185,7 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
         created_at: now,
         updated_at: now,
     };
+    crate::documents::hydrate_session_capabilities(&mut existing);
     let loaded = LoadedDocumentSource {
         source_text: "第一句。第二句。".to_string(),
         template_kind: None,
@@ -186,10 +193,10 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
         slot_structure_signature: None,
         template_snapshot: None,
         writeback_slots: vec![editable_slot("slot-0", 0, "第一句。第二句。")],
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capability_policy: crate::documents::DocumentCapabilityPolicy::new(
+            crate::documents::capability_gate(true, None),
+            crate::documents::capability_gate(true, None),
+        ),
     };
 
     let refreshed = refresh_session_from_loaded(
@@ -217,7 +224,7 @@ fn rebuilds_clean_session_when_rewrite_units_change() {
 fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
     let now = chrono::Utc::now();
     let text = "第一句。第二句，第三句。";
-    let existing = crate::models::DocumentSession {
+    let mut existing = crate::models::DocumentSession {
         id: "session-text-1".to_string(),
         title: "示例".to_string(),
         document_path: "/tmp/example.tex".to_string(),
@@ -228,10 +235,11 @@ fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
         slot_structure_signature: None,
         template_snapshot: None,
         normalized_text: text.to_string(),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            editor_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            ..Default::default()
+        },
         segmentation_preset: Some(SegmentationPreset::Paragraph),
         rewrite_headings: Some(false),
         writeback_slots: vec![editable_slot("slot-0", 0, text)],
@@ -250,21 +258,18 @@ fn rebuilds_clean_text_session_when_segmentation_preset_changes() {
         created_at: now,
         updated_at: now,
     };
+    crate::documents::hydrate_session_capabilities(&mut existing);
     let loaded = LoadedDocumentSource {
         source_text: text.to_string(),
         template_kind: None,
         template_signature: None,
         slot_structure_signature: None,
         template_snapshot: None,
-        writeback_slots: writeback_slots_from_regions(&[TextRegion {
-            body: text.to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        }]),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        writeback_slots: writeback_slots_from_regions(&[TextRegion::editable(text)]),
+        capability_policy: crate::documents::DocumentCapabilityPolicy::new(
+            crate::documents::capability_gate(true, None),
+            crate::documents::capability_gate(true, None),
+        ),
     };
 
     let refreshed = refresh_session_from_loaded(
@@ -298,7 +303,7 @@ fn rebuilds_clean_session_when_template_signature_changes() {
         "第一句。",
     );
     let built = crate::textual_template::slots::build_slots(&template);
-    let existing = crate::models::DocumentSession {
+    let mut existing = crate::models::DocumentSession {
         id: "session-template-1".to_string(),
         title: "示例".to_string(),
         document_path: "/tmp/example.txt".to_string(),
@@ -309,10 +314,11 @@ fn rebuilds_clean_session_when_template_signature_changes() {
         slot_structure_signature: Some(built.slot_structure_signature.clone()),
         template_snapshot: Some(template.clone()),
         normalized_text: "第一句。".to_string(),
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capabilities: crate::session_capability_models::DocumentSessionCapabilities {
+            source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            editor_writeback: crate::session_capability_models::CapabilityGate::allowed(),
+            ..Default::default()
+        },
         segmentation_preset: Some(SegmentationPreset::Paragraph),
         rewrite_headings: Some(false),
         writeback_slots: built.slots.clone(),
@@ -331,6 +337,7 @@ fn rebuilds_clean_session_when_template_signature_changes() {
         created_at: now,
         updated_at: now,
     };
+    crate::documents::hydrate_session_capabilities(&mut existing);
     let loaded = LoadedDocumentSource {
         source_text: "第一句。".to_string(),
         template_kind: Some("plain_text".to_string()),
@@ -338,10 +345,10 @@ fn rebuilds_clean_session_when_template_signature_changes() {
         slot_structure_signature: Some(built.slot_structure_signature.clone()),
         template_snapshot: Some(template),
         writeback_slots: built.slots,
-        write_back_supported: true,
-        write_back_block_reason: None,
-        plain_text_editor_safe: true,
-        plain_text_editor_block_reason: None,
+        capability_policy: crate::documents::DocumentCapabilityPolicy::new(
+            crate::documents::capability_gate(true, None),
+            crate::documents::capability_gate(true, None),
+        ),
     };
 
     let refreshed = refresh_session_from_loaded(
@@ -390,11 +397,46 @@ fn blocks_dirty_docx_session_when_chunk_structure_is_stale() {
 
     assert!(refreshed.changed);
     assert_eq!(refreshed.session.suggestions.len(), 1);
-    assert!(!refreshed.session.write_back_supported);
-    assert!(!refreshed.session.plain_text_editor_safe);
+    assert!(!refreshed.session.capabilities.source_writeback.allowed);
+    assert!(!refreshed.session.capabilities.editor_writeback.allowed);
     assert!(refreshed
         .session
-        .write_back_block_reason
+        .capabilities
+        .source_writeback
+        .block_reason
         .as_deref()
         .is_some_and(|reason| reason.contains("分块结构")));
+}
+
+#[test]
+fn keeps_clean_docx_session_when_only_template_kind_none_vs_docx_differs() {
+    let mut existing = sample_session();
+    existing.template_kind = None;
+    existing.template_signature = Some("sig-docx".to_string());
+    existing.slot_structure_signature = Some("slot-docx".to_string());
+    existing.source_snapshot = Some(DocumentSnapshot {
+        sha256: "same".to_string(),
+    });
+    crate::documents::hydrate_session_capabilities(&mut existing);
+
+    let mut loaded = loaded_docx();
+    loaded.template_kind = Some("docx".to_string());
+    loaded.template_signature = Some("sig-docx".to_string());
+    loaded.slot_structure_signature = Some("slot-docx".to_string());
+
+    let refreshed = refresh_session_from_loaded(
+        &existing,
+        Path::new("/tmp/example.docx"),
+        loaded,
+        SegmentationPreset::Paragraph,
+        false,
+        Some(DocumentSnapshot {
+            sha256: "same".to_string(),
+        }),
+    );
+
+    assert!(refreshed.changed);
+    assert_eq!(refreshed.session.template_kind.as_deref(), Some("docx"));
+    assert!(refreshed.session.capabilities.source_writeback.allowed);
+    assert!(refreshed.session.capabilities.editor_writeback.allowed);
 }

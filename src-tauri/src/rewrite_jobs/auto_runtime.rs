@@ -9,6 +9,7 @@ use crate::{
 };
 
 use super::auto_state::{finish_auto_loop, remove_in_flight_batch, AutoLoopStop, AutoTaskJoin};
+use super::support::RewriteProgressEvent;
 use super::{
     auto_running_state, emit_rewrite_progress, in_flight_batch_count,
     snapshot_running_indices_from_batches,
@@ -201,14 +202,16 @@ fn emit_auto_progress(
 ) -> Result<(), String> {
     emit_rewrite_progress(
         app,
-        session_id,
-        completed_units,
-        in_flight_batch_count(in_flight_batches),
-        snapshot_running_indices_from_batches(in_flight_batches),
-        total_units,
-        RewriteMode::Auto,
-        auto_running_state(job),
-        max_concurrency,
+        RewriteProgressEvent {
+            session_id,
+            completed_units,
+            in_flight: in_flight_batch_count(in_flight_batches),
+            running_unit_ids: snapshot_running_indices_from_batches(in_flight_batches),
+            total_units,
+            mode: RewriteMode::Auto,
+            running_state: auto_running_state(job),
+            max_concurrency,
+        },
     )
 }
 

@@ -5,6 +5,7 @@ use log::{error, info};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
+    documents::hydrated_session_clone,
     models::{DocumentSession, RewriteFailedEvent, RunningState},
     rewrite_targets,
     session_access::access_current_session,
@@ -18,6 +19,8 @@ use super::{
     rewrite_session_request,
 };
 use crate::rewrite_jobs::auto_loop::run_auto_loop;
+
+type StartedAutoRewriteSession = (DocumentSession, Option<HashSet<String>>, Arc<JobControl>);
 
 pub(crate) fn run_auto_rewrite(
     app: AppHandle,
@@ -36,7 +39,7 @@ fn start_auto_rewrite_session(
     state: &AppState,
     session_id: &str,
     target_rewrite_unit_ids: Option<Vec<String>>,
-) -> Result<(DocumentSession, Option<HashSet<String>>, Arc<JobControl>), String> {
+) -> Result<StartedAutoRewriteSession, String> {
     access_current_session(
         rewrite_session_request(app, state, session_id, RewriteSessionAccess::ExternalEntry),
         |mut session| {
@@ -134,7 +137,7 @@ fn start_auto_rewrite_session_steps<Reserve, Save, Rollback>(
     save: Save,
     rollback: Rollback,
     updated_at: DateTime<Utc>,
-) -> Result<(DocumentSession, Option<HashSet<String>>, Arc<JobControl>), String>
+) -> Result<StartedAutoRewriteSession, String>
 where
     Reserve: FnOnce(&str) -> Result<Arc<JobControl>, String>,
     Save: FnOnce(&DocumentSession) -> Result<(), String>,
@@ -143,7 +146,7 @@ where
     let job = reserve(&session.id)?;
     session.status = RunningState::Running;
     session.updated_at = updated_at;
-    let saved_session = session.clone();
+    let saved_session = hydrated_session_clone(session);
     if let Err(error) = save(&saved_session) {
         let _ = rollback(&session.id);
         return Err(error);

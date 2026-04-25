@@ -5,14 +5,14 @@ use log::{error, info};
 
 use crate::{
     documents::{
-        ensure_document_can_ai_rewrite, ensure_document_can_write_back, execute_document_writeback,
-        is_pdf_path, DocumentWritebackContext, OwnedDocumentWriteback, WritebackMode,
+        ensure_capability_allowed, ensure_document_can_ai_rewrite, execute_document_writeback,
+        DocumentWritebackContext, OwnedDocumentWriteback, WritebackMode,
     },
     models::{DocumentSession, SuggestionDecision},
     observability::{document_kind_label, writeback_mode_label},
     rewrite_permissions::ensure_rewrite_unit_can_rewrite,
     rewrite_projection::{apply_preview_suggestion, build_applied_slot_projection},
-    rewrite_unit::{merged_text_from_slots, RewriteUnitResponse},
+    rewrite_unit::RewriteUnitResponse,
 };
 
 type SessionWritebackPlan = OwnedDocumentWriteback;
@@ -41,14 +41,13 @@ pub(crate) fn execute_session_writeback(
 
     let result = (|| {
         if mode == WritebackMode::Write {
-            ensure_document_can_write_back(&session.document_path)?;
+            ensure_capability_allowed(
+                &session.capabilities.source_writeback,
+                "当前文档暂不支持写回原文件。",
+            )?;
         }
         ensure_applied_suggestions_target_rewriteable(session)?;
-        ensure_document_can_ai_rewrite(
-            path,
-            session.write_back_supported,
-            session.write_back_block_reason.as_deref(),
-        )?;
+        ensure_document_can_ai_rewrite(&session.capabilities.ai_rewrite)?;
 
         let plan = build_session_writeback_plan(session)?;
         execute_document_writeback(
@@ -113,12 +112,6 @@ fn validate_unique_batch_slot_updates(responses: &[RewriteUnitResponse]) -> Resu
 
 fn build_session_writeback_plan(session: &DocumentSession) -> Result<SessionWritebackPlan, String> {
     let updated_slots = build_applied_slot_projection(session)?;
-    if is_pdf_path(Path::new(&session.document_path)) {
-        return Ok(SessionWritebackPlan::Text(merged_text_from_slots(
-            &updated_slots,
-        )));
-    }
-
     Ok(SessionWritebackPlan::Slots(updated_slots))
 }
 

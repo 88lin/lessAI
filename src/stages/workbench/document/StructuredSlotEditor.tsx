@@ -17,38 +17,25 @@ import { normalizeNewlines } from "../../../lib/helpers";
 import type {
   DocumentEditorHandle,
   DocumentEditorProps,
-  DocumentEditorSelectionSnapshot,
   DocumentEditorPreviewResult,
+  DocumentEditorSelectionSnapshot,
   SlotSelectionSnapshot
 } from "./documentEditorTypes";
-import { DocxEditorUnit } from "./DocxEditorUnit";
-
-function selectionPointOffset(node: HTMLElement, container: Node, offset: number) {
-  const range = document.createRange();
-  range.selectNodeContents(node);
-  range.setEnd(container, offset);
-  return normalizeNewlines(range.toString()).length;
-}
+import { buildSelectionSnapshotBase } from "./editorSelectionShared";
+import { StructuredEditorUnit } from "./StructuredEditorUnit";
 
 function buildSlotSelectionSnapshot(
   node: HTMLElement,
   slotId: string,
   range: Range
 ): SlotSelectionSnapshot | null {
-  if (range.collapsed) return null;
-  if (!node.contains(range.startContainer) || !node.contains(range.endContainer)) {
-    return null;
-  }
-
-  const text = normalizeNewlines(range.toString());
-  if (text.trim().length === 0) return null;
+  const base = buildSelectionSnapshotBase(node, range);
+  if (!base) return null;
 
   return {
     kind: "slot",
     slotId,
-    text,
-    startOffset: selectionPointOffset(node, range.startContainer, range.startOffset),
-    endOffset: selectionPointOffset(node, range.endContainer, range.endOffset)
+    ...base
   };
 }
 
@@ -75,8 +62,8 @@ function replaceSelectionText(
   } as const;
 }
 
-export const DocxSlotEditor = memo(
-  forwardRef<DocumentEditorHandle, DocumentEditorProps>(function DocxSlotEditor(
+export const StructuredSlotEditor = memo(
+  forwardRef<DocumentEditorHandle, DocumentEditorProps>(function StructuredSlotEditor(
     {
       session,
       slotOverrides,
@@ -151,11 +138,22 @@ export const DocxSlotEditor = memo(
       return () => document.removeEventListener("selectionchange", handleSelectionChange);
     }, [captureSlotSelection, onSelectionChange]);
 
-    const previewSelectionReplacement = useCallback(
+    const resolveSelectionReplacement = useCallback(
       (
         snapshot: DocumentEditorSelectionSnapshot,
         replacementText: string
-      ): DocumentEditorPreviewResult => {
+      ):
+        | {
+            ok: true;
+            slotId: string;
+            replacedText: string;
+            value: string;
+            slotEdits: ReturnType<typeof buildEditorSlotEdits>;
+          }
+        | {
+            ok: false;
+            error: string;
+          } => {
         if (snapshot.kind !== "slot") {
           return { ok: false, error: "请在单个可编辑片段内重新选中后再试。" };
         }
@@ -172,11 +170,29 @@ export const DocxSlotEditor = memo(
         const nextOverrides = applyEditorSlotOverride(slotOverrides, slot, replaced.text);
         return {
           ok: true,
+          slotId: slot.id,
+          replacedText: replaced.text,
           value: buildEditorTextFromSession(session, nextOverrides),
           slotEdits: buildEditorSlotEdits(session, nextOverrides)
         };
       },
       [findSessionSlot, session, slotOverrides]
+    );
+
+    const previewSelectionReplacement = useCallback(
+      (
+        snapshot: DocumentEditorSelectionSnapshot,
+        replacementText: string
+      ): DocumentEditorPreviewResult => {
+        const resolved = resolveSelectionReplacement(snapshot, replacementText);
+        if (!resolved.ok) return resolved;
+        return {
+          ok: true,
+          value: resolved.value,
+          slotEdits: resolved.slotEdits
+        };
+      },
+      [resolveSelectionReplacement]
     );
 
     useImperativeHandle(
@@ -185,48 +201,36 @@ export const DocxSlotEditor = memo(
         captureSelection: captureSlotSelection,
         previewSelectionReplacement,
         applySelectionReplacement: (snapshot, replacementText) => {
-          const preview = previewSelectionReplacement(snapshot, replacementText);
-          if (!preview.ok) return preview;
-          if (snapshot.kind !== "slot") {
-            return { ok: false, error: "请在单个可编辑片段内重新选中后再试。" };
-          }
+          const resolved = resolveSelectionReplacement(snapshot, replacementText);
+          if (!resolved.ok) return resolved;
 
-          const slot = findSessionSlot(snapshot.slotId);
-          if (!slot || !slot.editable) {
-            return { ok: false, error: "当前选区不在可编辑片段内，请重新选中后再试。" };
-          }
-
-          const currentText = resolveEditorSlotText(slot, slotOverrides);
-          const replaced = replaceSelectionText(currentText, snapshot, replacementText);
-          if (!replaced.ok) return replaced;
-
-          const node = slotNodesRef.current[slot.id];
+          const node = slotNodesRef.current[resolved.slotId];
           if (node) {
-            node.innerText = replaced.text;
+            node.innerText = resolved.replacedText;
             node.focus();
           }
-          onChangeSlotText(slot.id, replaced.text);
-          onChange(preview.value);
+          onChangeSlotText(resolved.slotId, resolved.replacedText);
+          onChange(resolved.value);
           return { ok: true };
         },
         collectSlotEdits: () => buildEditorSlotEdits(session, slotOverrides)
       }),
       [
         captureSlotSelection,
-        findSessionSlot,
         onChange,
         onChangeSlotText,
         previewSelectionReplacement,
+        resolveSelectionReplacement,
         session,
         slotOverrides
       ]
     );
 
     return (
-      <div className="workbench-editor-editable docx-editor-flow" aria-label="编辑终稿">
+      <div className="workbench-editor-editable structured-editor-flow" aria-label="编辑终稿">
         {session.rewriteUnits.map((rewriteUnit) => {
           return (
-            <DocxEditorUnit
+            <StructuredEditorUnit
               key={rewriteUnit.id}
               session={session}
               rewriteUnit={rewriteUnit}

@@ -1,6 +1,11 @@
 import { memo } from "react";
-import { Orbit } from "lucide-react";
-import type { AppSettings, ProviderCheckResult } from "../../lib/types";
+import { GitBranch, ListRestart, Orbit } from "lucide-react";
+import { formatDate } from "../../lib/helpers";
+import type {
+  AppSettings,
+  ProviderCheckResult,
+  ReleaseVersionSummary
+} from "../../lib/types";
 import type { NoticeTone } from "../../lib/constants";
 import { ActionButton } from "../ActionButton";
 import { StatusBadge } from "../StatusBadge";
@@ -11,6 +16,16 @@ interface ProviderSettingsPageProps {
   providerTone: NoticeTone;
   testProviderBusy: boolean;
   testProviderDisabled: boolean;
+  currentVersion: string;
+  releaseVersions: ReleaseVersionSummary[];
+  selectedReleaseTag: string;
+  selectedRelease: ReleaseVersionSummary | null;
+  selectedReleaseIsCurrent: boolean;
+  releaseListLoadedAt: string | null;
+  refreshReleasesBusy: boolean;
+  refreshReleasesDisabled: boolean;
+  switchReleaseBusy: boolean;
+  switchReleaseDisabled: boolean;
   onTestProvider: () => void;
   onUpdateStringSetting: <K extends "baseUrl" | "apiKey" | "model" | "updateProxy">(
     key: K,
@@ -20,6 +35,9 @@ interface ProviderSettingsPageProps {
     key: "timeoutMs" | "temperature" | "maxConcurrency" | "unitsPerBatch",
     value: string
   ) => void;
+  onRefreshReleaseVersions: () => void;
+  onSelectReleaseTag: (tag: string) => void;
+  onSwitchSelectedRelease: () => void;
 }
 
 export const ProviderSettingsPage = memo(function ProviderSettingsPage({
@@ -28,9 +46,22 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
   providerTone,
   testProviderBusy,
   testProviderDisabled,
+  currentVersion,
+  releaseVersions,
+  selectedReleaseTag,
+  selectedRelease,
+  selectedReleaseIsCurrent,
+  releaseListLoadedAt,
+  refreshReleasesBusy,
+  refreshReleasesDisabled,
+  switchReleaseBusy,
+  switchReleaseDisabled,
   onTestProvider,
   onUpdateStringSetting,
-  onUpdateNumberSetting
+  onUpdateNumberSetting,
+  onRefreshReleaseVersions,
+  onSelectReleaseTag,
+  onSwitchSelectedRelease
 }: ProviderSettingsPageProps) {
   return (
     <div className="settings-page">
@@ -107,18 +138,85 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
 
       <div className="field-block">
         <div className="field-line">
-          <span>应用更新</span>
+          <span>网络代理</span>
           <strong>网络</strong>
         </div>
         <label className="field">
-          <span>更新代理（可选）</span>
+          <span>代理地址（可选）</span>
           <input
             value={settings.updateProxy}
             onChange={(event) => onUpdateStringSetting("updateProxy", event.target.value)}
             placeholder="http://127.0.0.1:7890"
           />
         </label>
-        <span className="workspace-hint">留空则直连；仅用于检查/下载更新。</span>
+        <span className="workspace-hint">
+          留空则直连；用于 AI 模型请求与应用更新（检查/下载）。
+        </span>
+      </div>
+
+      <div className="field-block">
+        <div className="field-line">
+          <span>版本管理</span>
+          <strong>{currentVersion ? `当前 ${currentVersion}` : "当前版本未知"}</strong>
+        </div>
+        <label className="field">
+          <span>已发布版本</span>
+          <select
+            value={selectedReleaseTag}
+            onChange={(event) => onSelectReleaseTag(event.target.value)}
+            disabled={releaseVersions.length === 0}
+          >
+            {releaseVersions.length === 0 ? (
+              <option value="">请先刷新版本列表</option>
+            ) : null}
+            {releaseVersions.map((release) => (
+              <option key={release.tag} value={release.tag}>
+                {release.tag}
+                {release.prerelease ? "（预发布）" : ""}
+                {release.updaterAvailable ? "" : "（仅手动下载）"}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedRelease ? (
+          <span className="workspace-hint">
+            {selectedRelease.publishedAt
+              ? `发布时间：${formatDate(selectedRelease.publishedAt)}`
+              : "发布时间未知"}
+            {selectedReleaseIsCurrent ? " · 当前正在运行该版本" : ""}
+            {!selectedRelease.updaterAvailable
+              ? " · 当前版本无 latest.json，需手动下载"
+              : ""}
+          </span>
+        ) : null}
+        {releaseListLoadedAt ? (
+          <span className="workspace-hint">
+            版本列表更新时间：{formatDate(releaseListLoadedAt)}
+          </span>
+        ) : null}
+        <div className="settings-page-actions">
+          <ActionButton
+            icon={ListRestart}
+            label="刷新版本列表"
+            busy={refreshReleasesBusy}
+            disabled={refreshReleasesDisabled}
+            onClick={onRefreshReleaseVersions}
+            variant="secondary"
+          />
+          <ActionButton
+            icon={GitBranch}
+            label="切换到所选版本"
+            busy={switchReleaseBusy}
+            disabled={
+              switchReleaseDisabled ||
+              !selectedRelease ||
+              selectedReleaseIsCurrent ||
+              !selectedRelease.updaterAvailable
+            }
+            onClick={onSwitchSelectedRelease}
+            variant="secondary"
+          />
+        </div>
       </div>
 
       {providerStatus ? (

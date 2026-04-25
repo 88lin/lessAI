@@ -16,10 +16,9 @@ use crate::{
     rewrite_targets,
     rewrite_unit::{build_rewrite_unit_request, RewriteBatchRequest, RewriteUnitRequest},
     session_access::CurrentSessionRequest,
+    session_messages::ACTIVE_REWRITE_SESSION_ERROR,
     state::{AppState, JobControl},
 };
-
-pub(super) const ACTIVE_REWRITE_SESSION_ERROR: &str = "当前文档正在执行自动任务，请先暂停或取消。";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RewriteSessionAccess {
@@ -44,12 +43,26 @@ pub(super) struct PreparedLoadedRewriteBatch {
     pub(super) batch_request: RewriteBatchRequest,
 }
 
+type RewriteSessionGuard = fn(&DocumentSession) -> Result<(), String>;
+type RewriteSessionRequest<'a> = CurrentSessionRequest<'a, RewriteSessionGuard>;
+
+pub(super) struct RewriteProgressEvent<'a> {
+    pub(super) session_id: &'a str,
+    pub(super) completed_units: usize,
+    pub(super) in_flight: usize,
+    pub(super) running_unit_ids: Vec<String>,
+    pub(super) total_units: usize,
+    pub(super) mode: RewriteMode,
+    pub(super) running_state: RunningState,
+    pub(super) max_concurrency: usize,
+}
+
 pub(super) fn rewrite_session_request<'a>(
     app: &'a AppHandle,
     state: &'a AppState,
     session_id: &'a str,
     access: RewriteSessionAccess,
-) -> CurrentSessionRequest<'a, fn(&DocumentSession) -> Result<(), String>> {
+) -> RewriteSessionRequest<'a> {
     let request = CurrentSessionRequest::guarded_refresh(
         app,
         state,
@@ -209,26 +222,19 @@ pub(super) fn emit_rewrite_finished(app: &AppHandle, session_id: &str) -> Result
 
 pub(super) fn emit_rewrite_progress(
     app: &AppHandle,
-    session_id: &str,
-    completed_units: usize,
-    in_flight: usize,
-    running_unit_ids: Vec<String>,
-    total_units: usize,
-    mode: RewriteMode,
-    running_state: RunningState,
-    max_concurrency: usize,
+    progress: RewriteProgressEvent<'_>,
 ) -> Result<(), String> {
     app.emit(
         "rewrite_progress",
         RewriteProgress {
-            session_id: session_id.to_string(),
-            completed_units,
-            in_flight,
-            running_unit_ids,
-            total_units,
-            mode,
-            running_state,
-            max_concurrency,
+            session_id: progress.session_id.to_string(),
+            completed_units: progress.completed_units,
+            in_flight: progress.in_flight,
+            running_unit_ids: progress.running_unit_ids,
+            total_units: progress.total_units,
+            mode: progress.mode,
+            running_state: progress.running_state,
+            max_concurrency: progress.max_concurrency,
         },
     )
     .map_err(|error| error.to_string())

@@ -539,8 +539,8 @@
   border-radius: 8px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
-  background: rgba(236, 227, 211, 0.78);
-  box-shadow: inset 0 0 0 1px rgba(20, 20, 20, 0.18);
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
 }
 
 .document-flow-wrap {
@@ -587,23 +587,23 @@
 }
 
 .legend-chip.is-editable {
-  background: rgba(23, 68, 207, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(23, 68, 207, 0.14);
+  background: var(--mark-editable-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-ring);
 }
 
 .legend-chip.is-selected {
-  background: rgba(184, 92, 26, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(184, 92, 26, 0.26);
+  background: var(--mark-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-selected-ring);
 }
 
 .legend-chip.is-protected {
-  background: rgba(236, 227, 211, 0.78);
-  box-shadow: inset 0 0 0 1px rgba(20, 20, 20, 0.18);
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
 }
 
 .legend-chip.is-running {
-  background: rgba(134, 93, 255, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(134, 93, 255, 0.32);
+  background: var(--mark-running-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-running-ring);
 }
 
 .legend-chip.is-insert {
@@ -655,16 +655,18 @@
 }
 
 .doc-paragraph-fragment.is-fragment-protected {
-  background: rgba(236, 227, 211, 0.86);
-  box-shadow: inset 0 0 0 1px rgba(20, 20, 20, 0.16);
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
 }
 
 .doc-paragraph-fragment.is-fragment-running {
-  background: rgba(134, 93, 255, 0.12);
+  background: var(--mark-running-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-running-ring);
 }
 
 .doc-paragraph-fragment.is-fragment-failed {
-  background: rgba(214, 45, 32, 0.1);
+  background: var(--mark-failed-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-failed-ring);
 }
 
 .document-flow-wrap.is-quiet .doc-unit {
@@ -678,8 +680,8 @@
 }
 
 .document-flow-wrap.is-quiet .doc-unit:hover {
-  background: rgba(23, 68, 207, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(23, 68, 207, 0.1);
+  background: var(--mark-editable-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-hover-ring);
 }
 
 .document-flow-wrap.is-quiet .doc-unit.is-protected,
@@ -689,90 +691,92 @@
 }
 
 .document-flow-wrap.is-quiet .doc-unit.is-active {
-  background: rgba(23, 68, 207, 0.06);
-  box-shadow: 0 0 0 2px rgba(23, 68, 207, 0.18);
+  background: var(--mark-active-bg);
+  box-shadow: 0 0 0 2px var(--mark-active-ring);
 }
 
 .document-flow-wrap.is-quiet .doc-unit.is-selected {
-  background: rgba(184, 92, 26, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(184, 92, 26, 0.24);
+  background: var(--mark-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-selected-ring);
 }
 
 .document-flow-wrap.is-quiet .doc-unit.is-active.is-selected {
+  background: var(--mark-selected-bg);
   box-shadow:
-    0 0 0 2px rgba(23, 68, 207, 0.18),
-    inset 0 0 0 1px rgba(184, 92, 26, 0.3);
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-selected-ring);
 }
 
 .document-flow-wrap.is-quiet .doc-unit.is-running {
-  background: rgba(134, 93, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(134, 93, 255, 0.22);
+  background: var(--mark-running-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-running-ring);
   animation: none;
 }
 
 .document-flow-wrap.is-quiet .doc-unit.is-failed {
-  background: rgba(214, 45, 32, 0.08);
+  background: var(--mark-failed-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-failed-ring);
 }
 
 .doc-unit:hover {
-  background: rgba(23, 68, 207, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(23, 68, 207, 0.18);
+  background: var(--mark-editable-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-hover-ring);
 }
 
 .doc-unit.is-protected {
-  background: rgba(236, 227, 211, 0.78);
-  box-shadow: inset 0 0 0 1px rgba(20, 20, 20, 0.18);
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
 }
 
 .doc-unit.is-protected:hover {
-  background: rgba(236, 227, 211, 0.92);
+  background: var(--mark-protected-bg);
 }
 
 .doc-unit.is-active {
-  background: rgba(23, 68, 207, 0.08);
-  box-shadow: 0 0 0 2px rgba(23, 68, 207, 0.22);
+  background: var(--mark-active-bg);
+  box-shadow: 0 0 0 2px var(--mark-active-ring);
 }
 
 .doc-unit.is-selected {
-  background: rgba(184, 92, 26, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(184, 92, 26, 0.26);
+  background: var(--mark-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-selected-ring);
 }
 
 .doc-unit.is-active.is-selected {
-  background: rgba(184, 92, 26, 0.14);
+  background: var(--mark-selected-bg);
   box-shadow:
-    0 0 0 2px rgba(23, 68, 207, 0.22),
-    inset 0 0 0 1px rgba(184, 92, 26, 0.3);
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-selected-ring);
 }
 
 .doc-unit.is-active.is-protected {
-  background: rgba(236, 227, 211, 0.88);
+  background: var(--mark-protected-bg);
   box-shadow:
-    0 0 0 2px rgba(23, 68, 207, 0.22),
-    inset 0 0 0 1px rgba(20, 20, 20, 0.2);
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-protected-ring);
 }
 
 .doc-unit.is-running {
-  background: rgba(134, 93, 255, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(134, 93, 255, 0.32);
+  background: var(--mark-running-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-running-ring);
   animation: docUnitRunningPulse 1.25s ease-in-out infinite;
 }
 
 .doc-unit.is-active.is-running {
   box-shadow:
-    0 0 0 2px rgba(23, 68, 207, 0.22),
-    inset 0 0 0 1px rgba(134, 93, 255, 0.35);
+    0 0 0 2px var(--mark-active-ring),
+    inset 0 0 0 1px var(--mark-running-ring);
 }
 
 @keyframes docUnitRunningPulse {
   0% {
-    background: rgba(134, 93, 255, 0.1);
+    background: var(--mark-running-pulse-from);
   }
   50% {
-    background: rgba(134, 93, 255, 0.16);
+    background: var(--mark-running-pulse-to);
   }
   100% {
-    background: rgba(134, 93, 255, 0.1);
+    background: var(--mark-running-pulse-from);
   }
 }
 
@@ -791,7 +795,8 @@
 }
 
 .doc-unit.is-failed {
-  background: rgba(214, 45, 32, 0.12);
+  background: var(--mark-failed-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-failed-ring);
 }
 
 .error-card {
@@ -903,76 +908,80 @@
   font-size: 0.86rem;
 }
 
-.docx-editor-flow {
+.structured-editor-flow {
   min-height: 100%;
   white-space: pre-wrap;
   line-height: 1.92;
 }
 
-.docx-editor-unit {
+.structured-editor-unit {
   display: inline;
   padding: 0.08em 0.14em;
   border-radius: 12px;
-  background: rgba(23, 68, 207, 0.028);
+  background: var(--mark-editable-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-ring);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   transition: background-color 140ms ease, box-shadow 140ms ease;
 }
 
-.docx-editor-unit:focus-within {
-  background: rgba(23, 68, 207, 0.072);
-  box-shadow: inset 0 0 0 1px rgba(23, 68, 207, 0.14);
+.structured-editor-unit:focus-within {
+  background: var(--mark-active-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-active-ring);
 }
 
-.docx-editor-unit.is-protected {
-  background: rgba(20, 20, 20, 0.045);
+.structured-editor-unit.is-protected {
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
 }
 
-.docx-editor-slot {
+.structured-editor-slot {
   display: inline;
   border-radius: 10px;
   outline: none;
 }
 
-.docx-editor-slot.is-editable {
+.structured-editor-slot.is-editable {
   padding: 0.05em 0.12em;
-  background: rgba(23, 68, 207, 0.06);
+  background: var(--mark-editable-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-editable-ring);
 }
 
-.docx-editor-slot.is-editable:focus {
-  background: rgba(23, 68, 207, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(23, 68, 207, 0.32);
+.structured-editor-slot.is-editable:focus {
+  background: var(--mark-active-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-active-ring);
 }
 
-.docx-editor-slot.is-locked {
+.structured-editor-slot.is-locked {
   padding: 0.05em 0.16em;
-  background: rgba(20, 20, 20, 0.08);
+  background: var(--mark-protected-bg);
+  box-shadow: inset 0 0 0 1px var(--mark-protected-ring);
   color: var(--muted);
 }
 
-.docx-editor-slot.is-bold {
+.structured-editor-slot.is-bold {
   font-weight: 700;
 }
 
-.docx-editor-slot.is-italic {
+.structured-editor-slot.is-italic {
   font-style: italic;
 }
 
-.docx-editor-slot.is-underline,
-.docx-editor-slot.is-link {
+.structured-editor-slot.is-underline,
+.structured-editor-slot.is-link {
   text-decoration: underline;
   text-decoration-thickness: 1.5px;
 }
 
-.docx-editor-slot.is-editable.is-underline:focus {
+.structured-editor-slot.is-editable.is-underline:focus {
   text-decoration: none;
 }
 
-.docx-editor-slot.is-editable.is-link:focus {
+.structured-editor-slot.is-editable.is-link:focus {
   text-decoration: none;
 }
 
-.docx-editor-slot.is-link {
+.structured-editor-slot.is-link {
   color: rgb(23, 68, 207);
 }
 

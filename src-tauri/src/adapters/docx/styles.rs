@@ -16,7 +16,7 @@ pub(crate) struct ParagraphStyles {
     styles_by_id: HashMap<String, ParagraphStyle>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct ParagraphStyle {
     based_on: Option<String>,
     numbering: PartialNumberingSpec,
@@ -75,16 +75,6 @@ impl ParagraphStyles {
     fn resolve_style(&self, style_id: &str) -> ResolvedStyle {
         let mut visiting = HashSet::new();
         resolve_style_recursive(&self.styles_by_id, style_id, &mut visiting)
-    }
-}
-
-impl Default for ParagraphStyle {
-    fn default() -> Self {
-        Self {
-            based_on: None,
-            numbering: PartialNumberingSpec::default(),
-            outline_level: None,
-        }
     }
 }
 

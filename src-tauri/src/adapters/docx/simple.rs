@@ -17,9 +17,9 @@ use super::{
         WritebackRegionTemplate,
     },
     numbering::{list_marker_for_paragraph, NumberingTracker},
-    package::{load_docx_document, DocxSupportData},
+    package::{format_docx_zip_error, load_docx_document, DocxSupportData},
     placeholders,
-    slots::build_writeback_slots,
+    signature::build_docx_writeback_model,
     specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
     styles::ParagraphStyles,
     xml::{
@@ -37,11 +37,24 @@ use crate::{
 ///
 /// 重要说明：
 /// - `.docx` 是 zip + XML 的二进制容器；
-/// - 当前仅支持“简单 docx”：正文只包含普通段落/标题；
-/// - 检测到复杂结构时会直接报错，不会带着不确定语义继续写回。
+/// - 对常见复杂结构会以“锁定占位符”导入并原样保留；
+/// - 对无法安全兜底的结构（如嵌入 Office 对象）仍会直接报错，避免不确定写回。
 pub struct DocxAdapter;
 
 impl DocxAdapter {
+    pub(crate) fn load_writeback_source(
+        docx_bytes: &[u8],
+    ) -> Result<LoadedDocxWritebackSource, String> {
+        load_docx_writeback_source(docx_bytes)
+    }
+
+    pub(crate) fn extract_writeback_model_from_source(
+        loaded: &LoadedDocxWritebackSource,
+        rewrite_headings: bool,
+    ) -> super::signature::DocxWritebackModel {
+        build_docx_writeback_model(&loaded.blocks, rewrite_headings)
+    }
+
     #[cfg(test)]
     pub fn extract_text(docx_bytes: &[u8]) -> Result<String, String> {
         let loaded = load_docx_document(docx_bytes)?;
@@ -78,34 +91,39 @@ impl DocxAdapter {
         extract_regions_from_document_xml(&loaded.document_xml, &loaded.support, rewrite_headings)
     }
 
+    #[cfg(test)]
     pub fn extract_writeback_slots(
         docx_bytes: &[u8],
         rewrite_headings: bool,
     ) -> Result<Vec<crate::rewrite_unit::WritebackSlot>, String> {
-        let loaded = load_docx_document(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
-        Ok(build_writeback_slots(&blocks, rewrite_headings))
+        Ok(Self::extract_writeback_model(docx_bytes, rewrite_headings)?.writeback_slots)
     }
 
+    #[cfg(test)]
+    pub fn extract_writeback_model(
+        docx_bytes: &[u8],
+        rewrite_headings: bool,
+    ) -> Result<super::signature::DocxWritebackModel, String> {
+        let loaded = Self::load_writeback_source(docx_bytes)?;
+        Ok(Self::extract_writeback_model_from_source(
+            &loaded,
+            rewrite_headings,
+        ))
+    }
+
+    #[cfg(test)]
     pub fn write_updated_text(
         docx_bytes: &[u8],
         expected_source_text: &str,
         updated_text: &str,
     ) -> Result<Vec<u8>, String> {
-        let loaded = load_docx_document(docx_bytes)?;
-        let blocks = extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
-        let current_source_text = build_writeback_source_text(&blocks);
-        if current_source_text != expected_source_text {
-            return Err(
-                "docx 原文件内容与当前会话不一致，文件可能已在外部发生变化。为避免误写，请重新导入。"
-                    .to_string(),
-            );
-        }
-
-        let updated_regions = build_plain_text_editor_updated_regions(&blocks, updated_text)?;
-        let updated_xml =
-            rewrite_document_xml_with_regions(&loaded.document_xml, &blocks, &updated_regions)?;
-        replace_document_xml(docx_bytes, &updated_xml)
+        let loaded = Self::load_writeback_source(docx_bytes)?;
+        Self::write_updated_text_with_source(
+            docx_bytes,
+            &loaded,
+            expected_source_text,
+            updated_text,
+        )
     }
 
     #[cfg(test)]
@@ -114,61 +132,98 @@ impl DocxAdapter {
         expected_source_text: &str,
         updated_regions: &[TextRegion],
     ) -> Result<Vec<u8>, String> {
-        let loaded = load_docx_document(docx_bytes)?;
-        let paragraphs =
-            extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
-        let current_source_text = build_writeback_source_text(&paragraphs);
-        if current_source_text != expected_source_text {
-            return Err(
-                "docx 原文件内容与当前会话不一致，文件可能已在外部发生变化。为避免误写，请重新导入。"
-                    .to_string(),
-            );
-        }
-
-        let updated_xml =
-            rewrite_document_xml_with_regions(&loaded.document_xml, &paragraphs, updated_regions)?;
-        replace_document_xml(docx_bytes, &updated_xml)
+        let loaded = Self::load_writeback_source(docx_bytes)?;
+        write_docx_with_regions(docx_bytes, &loaded, expected_source_text, updated_regions)
     }
 
+    #[cfg(test)]
     pub fn write_updated_slots(
         docx_bytes: &[u8],
         expected_source_text: &str,
         updated_slots: &[WritebackSlot],
     ) -> Result<Vec<u8>, String> {
-        let loaded = load_docx_document(docx_bytes)?;
-        let paragraphs =
-            extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
-        let current_source_text = build_writeback_source_text(&paragraphs);
-        if current_source_text != expected_source_text {
-            return Err(
-                "docx 原文件内容与当前会话不一致，文件可能已在外部发生变化。为避免误写，请重新导入。"
-                    .to_string(),
-            );
-        }
-
-        let updated_regions = text_regions_from_writeback_slots(updated_slots);
-        let updated_xml =
-            rewrite_document_xml_with_regions(&loaded.document_xml, &paragraphs, &updated_regions)?;
-        replace_document_xml(docx_bytes, &updated_xml)
+        let loaded = Self::load_writeback_source(docx_bytes)?;
+        Self::write_updated_slots_with_source(
+            docx_bytes,
+            &loaded,
+            expected_source_text,
+            updated_slots,
+        )
     }
 
-    pub fn validate_writeback(docx_bytes: &[u8]) -> Result<(), String> {
-        let loaded = load_docx_document(docx_bytes)?;
-        extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support).map(|_| ())
+    pub(crate) fn write_updated_text_with_source(
+        docx_bytes: &[u8],
+        loaded: &LoadedDocxWritebackSource,
+        expected_source_text: &str,
+        updated_text: &str,
+    ) -> Result<Vec<u8>, String> {
+        let updated_regions = build_editor_writeback_updated_regions(&loaded.blocks, updated_text)?;
+        write_docx_with_regions(docx_bytes, loaded, expected_source_text, &updated_regions)
+    }
+
+    pub(crate) fn write_updated_slots_with_source(
+        docx_bytes: &[u8],
+        loaded: &LoadedDocxWritebackSource,
+        expected_source_text: &str,
+        updated_slots: &[WritebackSlot],
+    ) -> Result<Vec<u8>, String> {
+        let updated_regions = text_regions_from_writeback_slots(updated_slots);
+        write_docx_with_regions(docx_bytes, loaded, expected_source_text, &updated_regions)
     }
 
     #[cfg(test)]
-    pub fn validate_plain_text_editor(docx_bytes: &[u8]) -> Result<(), String> {
+    pub fn validate_writeback(docx_bytes: &[u8]) -> Result<(), String> {
+        Self::load_writeback_source(docx_bytes).map(|_| ())
+    }
+
+    #[cfg(test)]
+    pub fn validate_editor_writeback(docx_bytes: &[u8]) -> Result<(), String> {
         Self::validate_writeback(docx_bytes)
     }
 }
 
 const DOCX_BLOCK_SEPARATOR: &str = "\n\n";
-const DOCX_PAGE_BREAK_PLACEHOLDER: &str = "[分页符]";
-const DOCX_EMBEDDED_OBJECT_ERROR: &str =
-    "当前不支持包含嵌入 Office 对象的 docx（例如 OLE、图表或 SmartArt）。";
-const DOCX_HYPERLINK_PAGE_BREAK_ERROR: &str =
-    "当前不支持超链接内分页符的 docx：这类结构无法安全写回，请先在 Word 中调整后再导入。";
+const DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL: &str = "__LESSAI_LOCK_WHOLE_HYPERLINK__";
+
+pub(crate) struct LoadedDocxWritebackSource {
+    document_xml: String,
+    blocks: Vec<WritebackBlockTemplate>,
+}
+
+fn load_docx_writeback_source(docx_bytes: &[u8]) -> Result<LoadedDocxWritebackSource, String> {
+    let loaded = load_docx_document(docx_bytes)?;
+    let blocks = extract_writeback_paragraph_templates(&loaded.document_xml, &loaded.support)?;
+    Ok(LoadedDocxWritebackSource {
+        document_xml: loaded.document_xml,
+        blocks,
+    })
+}
+
+fn ensure_expected_docx_source_text(
+    blocks: &[WritebackBlockTemplate],
+    expected_source_text: &str,
+) -> Result<(), String> {
+    let current_source_text = build_writeback_source_text(blocks);
+    if current_source_text == expected_source_text {
+        return Ok(());
+    }
+    Err(
+        "docx 原文件内容与当前会话不一致，文件可能已在外部发生变化。为避免误写，请重新导入。"
+            .to_string(),
+    )
+}
+
+fn write_docx_with_regions(
+    docx_bytes: &[u8],
+    loaded: &LoadedDocxWritebackSource,
+    expected_source_text: &str,
+    updated_regions: &[TextRegion],
+) -> Result<Vec<u8>, String> {
+    ensure_expected_docx_source_text(&loaded.blocks, expected_source_text)?;
+    let updated_xml =
+        rewrite_document_xml_with_regions(&loaded.document_xml, &loaded.blocks, updated_regions)?;
+    replace_document_xml(docx_bytes, &updated_xml)
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RunStyle {
@@ -192,22 +247,25 @@ fn text_regions_from_writeback_slots(updated_slots: &[WritebackSlot]) -> Vec<Tex
     let mut current_anchor: Option<&str> = None;
     let mut current_body = String::new();
     let mut current_presentation = None;
+    let mut current_role = None;
     let mut current_has_editable = false;
 
     for slot in updated_slots {
         let anchor = slot.anchor.as_deref().unwrap_or(slot.id.as_str());
         if current_anchor.is_some_and(|current| current != anchor) {
-            regions.push(TextRegion {
-                body: std::mem::take(&mut current_body),
-                skip_rewrite: !current_has_editable,
-                presentation: current_presentation.take(),
-            });
+            regions.push(slot_group_region(
+                std::mem::take(&mut current_body),
+                current_has_editable,
+                current_role.take(),
+                current_presentation.take(),
+            ));
             current_has_editable = false;
         }
 
         if current_anchor != Some(anchor) {
             current_anchor = Some(anchor);
             current_presentation = slot.presentation.clone();
+            current_role = Some(slot.role.clone());
         }
 
         current_body.push_str(&slot.text);
@@ -216,14 +274,50 @@ fn text_regions_from_writeback_slots(updated_slots: &[WritebackSlot]) -> Vec<Tex
     }
 
     if current_anchor.is_some() {
-        regions.push(TextRegion {
-            body: current_body,
-            skip_rewrite: !current_has_editable,
-            presentation: current_presentation,
-        });
+        regions.push(slot_group_region(
+            current_body,
+            current_has_editable,
+            current_role,
+            current_presentation,
+        ));
     }
 
     regions
+}
+
+fn slot_group_region(
+    body: String,
+    editable: bool,
+    role: Option<crate::rewrite_unit::WritebackSlotRole>,
+    presentation: Option<TextPresentation>,
+) -> TextRegion {
+    if editable {
+        return TextRegion::editable(body).with_presentation(presentation);
+    }
+
+    match role.unwrap_or(crate::rewrite_unit::WritebackSlotRole::LockedText) {
+        crate::rewrite_unit::WritebackSlotRole::InlineObject => {
+            TextRegion::inline_object(body).with_presentation(presentation)
+        }
+        crate::rewrite_unit::WritebackSlotRole::SyntaxToken => {
+            TextRegion::syntax_token(body).with_presentation(presentation)
+        }
+        _ => locked_region_from_presentation(body, presentation),
+    }
+}
+
+fn locked_region_from_presentation(
+    body: String,
+    presentation: Option<TextPresentation>,
+) -> TextRegion {
+    if presentation
+        .as_ref()
+        .and_then(|value| value.protect_kind.as_deref())
+        .is_some()
+    {
+        return TextRegion::inline_object(body).with_presentation(presentation);
+    }
+    TextRegion::locked_text(body).with_presentation(presentation)
 }
 
 fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
@@ -242,6 +336,10 @@ fn is_ignorable_paragraph_name(name: &[u8]) -> bool {
             | b"moveToRangeEnd"
             | b"lastRenderedPageBreak"
     )
+}
+
+fn is_ignorable_body_name(name: &[u8]) -> bool {
+    is_ignorable_paragraph_name(name)
 }
 
 fn is_locked_inline_object_name(name: &[u8]) -> bool {
@@ -553,11 +651,14 @@ fn extract_writeback_paragraph_templates(
                                 block_events.clear();
                                 block_events.push(Event::Start(e));
                             }
+                            name if is_ignorable_body_name(name) => {
+                                body_depth += 1;
+                            }
                             _ => {
-                                return Err(format!(
-                                    "当前仅支持文章语义相关的 docx：检测到不支持的正文结构 <{}>。",
-                                    tag_name(name.as_slice())
-                                ))
+                                block_depth = 1;
+                                block_name = Some(name.clone());
+                                block_events.clear();
+                                block_events.push(Event::Start(e));
                             }
                         }
                     } else {
@@ -583,12 +684,11 @@ fn extract_writeback_paragraph_templates(
                         b"sectPr" => {
                             blocks.push(parse_section_break_placeholder_block(&[Event::Empty(e)])?)
                         }
-                        _ => {
-                            return Err(format!(
-                                "当前仅支持文章语义相关的 docx：检测到不支持的正文结构 <{}>。",
-                                tag_name(name.as_slice())
-                            ))
-                        }
+                        name if is_ignorable_body_name(name) => {}
+                        _ => blocks.push(parse_unknown_block_placeholder(
+                            &[Event::Empty(e)],
+                            name.as_slice(),
+                        )?),
                     }
                 }
             }
@@ -610,7 +710,7 @@ fn extract_writeback_paragraph_templates(
                             b"tbl" => parse_table_placeholder_block(&block_events)?,
                             b"sdt" => parse_sdt_placeholder_block(&block_events)?,
                             b"sectPr" => parse_section_break_placeholder_block(&block_events)?,
-                            _ => return Err("解析 docx 写回模板失败：未知正文块类型。".to_string()),
+                            _ => parse_unknown_block_placeholder(&block_events, kind.as_slice())?,
                         };
                         blocks.push(block);
                         block_events.clear();
@@ -676,6 +776,74 @@ fn parse_locked_block(
         return Err("解析 docx 锁定块失败：事件为空。".to_string());
     }
     Ok(placeholders::raw_locked_block(text, protect_kind, events))
+}
+
+fn unknown_structure_placeholder(name: &[u8]) -> String {
+    format!("[复杂结构:{}]", tag_name(name))
+}
+
+fn parse_unknown_block_placeholder(
+    events: &[Event<'static>],
+    name: &[u8],
+) -> Result<WritebackBlockTemplate, String> {
+    let text = unknown_structure_placeholder(name);
+    parse_locked_block(events, &text, "unknown-structure")
+}
+
+fn parse_unknown_inline_placeholder_region(
+    events: &[Event<'static>],
+    name: &[u8],
+) -> WritebackRegionTemplate {
+    let text = unknown_structure_placeholder(name);
+    placeholders::raw_locked_region(&text, "unknown-structure", events)
+}
+
+fn parse_unknown_run_placeholder_region(
+    run_property_events: &[Event<'static>],
+    child_events: &[Event<'static>],
+    name: &[u8],
+) -> WritebackRegionTemplate {
+    let text = unknown_structure_placeholder(name);
+    placeholders::locked_run_child_region(
+        &text,
+        "unknown-structure",
+        run_property_events,
+        child_events,
+        LockedDisplayMode::Inline,
+    )
+}
+
+fn parse_locked_visible_text_region(
+    text: &str,
+    events: &[Event<'static>],
+) -> WritebackRegionTemplate {
+    WritebackRegionTemplate::Locked(LockedRegionTemplate {
+        text: text.to_string(),
+        presentation: None,
+        render: LockedRegionRender::RawEvents(events.to_vec()),
+        display_mode: LockedDisplayMode::Inline,
+    })
+}
+
+fn parse_locked_visible_run_text_region(
+    text: &str,
+    presentation: Option<TextPresentation>,
+    run_property_events: &[Event<'static>],
+    child_events: &[Event<'static>],
+) -> WritebackRegionTemplate {
+    WritebackRegionTemplate::Locked(LockedRegionTemplate {
+        text: text.to_string(),
+        presentation,
+        render: LockedRegionRender::RunChildEvents {
+            run_property_events: run_property_events.to_vec(),
+            child_events: child_events.to_vec(),
+        },
+        display_mode: LockedDisplayMode::Inline,
+    })
+}
+
+fn lock_whole_hyperlink_region(events: &[Event<'static>]) -> WritebackRegionTemplate {
+    parse_unknown_inline_placeholder_region(events, b"hyperlink")
 }
 
 fn next_index_after_ignorable_writeback_event(
@@ -798,15 +966,11 @@ fn flatten_writeback_blocks(
                     continue;
                 };
                 if display_block.region_indices.is_empty() {
-                    regions.push(TextRegion {
-                        body: if append_block_separator {
-                            DOCX_BLOCK_SEPARATOR.to_string()
-                        } else {
-                            String::new()
-                        },
-                        skip_rewrite: true,
-                        presentation: None,
-                    });
+                    regions.push(TextRegion::locked_text(if append_block_separator {
+                        DOCX_BLOCK_SEPARATOR.to_string()
+                    } else {
+                        String::new()
+                    }));
                     continue;
                 }
                 for (region_position, region_index) in
@@ -821,14 +985,12 @@ fn flatten_writeback_blocks(
                     {
                         body.push_str(DOCX_BLOCK_SEPARATOR);
                     }
-                    regions.push(TextRegion {
-                        body,
-                        skip_rewrite: paragraph_region_skip_rewrite(
-                            paragraph,
-                            region,
-                            rewrite_headings,
-                        ),
-                        presentation: region.presentation().cloned(),
+                    let editable =
+                        !paragraph_region_skip_rewrite(paragraph, region, rewrite_headings);
+                    regions.push(if editable {
+                        TextRegion::editable(body).with_presentation(region.presentation().cloned())
+                    } else {
+                        locked_region_from_presentation(body, region.presentation().cloned())
                     });
                 }
             }
@@ -840,11 +1002,10 @@ fn flatten_writeback_blocks(
                 if append_block_separator {
                     body.push_str(DOCX_BLOCK_SEPARATOR);
                 }
-                regions.push(TextRegion {
+                regions.push(locked_region_from_presentation(
                     body,
-                    skip_rewrite: true,
-                    presentation: region.presentation.clone(),
-                });
+                    region.presentation.clone(),
+                ));
             }
         }
     }
@@ -918,14 +1079,12 @@ fn parse_writeback_paragraph_template(
                         regions.push(writeback_locked_region_from_special(&child_events)?)
                     }
                     name if is_embedded_object_name(name) => {
-                        return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string())
+                        regions.push(parse_unknown_inline_placeholder_region(&child_events, name))
                     }
-                    _ => {
-                        return Err(format!(
-                            "当前仅支持文章语义相关的 docx：段落内存在不支持的结构 <{}>。",
-                            tag_name(name.as_slice())
-                        ))
-                    }
+                    _ => regions.push(parse_unknown_inline_placeholder_region(
+                        &child_events,
+                        name.as_slice(),
+                    )),
                 }
                 index = next_index;
             }
@@ -934,7 +1093,11 @@ fn parse_writeback_paragraph_template(
                     .decode()
                     .map_err(|error| format!("解析 document.xml 文本失败：{error}"))?;
                 if !decoded.trim().is_empty() {
-                    return Err("当前 docx 段落中存在游离文本节点，无法安全写回。".to_string());
+                    let raw_events = [events[index].clone()];
+                    regions.push(parse_locked_visible_text_region(
+                        decoded.as_ref(),
+                        &raw_events,
+                    ));
                 }
                 index += 1;
             }
@@ -943,7 +1106,11 @@ fn parse_writeback_paragraph_template(
                     .decode()
                     .map_err(|error| format!("解析 document.xml CDATA 失败：{error}"))?;
                 if !decoded.trim().is_empty() {
-                    return Err("当前 docx 段落中存在游离 CDATA，无法安全写回。".to_string());
+                    let raw_events = [events[index].clone()];
+                    regions.push(parse_locked_visible_text_region(
+                        decoded.as_ref(),
+                        &raw_events,
+                    ));
                 }
                 index += 1;
             }
@@ -1044,23 +1211,21 @@ fn parse_writeback_hyperlink_regions(
                 let name = local_name_owned(e.name().as_ref());
                 let (child_events, next_index) = capture_subtree_events(events, index)?;
                 match name.as_slice() {
-                    b"r" => regions.extend(parse_writeback_run_regions(
-                        &child_events,
-                        Some(&hyperlink_start),
-                        hyperlink_href.clone(),
-                    )?),
-                    name if is_locked_inline_object_name(name) => {
-                        regions.push(writeback_locked_region_from_special(&child_events)?)
+                    b"r" => {
+                        let run_regions = match parse_writeback_run_regions(
+                            &child_events,
+                            Some(&hyperlink_start),
+                            hyperlink_href.clone(),
+                        ) {
+                            Ok(run_regions) => run_regions,
+                            Err(error) if error == DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL => {
+                                return Ok(vec![lock_whole_hyperlink_region(events)]);
+                            }
+                            Err(error) => return Err(error),
+                        };
+                        regions.extend(run_regions);
                     }
-                    name if is_embedded_object_name(name) => {
-                        return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string())
-                    }
-                    _ => {
-                        return Err(format!(
-                            "当前仅支持正文超链接文本写回：超链接内存在不支持的结构 <{}>。",
-                            tag_name(name.as_slice())
-                        ))
-                    }
+                    _ => return Ok(vec![lock_whole_hyperlink_region(events)]),
                 }
                 index = next_index;
             }
@@ -1069,7 +1234,7 @@ fn parse_writeback_hyperlink_regions(
                     .decode()
                     .map_err(|error| format!("解析 document.xml 文本失败：{error}"))?;
                 if !decoded.trim().is_empty() {
-                    return Err("当前 docx 超链接中存在游离文本节点，无法安全写回。".to_string());
+                    return Ok(vec![lock_whole_hyperlink_region(events)]);
                 }
                 index += 1;
             }
@@ -1078,7 +1243,7 @@ fn parse_writeback_hyperlink_regions(
                     .decode()
                     .map_err(|error| format!("解析 document.xml CDATA 失败：{error}"))?;
                 if !decoded.trim().is_empty() {
-                    return Err("当前 docx 超链接中存在游离 CDATA，无法安全写回。".to_string());
+                    return Ok(vec![lock_whole_hyperlink_region(events)]);
                 }
                 index += 1;
             }
@@ -1236,6 +1401,9 @@ fn parse_writeback_run_regions(
                     continue;
                 }
                 if is_locked_inline_object_name(name.as_slice()) {
+                    if hyperlink_start.is_some() {
+                        return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                    }
                     let (child_events, next_index) = capture_subtree_events(events, index)?;
                     flush_writeback_editable_region(
                         &mut regions,
@@ -1261,13 +1429,42 @@ fn parse_writeback_run_regions(
                         index += 1;
                     }
                     name if is_embedded_object_name(name) => {
-                        return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string())
+                        if hyperlink_start.is_some() {
+                            return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                        }
+                        let (child_events, next_index) = capture_subtree_events(events, index)?;
+                        flush_writeback_editable_region(
+                            &mut regions,
+                            &mut buffer,
+                            presentation.clone(),
+                            hyperlink_start.cloned(),
+                            &run_property_events,
+                        );
+                        regions.push(parse_unknown_run_placeholder_region(
+                            &run_property_events,
+                            &child_events,
+                            name,
+                        ));
+                        index = next_index;
                     }
                     _ => {
-                        return Err(format!(
-                            "当前仅支持正文行内写回：运行节点内存在不支持的结构 <{}>。",
-                            tag_name(name.as_slice())
-                        ))
+                        if hyperlink_start.is_some() {
+                            return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                        }
+                        let (child_events, next_index) = capture_subtree_events(events, index)?;
+                        flush_writeback_editable_region(
+                            &mut regions,
+                            &mut buffer,
+                            presentation.clone(),
+                            hyperlink_start.cloned(),
+                            &run_property_events,
+                        );
+                        regions.push(parse_unknown_run_placeholder_region(
+                            &run_property_events,
+                            &child_events,
+                            name.as_slice(),
+                        ));
+                        index = next_index;
                     }
                 }
             }
@@ -1278,6 +1475,9 @@ fn parse_writeback_run_regions(
                     continue;
                 }
                 if is_locked_inline_object_name(name.as_slice()) {
+                    if hyperlink_start.is_some() {
+                        return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                    }
                     flush_writeback_editable_region(
                         &mut regions,
                         &mut buffer,
@@ -1302,6 +1502,9 @@ fn parse_writeback_run_regions(
                         }
                     }
                     b"br" if is_page_break(e) => {
+                        if hyperlink_start.is_some() {
+                            return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                        }
                         flush_writeback_editable_region(
                             &mut regions,
                             &mut buffer,
@@ -1309,11 +1512,8 @@ fn parse_writeback_run_regions(
                             hyperlink_start.cloned(),
                             &run_property_events,
                         );
-                        if hyperlink_start.is_some() {
-                            return Err(DOCX_HYPERLINK_PAGE_BREAK_ERROR.to_string());
-                        }
                         regions.push(WritebackRegionTemplate::Locked(LockedRegionTemplate {
-                            text: DOCX_PAGE_BREAK_PLACEHOLDER.to_string(),
+                            text: placeholders::DOCX_PAGE_BREAK_PLACEHOLDER.to_string(),
                             presentation: placeholders::placeholder_presentation("page-break"),
                             render: LockedRegionRender::PageBreak,
                             display_mode: LockedDisplayMode::Inline,
@@ -1321,13 +1521,40 @@ fn parse_writeback_run_regions(
                     }
                     b"br" | b"cr" => buffer.push('\n'),
                     name if is_embedded_object_name(name) => {
-                        return Err(DOCX_EMBEDDED_OBJECT_ERROR.to_string())
+                        if hyperlink_start.is_some() {
+                            return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                        }
+                        flush_writeback_editable_region(
+                            &mut regions,
+                            &mut buffer,
+                            presentation.clone(),
+                            hyperlink_start.cloned(),
+                            &run_property_events,
+                        );
+                        let empty_events = [Event::Empty(e.clone())];
+                        regions.push(parse_unknown_run_placeholder_region(
+                            &run_property_events,
+                            &empty_events,
+                            name,
+                        ));
                     }
                     _ => {
-                        return Err(format!(
-                            "当前仅支持正文行内写回：运行节点内存在不支持的结构 <{}>。",
-                            tag_name(name.as_slice())
-                        ))
+                        if hyperlink_start.is_some() {
+                            return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                        }
+                        flush_writeback_editable_region(
+                            &mut regions,
+                            &mut buffer,
+                            presentation.clone(),
+                            hyperlink_start.cloned(),
+                            &run_property_events,
+                        );
+                        let empty_events = [Event::Empty(e.clone())];
+                        regions.push(parse_unknown_run_placeholder_region(
+                            &run_property_events,
+                            &empty_events,
+                            name.as_slice(),
+                        ));
                     }
                 }
                 index += 1;
@@ -1342,9 +1569,7 @@ fn parse_writeback_run_regions(
                     index += 1;
                     continue;
                 }
-                if rpr_depth > 0 {
-                    rpr_depth -= 1;
-                }
+                rpr_depth = rpr_depth.saturating_sub(1);
                 index += 1;
             }
             Event::Text(e) => {
@@ -1354,7 +1579,23 @@ fn parse_writeback_run_regions(
                 if in_text {
                     buffer.push_str(&decoded);
                 } else if !decoded.trim().is_empty() {
-                    return Err("当前 docx 运行节点中存在游离文本，无法安全写回。".to_string());
+                    if hyperlink_start.is_some() {
+                        return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                    }
+                    flush_writeback_editable_region(
+                        &mut regions,
+                        &mut buffer,
+                        presentation.clone(),
+                        hyperlink_start.cloned(),
+                        &run_property_events,
+                    );
+                    let raw_events = [events[index].clone()];
+                    regions.push(parse_locked_visible_run_text_region(
+                        decoded.as_ref(),
+                        presentation.clone(),
+                        &run_property_events,
+                        &raw_events,
+                    ));
                 }
                 index += 1;
             }
@@ -1365,7 +1606,23 @@ fn parse_writeback_run_regions(
                 if in_text {
                     buffer.push_str(&decoded);
                 } else if !decoded.trim().is_empty() {
-                    return Err("当前 docx 运行节点中存在游离 CDATA，无法安全写回。".to_string());
+                    if hyperlink_start.is_some() {
+                        return Err(DOCX_HYPERLINK_LOCK_FALLBACK_SIGNAL.to_string());
+                    }
+                    flush_writeback_editable_region(
+                        &mut regions,
+                        &mut buffer,
+                        presentation.clone(),
+                        hyperlink_start.cloned(),
+                        &run_property_events,
+                    );
+                    let raw_events = [events[index].clone()];
+                    regions.push(parse_locked_visible_run_text_region(
+                        decoded.as_ref(),
+                        presentation.clone(),
+                        &run_property_events,
+                        &raw_events,
+                    ));
                 }
                 index += 1;
             }
@@ -1747,11 +2004,11 @@ fn split_updated_paragraphs(
     Ok(paragraphs)
 }
 
-fn build_plain_text_editor_updated_regions(
+fn build_editor_writeback_updated_regions(
     blocks: &[WritebackBlockTemplate],
     updated_text: &str,
 ) -> Result<Vec<TextRegion>, String> {
-    validate_plain_text_editor_blocks(blocks)?;
+    validate_editor_writeback_blocks(blocks)?;
     let display_blocks = build_display_blocks(blocks);
     let updated_paragraphs = split_updated_paragraphs(updated_text, display_blocks.len())?;
     let mut regions = Vec::new();
@@ -1767,7 +2024,7 @@ fn build_plain_text_editor_updated_regions(
                 let WritebackBlockTemplate::Paragraph(paragraph) = &blocks[block_index] else {
                     continue;
                 };
-                build_plain_text_editor_paragraph_display_regions(
+                build_editor_writeback_paragraph_display_regions(
                     paragraph,
                     &display_block.region_indices,
                     &updated_paragraph,
@@ -1777,11 +2034,10 @@ fn build_plain_text_editor_updated_regions(
                 let WritebackBlockTemplate::Locked(region) = &blocks[block_index] else {
                     continue;
                 };
-                vec![TextRegion {
-                    body: updated_paragraph,
-                    skip_rewrite: true,
-                    presentation: region.presentation.clone(),
-                }]
+                vec![locked_region_from_presentation(
+                    updated_paragraph,
+                    region.presentation.clone(),
+                )]
             }
         };
         if let Some(last) = block_regions.last_mut() {
@@ -1795,49 +2051,41 @@ fn build_plain_text_editor_updated_regions(
     Ok(regions)
 }
 
-fn validate_plain_text_editor_blocks(blocks: &[WritebackBlockTemplate]) -> Result<(), String> {
+fn validate_editor_writeback_blocks(blocks: &[WritebackBlockTemplate]) -> Result<(), String> {
     for block in blocks {
         if let WritebackBlockTemplate::Paragraph(paragraph) = block {
-            validate_plain_text_editor_paragraph(paragraph)?;
+            validate_editor_writeback_paragraph(paragraph)?;
         }
     }
     Ok(())
 }
 
-fn build_plain_text_editor_paragraph_display_regions(
+fn build_editor_writeback_paragraph_display_regions(
     paragraph: &WritebackParagraphTemplate,
     region_indices: &[usize],
     updated_text: &str,
 ) -> Result<Vec<TextRegion>, String> {
     if region_indices.is_empty() {
-        return Ok(vec![TextRegion {
-            body: updated_text.to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        }]);
+        return Ok(vec![TextRegion::editable(updated_text.to_string())]);
     }
 
     let template = region_indices
         .iter()
         .filter_map(|region_index| paragraph.regions.get(*region_index).cloned())
         .collect::<Vec<_>>();
-    build_plain_text_editor_paragraph_regions_from_template(&template, updated_text)
+    build_editor_writeback_paragraph_regions_from_template(&template, updated_text)
 }
 
-fn build_plain_text_editor_paragraph_regions_from_template(
+fn build_editor_writeback_paragraph_regions_from_template(
     template: &[WritebackRegionTemplate],
     updated_text: &str,
 ) -> Result<Vec<TextRegion>, String> {
     if template.is_empty() {
-        return Ok(vec![TextRegion {
-            body: updated_text.to_string(),
-            skip_rewrite: false,
-            presentation: None,
-        }]);
+        return Ok(vec![TextRegion::editable(updated_text.to_string())]);
     }
 
     let mut matches = Vec::new();
-    collect_plain_text_editor_paragraph_matches(
+    collect_editor_writeback_paragraph_matches(
         template,
         updated_text,
         0,
@@ -1854,13 +2102,13 @@ fn build_plain_text_editor_paragraph_regions_from_template(
     }
 }
 
-fn validate_plain_text_editor_paragraph(
+fn validate_editor_writeback_paragraph(
     _paragraph: &WritebackParagraphTemplate,
 ) -> Result<(), String> {
     Ok(())
 }
 
-fn collect_plain_text_editor_paragraph_matches(
+fn collect_editor_writeback_paragraph_matches(
     template: &[WritebackRegionTemplate],
     updated_text: &str,
     region_index: usize,
@@ -1889,7 +2137,7 @@ fn collect_plain_text_editor_paragraph_matches(
         }
         let mut next = current;
         next.push(logical_locked_text_region(&template[region_index]));
-        collect_plain_text_editor_paragraph_matches(
+        collect_editor_writeback_paragraph_matches(
             template,
             updated_text,
             region_index + 1,
@@ -1901,7 +2149,7 @@ fn collect_plain_text_editor_paragraph_matches(
         return;
     }
 
-    collect_plain_text_editor_editable_group_matches(
+    collect_editor_writeback_editable_group_matches(
         template,
         updated_text,
         region_index,
@@ -1915,11 +2163,10 @@ fn collect_plain_text_editor_paragraph_matches(
 #[derive(Default)]
 struct PlainTextEditorEditBlock {
     owner: Option<usize>,
-    ambiguous: bool,
     inserted_text: String,
 }
 
-fn collect_plain_text_editor_editable_group_matches(
+fn collect_editor_writeback_editable_group_matches(
     template: &[WritebackRegionTemplate],
     updated_text: &str,
     region_index: usize,
@@ -1948,7 +2195,7 @@ fn collect_plain_text_editor_editable_group_matches(
             };
             let mut next = current.clone();
             next.extend(mapped);
-            collect_plain_text_editor_paragraph_matches(
+            collect_editor_writeback_paragraph_matches(
                 template,
                 updated_text,
                 group_end,
@@ -1985,16 +2232,12 @@ fn next_locked_region_index(template: &[WritebackRegionTemplate], start: usize) 
 
 fn logical_locked_text_region(region: &WritebackRegionTemplate) -> TextRegion {
     match region {
-        WritebackRegionTemplate::Editable(editable) => TextRegion {
-            body: editable.text.clone(),
-            skip_rewrite: true,
-            presentation: editable.presentation.clone(),
-        },
-        WritebackRegionTemplate::Locked(locked) => TextRegion {
-            body: locked.text.clone(),
-            skip_rewrite: true,
-            presentation: locked.presentation.clone(),
-        },
+        WritebackRegionTemplate::Editable(editable) => {
+            locked_region_from_presentation(editable.text.clone(), editable.presentation.clone())
+        }
+        WritebackRegionTemplate::Locked(locked) => {
+            locked_region_from_presentation(locked.text.clone(), locked.presentation.clone())
+        }
     }
 }
 
@@ -2038,7 +2281,7 @@ fn map_editable_group_regions(
         }
     }
 
-    if !flush_plain_text_editor_edit_block(&mut outputs, &mut block) {
+    if !flush_editor_writeback_edit_block(&mut outputs, &mut block) {
         return None;
     }
     if original_index != original_len {
@@ -2124,7 +2367,7 @@ fn apply_unchanged_editable_text(
     original_index: &mut usize,
     text: &str,
 ) -> bool {
-    if !flush_plain_text_editor_edit_block(outputs, block) {
+    if !flush_editor_writeback_edit_block(outputs, block) {
         return false;
     }
     for ch in text.chars() {
@@ -2147,7 +2390,7 @@ fn apply_deleted_editable_text(
         let Some(region_index) = region_index_for_original_char(boundaries, *original_index) else {
             return false;
         };
-        add_plain_text_editor_block_owner(block, region_index);
+        add_editor_writeback_block_owner(block, region_index);
         *original_index += 1;
     }
     true
@@ -2164,18 +2407,15 @@ fn apply_inserted_editable_text(
     else {
         return false;
     };
-    add_plain_text_editor_block_owner(block, region_index);
+    add_editor_writeback_block_owner(block, region_index);
     block.inserted_text.push_str(text);
     true
 }
 
-fn flush_plain_text_editor_edit_block(
+fn flush_editor_writeback_edit_block(
     outputs: &mut [String],
     block: &mut PlainTextEditorEditBlock,
 ) -> bool {
-    if block.ambiguous {
-        return false;
-    }
     if let Some(owner) = block.owner {
         outputs[owner].push_str(&block.inserted_text);
     } else if !block.inserted_text.is_empty() {
@@ -2185,9 +2425,8 @@ fn flush_plain_text_editor_edit_block(
     true
 }
 
-fn add_plain_text_editor_block_owner(block: &mut PlainTextEditorEditBlock, owner: usize) {
+fn add_editor_writeback_block_owner(block: &mut PlainTextEditorEditBlock, owner: usize) {
     match block.owner {
-        Some(current) if current != owner => block.ambiguous = true,
         Some(_) => {}
         None => block.owner = Some(owner),
     }
@@ -2215,18 +2454,16 @@ fn insertion_region_index(
     let left = region_index_for_original_char(boundaries, original_index - 1)?;
     let right = region_index_for_original_char(boundaries, original_index)?;
     if left == right {
-        Some(left)
-    } else {
-        None
+        return Some(left);
     }
+    Some(left)
 }
 
 fn editable_region_text(region: &EditableRegionTemplate, body: String) -> TextRegion {
-    TextRegion {
-        body,
-        skip_rewrite: !region.allow_rewrite,
-        presentation: region.presentation.clone(),
+    if region.allow_rewrite {
+        return TextRegion::editable(body).with_presentation(region.presentation.clone());
     }
+    locked_region_from_presentation(body, region.presentation.clone())
 }
 
 fn rewrite_document_xml_with_regions(
@@ -2862,8 +3099,7 @@ fn needs_space_preserve(text: &str) -> bool {
 
 fn replace_document_xml(docx_bytes: &[u8], updated_xml: &str) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(docx_bytes);
-    let mut archive = ZipArchive::new(cursor)
-        .map_err(|error| format!("无法解析 docx（zip 结构错误）：{error}"))?;
+    let mut archive = ZipArchive::new(cursor).map_err(format_docx_zip_error)?;
     let mut out = Cursor::new(Vec::new());
     let mut writer = ZipWriter::new(&mut out);
 

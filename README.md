@@ -29,11 +29,13 @@ LessAI 是一个基于 **Tauri 2** 的桌面端中文改写工作台：把“改
 
 你导入文本后，LessAI 会按预设粒度切分为多个片段，调用 **OpenAI 兼容接口**生成改写建议，并以时间线方式展示每条建议的 Diff。你可以逐条应用 / 忽略 / 删除，支持断点续跑，最终导出或一键写回覆盖原文件。
 
+> DOCX 兼容策略是“安全优先”而不是“尽力乱写回”：常见复杂结构会被保留为锁定占位符继续导入；遇到无法确认安全写回边界的结构时，应用会明确阻断，而不是冒险改坏原文档。
+
 > 本仓库不包含任何模型服务；需要在设置中配置 API Base URL / Key / Model。
 
 ## ✅ 你会用到的核心能力
 
-- 导入：`.txt` / `.md`（单文件）
+- 导入：`.txt` / `.md` / `.tex` / `.docx`
 - 切分粒度：小句 / 整句 / 段落（可配置）
 - 生成模式：
   - 手动：一次生成下一段
@@ -42,6 +44,7 @@ LessAI 是一个基于 **Tauri 2** 的桌面端中文改写工作台：把“改
 - 视图：原文 / 改写后 / Diff（含修订标记）
 - 持久化：会话 JSON 落盘，支持断点续跑
 - Finalize：将已应用结果写回原文件，并清空该文档会话记录
+- DOCX 处理：尽量保留编号、超链接、公式/分页符/表格等结构；复杂对象默认锁定，不参与 AI 改写
 
 ## 🧭 界面导览
 
@@ -146,7 +149,7 @@ LessAI 是一个基于 **Tauri 2** 的桌面端中文改写工作台：把“改
    - `Base URL`（例如 OpenAI / 兼容中转的地址）
    - `API Key`
    - `Model`（例如 `gpt-5.4-mini`）
-2. 打开文件（`.txt`/`.md`）。
+2. 打开文件（`.txt` / `.md` / `.tex` / `.docx`）。
 3. 选择切分粒度（小句/整句/段落），以及生成模式（手动/自动）。
 4. 在右侧时间线审阅每条“修改对”：
    - 应用：纳入最终文本
@@ -210,12 +213,25 @@ Windows 也可以直接双击：
 
 - `start-lessai.bat`
 
+Linux 也可使用仓库内脚本（会自动检查/修复依赖）：
+
+```bash
+chmod +x start-lessai.sh build-lessai.sh scripts/lessai-linux-common.sh
+./start-lessai.sh
+```
+
 ### 常用命令
 
 ```bash
 pnpm run typecheck
 pnpm run build
 pnpm run tauri:build
+```
+
+Linux 打包（脚本封装）：
+
+```bash
+./build-lessai.sh
 ```
 
 Rust 单测：
@@ -237,6 +253,7 @@ cargo test
 
 - 推送 `v*` tag 触发 `.github/workflows/tauri-bundles.yml`
 - Workflow 会在 Windows/macOS/Linux 打包，并创建 GitHub Release（包含各平台安装包与校验文件）
+- 每个 Release 说明都会固定包含文档兼容边界提示：DOCX/PDF 走“安全优先”写回策略，复杂结构可能导入可读但拒绝写回
 
 ```bash
 git tag v0.2.7

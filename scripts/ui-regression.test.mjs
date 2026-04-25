@@ -5,10 +5,12 @@ import assert from "node:assert/strict";
 import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-
-function read(path) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-}
+import {
+  assertIncludes,
+  assertMatches,
+  assertNotIncludes,
+  read
+} from "./test-helpers.mjs";
 
 function hasRule(css, selector, property, value) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -32,18 +34,6 @@ function assertNoRule(css, selector, property, value) {
   );
 }
 
-function assertIncludes(text, snippet) {
-  assert.ok(text.includes(snippet), `期望内容包含：${snippet}`);
-}
-
-function assertNotIncludes(text, snippet) {
-  assert.ok(!text.includes(snippet), `期望内容不包含：${snippet}`);
-}
-
-function assertMatches(text, pattern, message) {
-  assert.ok(pattern.test(text), message);
-}
-
 function rewriteRelativeImports(code) {
   return code.replace(/from\s+["']((?:\.\.?\/)[^"']+)["']/g, 'from "$1.mjs"');
 }
@@ -54,7 +44,12 @@ async function loadProtectedTextModule() {
   const dir = mkdtempSync(join(tempRoot, "lessai-protected-text-"));
   const modules = [
     ["src/lib/protectedText.tsx", "protectedText.tsx"],
+    [
+      "src/lib/protectedTextPlaceholderLabels.generated.ts",
+      "protectedTextPlaceholderLabels.generated.ts"
+    ],
     ["src/lib/markdownProtectedSegments.ts", "markdownProtectedSegments.ts"],
+    ["src/lib/path.ts", "path.ts"],
     ["src/lib/protectedTextShared.ts", "protectedTextShared.ts"],
     ["src/lib/texProtectedSegments.ts", "texProtectedSegments.ts"]
   ];
@@ -130,18 +125,25 @@ async function loadHelpersModule() {
   const tempRoot = join(process.cwd(), ".tmp");
   mkdirSync(tempRoot, { recursive: true });
   const dir = mkdtempSync(join(tempRoot, "lessai-helpers-"));
+  const modules = [
+    ["src/lib/helpers.ts", "helpers.ts"],
+    ["src/lib/documentCapabilities.ts", "documentCapabilities.ts"],
+    ["src/lib/path.ts", "path.ts"]
+  ];
 
   try {
-    const source = read("src/lib/helpers.ts");
-    const transpiled = ts.transpileModule(source, {
-      compilerOptions: {
-        module: ts.ModuleKind.ES2022,
-        target: ts.ScriptTarget.ES2022
-      },
-      fileName: "helpers.ts"
-    }).outputText;
-    const rewritten = rewriteRelativeImports(transpiled);
-    writeFileSync(join(dir, "helpers.mjs"), rewritten, "utf8");
+    for (const [path, fileName] of modules) {
+      const source = read(path);
+      const transpiled = ts.transpileModule(source, {
+        compilerOptions: {
+          module: ts.ModuleKind.ES2022,
+          target: ts.ScriptTarget.ES2022
+        },
+        fileName
+      }).outputText;
+      const rewritten = rewriteRelativeImports(transpiled);
+      writeFileSync(join(dir, fileName.replace(/\.ts$/, ".mjs")), rewritten, "utf8");
+    }
 
     return await import(pathToFileURL(join(dir, "helpers.mjs")).href);
   } finally {
@@ -156,7 +158,7 @@ const documentActionBar = read("src/stages/workbench/document/DocumentActionBar.
 const documentPanel = read("src/stages/workbench/DocumentPanel.tsx");
 const documentFlow = read("src/stages/workbench/document/DocumentFlow.tsx");
 const paragraphDocumentFlow = read("src/stages/workbench/document/ParagraphDocumentFlow.tsx");
-const docxSlotEditor = read("src/stages/workbench/document/DocxSlotEditor.tsx");
+const structuredSlotEditor = read("src/stages/workbench/document/StructuredSlotEditor.tsx");
 const workspaceBar = read("src/app/components/WorkspaceBar.tsx");
 const settingsTypes = read("src/lib/types.ts");
 const settingsConstants = read("src/lib/constants.ts");
@@ -187,6 +189,12 @@ const { getSessionStats, summarizeRewriteUnitSuggestions } = await loadHelpersMo
 assertIncludes(workspaceBar, 'className="workspace-bar-status-row"');
 assertIncludes(workspaceBar, 'className="workspace-bar-path-line"');
 assertIncludes(workspaceBar, 'className="workspace-bar-path-text"');
+assertIncludes(appSource, 'from "./lib/windowDrag"');
+assertIncludes(workspaceBar, 'from "../../lib/windowDrag"');
+assertIncludes(appSource, "isWindowDragExcludedTarget(event.target)");
+assertIncludes(workspaceBar, "isWindowDragExcludedTarget(event.target)");
+assertNotIncludes(appSource, "const WINDOW_DRAG_EXCLUDED_SELECTOR = [");
+assertNotIncludes(workspaceBar, "const HEADER_DRAG_EXCLUDED_SELECTOR = [");
 assertIncludes(settingsTypes, "unitsPerBatch: number;");
 assertIncludes(settingsConstants, "unitsPerBatch: 1");
 assertIncludes(rewriteStrategyPage, "单批处理单元数");
@@ -202,8 +210,18 @@ assertRule(part02, ".workspace-bar-status-row", "display", "flex");
 assertRule(part02, ".workspace-bar-path-line", "display", "flex");
 assertRule(part02, ".workspace-bar-path-text", "text-overflow", "ellipsis");
 assertRule(part03, ".status-badge", "white-space", "nowrap");
-assertRule(part04, ".docx-editor-slot.is-editable.is-underline:focus", "text-decoration", "none");
-assertRule(part04, ".docx-editor-slot.is-editable.is-link:focus", "text-decoration", "none");
+assertRule(
+  part04,
+  ".structured-editor-slot.is-editable.is-underline:focus",
+  "text-decoration",
+  "none"
+);
+assertRule(
+  part04,
+  ".structured-editor-slot.is-editable.is-link:focus",
+  "text-decoration",
+  "none"
+);
 assertRule(part04, ".review-suggestion-row-mainline .status-badge", "flex", "0 0 auto");
 assertNotIncludes(
   paragraphDocumentFlow,
@@ -211,19 +229,19 @@ assertNotIncludes(
   "写回刷新 session 时，不应因为 groups/sessionId 变化再次自动滚动到激活块"
 );
 assertNotIncludes(
-  docxSlotEditor,
+  structuredSlotEditor,
   "chunkNodesRef.current[firstEditable.index]?.focus();\n    }, [session.chunks]);",
-  "docx 编辑器写回后不应因为 chunks 变化重新聚焦首个可编辑块"
+  "结构化编辑器写回后不应因为旧 chunks 语义再次聚焦首个可编辑块"
 );
 assertIncludes(
-  docxSlotEditor,
+  structuredSlotEditor,
   "session.rewriteUnits.map((rewriteUnit) => {",
-  "docx 编辑页应与主页面一致，按 rewrite unit 作为展示分组骨架"
+  "结构化编辑页应与主页面一致，按 rewrite unit 作为展示分组骨架"
 );
 assertNotIncludes(
-  docxSlotEditor,
+  structuredSlotEditor,
   "session.writebackSlots.map((slot) => {",
-  "docx 编辑页不应再按 writeback slot 平铺渲染，避免与主页面分块不一致"
+  "结构化编辑页不应再按 writeback slot 平铺渲染，避免与主页面分块不一致"
 );
 assertNotIncludes(
   documentActions,
@@ -519,6 +537,16 @@ function renderMarkdownMarkup(text) {
   );
 }
 
+function renderPdfMarkup(text, slot = null) {
+  return renderToStaticMarkup(
+    React.createElement(
+      React.Fragment,
+      null,
+      renderInlineProtectedText(text, "pdf", "ui-regression", { slot })
+    )
+  );
+}
+
 // 1) 审阅区动作按钮不应依赖横向滚动（避免“左滑右滑”）
 assertNoRule(
   part02,
@@ -588,6 +616,24 @@ assertMatches(
   markdownBareUrlMarkup,
   /<span[^>]*class="inline-protected"[^>]*>https:\/\/example\.com\/report\/final<\/span>；后面的中文正文/,
   "期望 Markdown 裸 URL 在中文全角标点前正确收口"
+);
+
+// 13) PDF 占位符文本在无 slot 上下文时也应能高亮
+const pdfPlaceholderMarkup = renderPdfMarkup("正文[链接]后文");
+assertMatches(
+  pdfPlaceholderMarkup,
+  /正文<span[^>]*class="inline-protected"[^>]*>\[链接\]<\/span>后文/,
+  "期望 PDF 占位符在无 slot 上下文时也能高亮"
+);
+
+// 14) PDF slot 携带 protectKind 时，应优先按 slot 保护区渲染
+const pdfSlotProtectedMarkup = renderPdfMarkup("[图形]", {
+  presentation: { protectKind: "pdf-graphics" }
+});
+assertMatches(
+  pdfSlotProtectedMarkup,
+  /<span[^>]*class="inline-protected"[^>]*data-protect-kind="pdf-graphics"[^>]*>\[图形\]<\/span>/,
+  "期望 PDF protectKind 来自 slot.presentation，且渲染标记一致"
 );
 
 console.log("[ui-regression] OK");

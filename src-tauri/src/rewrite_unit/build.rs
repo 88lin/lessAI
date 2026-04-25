@@ -10,12 +10,13 @@ const CLAUSE_BOUNDARIES: [char; 10] = ['。', '！', '？', '；', '!', '?', ';'
 const CLOSING_PUNCTUATION: [char; 13] = [
     '"', '\'', '”', '’', '）', ')', '】', ']', '}', '」', '』', '》', '〉',
 ];
+const MIN_REWRITE_UNIT_CHARS: usize = 4;
 
 pub(crate) fn build_rewrite_units(
     slots: &[WritebackSlot],
     preset: SegmentationPreset,
 ) -> Vec<RewriteUnit> {
-    let mut units = Vec::new();
+    let mut groups: Vec<Vec<&WritebackSlot>> = Vec::new();
     let mut current: Vec<&WritebackSlot> = Vec::new();
 
     for slot in slots {
@@ -27,17 +28,23 @@ pub(crate) fn build_rewrite_units(
             current.clear();
             continue;
         }
-        units.push(build_unit(units.len(), preset, &current));
+        groups.push(std::mem::take(&mut current));
         current.clear();
     }
 
-    if !current.is_empty() {
-        if !should_skip_unit(&current) {
-            units.push(build_unit(units.len(), preset, &current));
-        }
+    if !current.is_empty() && !should_skip_unit(&current) {
+        groups.push(current);
     }
 
-    units
+    if preset != SegmentationPreset::Paragraph {
+        merge_short_units(&mut groups, MIN_REWRITE_UNIT_CHARS);
+    }
+
+    groups
+        .into_iter()
+        .enumerate()
+        .map(|(order, group)| build_unit(order, preset, &group))
+        .collect()
 }
 
 fn should_skip_unit(current: &[&WritebackSlot]) -> bool {
@@ -97,6 +104,33 @@ fn is_standalone_separator_unit(current: &[&WritebackSlot]) -> bool {
 
 fn is_blank_locked_unit(current: &[&WritebackSlot]) -> bool {
     current.iter().all(|slot| !slot.editable) && display_text(current).trim().is_empty()
+}
+
+fn merge_short_units(groups: &mut Vec<Vec<&WritebackSlot>>, min_chars: usize) {
+    if groups.len() <= 1 {
+        return;
+    }
+
+    let mut index = 0usize;
+    while index < groups.len() {
+        if unit_char_count(&groups[index]) >= min_chars {
+            index += 1;
+            continue;
+        }
+
+        if index + 1 < groups.len() {
+            let mut current = groups.remove(index);
+            current.append(&mut groups[index]);
+            groups[index] = current;
+            continue;
+        }
+
+        index += 1;
+    }
+}
+
+fn unit_char_count(group: &[&WritebackSlot]) -> usize {
+    display_text(group).trim().chars().count()
 }
 
 fn ends_semantic_group(current: &[&WritebackSlot], preset: SegmentationPreset) -> bool {
@@ -171,5 +205,30 @@ mod tests {
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].slot_ids, vec!["slot-2"]);
         assert_eq!(units[0].display_text, "正文开始");
+    }
+
+    #[test]
+    fn short_unit_is_merged_into_next_unit_when_below_min_chars() {
+        let first = WritebackSlot::editable("slot-1", 0, "短。");
+        let second = WritebackSlot::editable("slot-2", 1, "这是第二句。");
+
+        let units = build_rewrite_units(&[first, second], SegmentationPreset::Sentence);
+
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].slot_ids, vec!["slot-1", "slot-2"]);
+        assert_eq!(units[0].display_text, "短。这是第二句。");
+    }
+
+    #[test]
+    fn paragraph_preset_keeps_short_paragraph_as_independent_unit() {
+        let mut first = WritebackSlot::editable("slot-1", 0, "短段");
+        first.separator_after = "\n\n".to_string();
+        let second = WritebackSlot::editable("slot-2", 1, "下一段");
+
+        let units = build_rewrite_units(&[first, second], SegmentationPreset::Paragraph);
+
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[0].display_text, "短段\n\n");
+        assert_eq!(units[1].display_text, "下一段");
     }
 }

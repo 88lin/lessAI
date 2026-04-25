@@ -20,11 +20,13 @@
         "minHeight": 640,
         "center": true,
         "decorations": false,
+        "transparent": true,
+        "backgroundColor": "#00000000",
         "resizable": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {

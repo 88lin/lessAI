@@ -153,7 +153,7 @@ fn normalize_candidate_batch_response(
     }
 
     let mut normalized = Vec::with_capacity(responses.len());
-    for (rewrite_unit_id, response) in rewrite_unit_ids.iter().zip(responses.into_iter()) {
+    for (rewrite_unit_id, response) in rewrite_unit_ids.iter().zip(responses) {
         if &response.rewrite_unit_id != rewrite_unit_id {
             return Err("批量改写结果与目标改写单元顺序不一致。".to_string());
         }
@@ -191,7 +191,7 @@ fn create_committed_suggestion(
         rewrite_unit_id: response.rewrite_unit_id.clone(),
         before_text: before_text.clone(),
         after_text: after_text.clone(),
-        diff_spans: rewrite::build_diff(&before_text, &after_text),
+        diff: rewrite::build_diff_result(&before_text, &after_text),
         decision: SuggestionDecision::Applied,
         slot_updates: response.updates.clone(),
         created_at: now,

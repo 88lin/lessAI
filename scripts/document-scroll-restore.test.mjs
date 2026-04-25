@@ -3,10 +3,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import ts from "typescript";
-
-function read(path) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-}
+import { read } from "./test-helpers.mjs";
 
 async function loadDocumentScrollRestoreSharedModule() {
   const tempRoot = join(process.cwd(), ".tmp");
