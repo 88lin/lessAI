@@ -238,6 +238,31 @@ jobs:
           # AppImage runtime helpers (best-effort)
           sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
 
+      - name: Prepare linuxdeploy tools
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_dir="$HOME/.cache/tauri"
+          mkdir -p "$cache_dir"
+
+          linuxdeploy="$cache_dir/linuxdeploy-x86_64.AppImage"
+          plugin_appimage="$cache_dir/linuxdeploy-plugin-appimage.AppImage"
+
+          if [[ ! -x "$linuxdeploy" ]]; then
+            curl -fL \
+              "https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage" \
+              -o "$linuxdeploy"
+            chmod +x "$linuxdeploy"
+          fi
+
+          if [[ ! -x "$plugin_appimage" ]]; then
+            curl -fL \
+              "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage" \
+              -o "$plugin_appimage"
+            chmod +x "$plugin_appimage"
+          fi
+
       - name: Install Windows bundlers
         if: matrix.os == 'windows-latest'
         run: |
@@ -295,6 +320,12 @@ jobs:
             args+=(-c src-tauri/tauri.release.conf.json)
           fi
           pnpm exec tauri build "${args[@]}"
+
+      - name: Normalize Linux AppImage runtime
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          bash scripts/patch-linux-appimage.sh
 
       - name: Linux AppImage smoke test
         if: matrix.os == 'ubuntu-latest'
