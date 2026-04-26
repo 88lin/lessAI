@@ -128,11 +128,33 @@ export function buildWritebackSlotMap(slots: ReadonlyArray<WritebackSlot>) {
   return new Map(slots.map((slot) => [slot.id, slot] as const));
 }
 
+const sessionWritebackSlotMapCache = new WeakMap<
+  DocumentSession,
+  {
+    slotsRef: ReadonlyArray<WritebackSlot>;
+    map: Map<string, WritebackSlot>;
+  }
+>();
+
+function cachedWritebackSlotMap(session: DocumentSession) {
+  const cached = sessionWritebackSlotMapCache.get(session);
+  if (cached && cached.slotsRef === session.writebackSlots) {
+    return cached.map;
+  }
+
+  const map = buildWritebackSlotMap(session.writebackSlots);
+  sessionWritebackSlotMapCache.set(session, {
+    slotsRef: session.writebackSlots,
+    map
+  });
+  return map;
+}
+
 export function resolveRewriteUnitSlots(
   session: DocumentSession,
   rewriteUnit: RewriteUnit
 ) {
-  const slotMap = buildWritebackSlotMap(session.writebackSlots);
+  const slotMap = cachedWritebackSlotMap(session);
   return rewriteUnit.slotIds
     .map((slotId) => slotMap.get(slotId))
     .filter((slot): slot is WritebackSlot => slot != null);

@@ -672,6 +672,11 @@
   overflow-y: auto;
 }
 
+.workbench-doc-flow-shell {
+  min-height: 100%;
+  padding-top: 2px;
+}
+
 .workbench-review-mode-switch {
   --mode-slide-distance: 14px;
   min-height: 0;
