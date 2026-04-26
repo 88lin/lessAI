@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef
 } from "react";
 
@@ -23,6 +24,7 @@ import type {
 } from "./documentEditorTypes";
 import { buildSelectionSnapshotBase, resolveSnapshotRangeInText } from "./editorSelectionShared";
 import { StructuredEditorUnit } from "./StructuredEditorUnit";
+import { useProgressiveRevealCount } from "../hooks/useProgressiveRevealCount";
 
 function buildSlotSelectionSnapshot(
   node: HTMLElement,
@@ -162,6 +164,14 @@ export const StructuredSlotEditor = memo(
       slotNodesRef.current[firstEditable.id]?.focus();
     }, [session.id, session.writebackSlots]);
 
+    const renderedUnitCount = useProgressiveRevealCount({
+      total: session.rewriteUnits.length,
+      key: session.id,
+      enabled: session.rewriteUnits.length > 120,
+      initial: 80,
+      step: 120
+    });
+
     useEffect(() => {
       if (!onSelectionChange) return;
 
@@ -266,6 +276,28 @@ export const StructuredSlotEditor = memo(
       ]
     );
 
+    const visibleRewriteUnitIdSet = useMemo(
+      () => new Set(session.rewriteUnits.slice(0, renderedUnitCount).map((item) => item.id)),
+      [renderedUnitCount, session.rewriteUnits]
+    );
+
+    const renderedUnits = session.rewriteUnits.map((rewriteUnit) => {
+      if (!visibleRewriteUnitIdSet.has(rewriteUnit.id)) {
+        return null;
+      }
+      return (
+        <StructuredEditorUnit
+          key={rewriteUnit.id}
+          session={session}
+          rewriteUnit={rewriteUnit}
+          slotOverrides={slotOverrides}
+          busy={busy}
+          registerNode={registerNode}
+          onChangeSlotText={onChangeSlotText}
+        />
+      );
+    });
+
     return (
       <div
         className={`document-flow-wrap structured-editor-wrap ${showMarkers ? "is-markers" : "is-quiet"}`}
@@ -282,19 +314,10 @@ export const StructuredSlotEditor = memo(
         ) : null}
 
         <div className="workbench-editor-editable structured-editor-flow" aria-label="编辑终稿">
-          {session.rewriteUnits.map((rewriteUnit) => {
-            return (
-              <StructuredEditorUnit
-                key={rewriteUnit.id}
-                session={session}
-                rewriteUnit={rewriteUnit}
-                slotOverrides={slotOverrides}
-                busy={busy}
-                registerNode={registerNode}
-                onChangeSlotText={onChangeSlotText}
-              />
-            );
-          })}
+          {renderedUnits}
+          {renderedUnitCount < session.rewriteUnits.length ? (
+            <span className="doc-unit-wrap" aria-hidden="true" />
+          ) : null}
         </div>
       </div>
     );

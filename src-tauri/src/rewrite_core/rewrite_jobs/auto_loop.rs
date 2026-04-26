@@ -1,5 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
+use log::error;
 use tauri::{AppHandle, Manager};
 
 use crate::{
@@ -196,11 +197,16 @@ pub(super) async fn run_auto_loop(
                 }
             },
             Ok(None) => {
-                let error = ensure_in_flight_batches_drained(runtime.in_flight_batches())
-                    .expect_err(
-                        "join set drained branch should only occur when in-flight batches remain",
-                    );
-                return runtime.session_result(Err(error));
+                match ensure_in_flight_batches_drained(runtime.in_flight_batches()) {
+                    Err(error) => return runtime.session_result(Err(error)),
+                    Ok(()) => {
+                        error!(
+                            "join set 已排空但无进行中批次：session_id={}",
+                            session_id
+                        );
+                        break;
+                    }
+                }
             }
             Err(_) => {}
         }

@@ -166,6 +166,10 @@ chmod +x "$APPDIR/AppRun"
 
 RUNTIME_FILE="$(mktemp)"
 OFFSET="$(APPIMAGE_EXTRACT_AND_RUN=1 "$PLUGIN_APPIMAGE" --appimage-offset)"
+if [[ -z "${OFFSET}" ]] || [[ ! "${OFFSET}" =~ ^[0-9]+$ ]]; then
+  echo "[ERROR] 无法获取 AppImage 运行时偏移量（OFFSET=${OFFSET:-<空>}）" >&2
+  exit 1
+fi
 dd if="$PLUGIN_APPIMAGE" of="$RUNTIME_FILE" bs=1 count="$OFFSET" status=none
 chmod +x "$RUNTIME_FILE"
 

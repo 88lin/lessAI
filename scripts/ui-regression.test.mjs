@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
@@ -175,6 +175,7 @@ const reviewActionBar = read("src/stages/workbench/review/ReviewActionBar.tsx");
 const reviewEmptyState = read("src/stages/workbench/review/ReviewEmptyState.tsx");
 const suggestionReviewPane = read("src/stages/workbench/review/SuggestionReviewPane.tsx");
 const reviewSuggestionRow = read("src/stages/workbench/review/ReviewSuggestionRow.tsx");
+const progressiveRevealHook = read("src/stages/workbench/hooks/useProgressiveRevealCount.ts");
 const useRewriteActions = read("src/app/hooks/useRewriteActions.ts");
 const useSuggestionActions = read("src/app/hooks/useSuggestionActions.ts");
 const { renderInlineProtectedText } = await loadProtectedTextModule();
@@ -238,10 +239,20 @@ assertIncludes(
   "session.rewriteUnits.map((rewriteUnit) => {",
   "结构化编辑页应与主页面一致，按 rewrite unit 作为展示分组骨架"
 );
+assertIncludes(
+  structuredSlotEditor,
+  "useProgressiveRevealCount({",
+  "结构化编辑器应启用渐进渲染，避免大文档首帧卡顿"
+);
 assertNotIncludes(
   structuredSlotEditor,
   "session.writebackSlots.map((slot) => {",
   "结构化编辑页不应再按 writeback slot 平铺渲染，避免与主页面分块不一致"
+);
+assertIncludes(
+  paragraphDocumentFlow,
+  "useProgressiveRevealCount({",
+  "正文流应启用渐进渲染，避免大文档切换模式时阻塞"
 );
 assertNotIncludes(
   documentActions,
@@ -281,6 +292,11 @@ assertIncludes(suggestionReviewPane, "待处理：{currentStats.unitsProposed}")
 assertNotIncludes(suggestionReviewPane, "待审阅：{currentStats.unitsProposed}");
 assertNotIncludes(suggestionReviewPane, "待审阅：{currentStats.suggestionsProposed}");
 assertIncludes(suggestionReviewPane, "<ReviewSuggestionRow");
+assertIncludes(
+  suggestionReviewPane,
+  "useProgressiveRevealCount({",
+  "建议列表应启用渐进渲染，降低大列表一次性渲染开销"
+);
 assertNotIncludes(reviewSuggestionRow, "StatusBadge");
 assertIncludes(reviewSuggestionRow, "buildSuggestionRowPrimaryActionLabel(suggestion.decision)");
 assertIncludes(reviewSuggestionRow, '`is-${suggestion.decision}`');
@@ -314,6 +330,11 @@ assertNotIncludes(documentPanel, "右侧审阅");
 assertNotIncludes(useRewriteActions, "请在右侧审阅");
 assertNotIncludes(documentFlow, "审阅最小单元");
 assertNotIncludes(settingsHandlers, "审阅");
+assertIncludes(
+  progressiveRevealHook,
+  "export function useProgressiveRevealCount(options: UseProgressiveRevealCountOptions)",
+  "应提供通用渐进渲染 hook 作为性能优化基线"
+);
 
 const sampleSuggestion = {
   id: "sg-1",

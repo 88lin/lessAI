@@ -271,12 +271,13 @@ export function useDocumentActions(options: {
           preservedScrollTop,
           run: () =>
             withBusy(actionKey, () => {
-              if (documentEditorMode(session) !== "slotBased") {
-                return runDocumentWriteback(session.id, "write", { kind: "text", content }, editorBaseSnapshotRef.current);
+              const latestSession = currentSessionRef.current ?? session;
+              if (documentEditorMode(latestSession) !== "slotBased") {
+                return runDocumentWriteback(latestSession.id, "write", { kind: "text", content }, editorBaseSnapshotRef.current);
               }
 
-              const edits = buildEditorSlotEdits(session, editorSlotOverridesRef.current);
-              return runDocumentWriteback(session.id, "write", { kind: "slotEdits", edits }, editorBaseSnapshotRef.current);
+              const edits = buildEditorSlotEdits(latestSession, editorSlotOverridesRef.current);
+              return runDocumentWriteback(latestSession.id, "write", { kind: "slotEdits", edits }, editorBaseSnapshotRef.current);
             }),
           resolveState: () => ({
             preferredRewriteUnitId: activeRewriteUnitIdRef.current

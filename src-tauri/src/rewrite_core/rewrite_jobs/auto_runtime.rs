@@ -55,7 +55,7 @@ impl<'a> AutoLoopRuntime<'a> {
 
     pub(super) fn set_progress_baseline(&mut self, total_units: usize, completed_units: usize) {
         self.total_units = total_units;
-        self.completed_units = completed_units;
+        self.completed_units = completed_units.min(total_units);
     }
 
     pub(super) fn apply_settings(&mut self, settings: &AppSettings) {

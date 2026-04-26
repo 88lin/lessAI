@@ -1,4 +1,4 @@
-import { sanitizeFileName } from "./webBridgeModelApi";
+import { sanitizeFileName } from "./helpers";
 import { buildAppliedProjection, downloadTextFile, mergedTextFromSlots } from "./webBridgeSessionUtils";
 import { normalizeTextAgainstSourceLayout } from "./webBridgeText";
 import type { EditorWritebackPayload } from "./webBridgeEditorWriteback";

@@ -17,6 +17,7 @@ import {
   renderRewriteUnitContent,
   rewriteUnitTitle
 } from "./documentFlowShared";
+import { useProgressiveRevealCount } from "../hooks/useProgressiveRevealCount";
 
 interface ParagraphDocumentFlowProps extends DocumentFlowBodyProps {
   sessionId: string;
@@ -90,6 +91,19 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
 }: ParagraphDocumentFlowProps) {
   const rewriteUnitNodesRef = useRef<Record<string, HTMLSpanElement | null>>({});
   const previousActiveTargetRef = useRef<ActiveRewriteUnitTarget | null>(null);
+  const activeRewriteUnitIndex = useMemo(() => {
+    if (!activeRewriteUnitId) return null;
+    const index = rewriteUnits.findIndex((item) => item.id === activeRewriteUnitId);
+    return index >= 0 ? index : null;
+  }, [activeRewriteUnitId, rewriteUnits]);
+  const renderedUnitCount = useProgressiveRevealCount({
+    total: rewriteUnits.length,
+    key: sessionId,
+    enabled: rewriteUnits.length > 180,
+    initial: 140,
+    step: 180,
+    focusIndex: activeRewriteUnitIndex
+  });
 
   useEffect(() => {
     const previous = previousActiveTargetRef.current;
@@ -165,7 +179,10 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
 
   const computed = useMemo(
     () =>
-      rewriteUnits.map((rewriteUnit) => {
+      rewriteUnits.map((rewriteUnit, index) => {
+        if (index >= renderedUnitCount) {
+          return null;
+        }
         const unitSuggestions = suggestionsByRewriteUnit.get(rewriteUnit.id) ?? [];
         const summary = summarizeRewriteUnitSuggestions(unitSuggestions);
         const displaySuggestion = summary.applied ?? summary.proposed ?? null;
@@ -197,13 +214,18 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
       optimisticManualRunningRewriteUnitId,
       rewriteUnits,
       runningRewriteUnitIdSet,
+      renderedUnitCount,
       selectedRewriteUnitIds,
       session,
       suggestionsByRewriteUnit
     ]
   );
 
-  return computed.map(({ rewriteUnit, displaySuggestion, classes }) => {
+  return computed.map((item) => {
+    if (!item) {
+      return null;
+    }
+    const { rewriteUnit, displaySuggestion, classes } = item;
     const rendered = renderRewriteUnitContent(
       session,
       rewriteUnit,

@@ -485,10 +485,15 @@ export default function App() {
           rewriteUnitId: payload.rewriteUnitId,
           suggestionId: payload.suggestionId
         });
-        await refreshSessionState(payload.sessionId, {
-          preferredRewriteUnitId: payload.rewriteUnitId,
-          preferredSuggestionId: payload.suggestionId
-        });
+        try {
+          await refreshSessionState(payload.sessionId, {
+            preferredRewriteUnitId: payload.rewriteUnitId,
+            preferredSuggestionId: payload.suggestionId
+          });
+        } catch (error) {
+          console.error("刷新会话状态失败（rewrite_unit_completed）：", error);
+          showNotice("warning", "改写结果已生成，但刷新状态时出错，请手动刷新。");
+        }
       }
     },
     onFinished: async (payload) => {
@@ -498,12 +503,17 @@ export default function App() {
       const session = currentSessionRef.current;
       if (session && payload.sessionId === session.id) {
         logScrollRestore("tauri-finished", { sessionId: payload.sessionId });
-        const refreshed = await refreshSessionState(payload.sessionId, {
-          preserveRewriteUnit: true,
-          preserveSuggestion: true
-        });
-        if (refreshed.status === "completed") {
-          showNotice("success", "自动批处理已完成，当前文稿可以直接导出。");
+        try {
+          const refreshed = await refreshSessionState(payload.sessionId, {
+            preserveRewriteUnit: true,
+            preserveSuggestion: true
+          });
+          if (refreshed.status === "completed") {
+            showNotice("success", "自动批处理已完成，当前文稿可以直接导出。");
+          }
+        } catch (error) {
+          console.error("刷新会话状态失败（rewrite_finished）：", error);
+          showNotice("warning", "改写已完成，但刷新状态时出错，请手动刷新。");
         }
       }
     },
@@ -518,10 +528,14 @@ export default function App() {
           sessionId: payload.sessionId,
           error: payload.error
         });
-        await refreshSessionState(payload.sessionId, {
-          preserveRewriteUnit: true,
-          preserveSuggestion: true
-        });
+        try {
+          await refreshSessionState(payload.sessionId, {
+            preserveRewriteUnit: true,
+            preserveSuggestion: true
+          });
+        } catch (error) {
+          console.error("刷新会话状态失败（rewrite_failed）：", error);
+        }
       }
     }
   });

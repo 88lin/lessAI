@@ -5,6 +5,7 @@ import type { DocumentSession, RewriteSuggestion, RewriteUnit } from "../../../l
 import type { SessionStats } from "../../../lib/helpers";
 import { ReviewSuggestionRow } from "./ReviewSuggestionRow";
 import { buildSuggestionRowActionState } from "./reviewSuggestionRowModel";
+import { useProgressiveRevealCount } from "../hooks/useProgressiveRevealCount";
 
 interface SuggestionReviewPaneProps {
   settingsReady: boolean;
@@ -44,6 +45,13 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
   onRetry
 }: SuggestionReviewPaneProps) {
   const [openMenuSuggestionId, setOpenMenuSuggestionId] = useState<string | null>(null);
+  const renderedSuggestionCount = useProgressiveRevealCount({
+    total: orderedSuggestions.length,
+    key: currentSession.id,
+    enabled: orderedSuggestions.length > 220,
+    initial: 180,
+    step: 220
+  });
   const failedRewriteUnitIds = useMemo(
     () =>
       new Set(
@@ -98,7 +106,7 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
         </div>
       ) : (
         <div className="suggestion-list scroll-region">
-          {orderedSuggestions.map((suggestion) => (
+          {orderedSuggestions.slice(0, renderedSuggestionCount).map((suggestion) => (
             <ReviewSuggestionRow
               key={suggestion.id}
               suggestion={suggestion}
@@ -150,6 +158,11 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
               }
             />
           ))}
+          {renderedSuggestionCount < orderedSuggestions.length ? (
+            <div className="empty-inline" aria-hidden="true">
+              <span>正在加载更多建议…</span>
+            </div>
+          ) : null}
         </div>
       )}
     </>

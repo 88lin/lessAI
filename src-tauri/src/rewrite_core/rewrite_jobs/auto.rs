@@ -148,7 +148,12 @@ where
     session.updated_at = updated_at;
     let saved_session = hydrated_session_clone(session);
     if let Err(error) = save(&saved_session) {
-        let _ = rollback(&session.id);
+        if let Err(rollback_error) = rollback(&session.id) {
+            error!(
+                "无法回滚任务预留：session_id={} error={rollback_error}",
+                session.id
+            );
+        }
         return Err(error);
     }
     Ok((saved_session, target_unit_ids, job))

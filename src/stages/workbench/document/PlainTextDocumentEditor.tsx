@@ -58,6 +58,7 @@ export const PlainTextDocumentEditor = memo(
   ) {
     const editorFieldRef = useRef<HTMLDivElement | null>(null);
     const hasSelectionRef = useRef(false);
+    const lastSyncedTextRef = useRef<string | null>(null);
 
     useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
@@ -76,10 +77,20 @@ export const PlainTextDocumentEditor = memo(
       const node = editorFieldRef.current;
       if (!node) return;
 
-      const domText = normalizeNewlines(node.innerText);
-      if (domText === value) return;
-      if (document.activeElement === node && dirty) return;
-      node.innerText = value;
+      if (lastSyncedTextRef.current == null) {
+        node.textContent = value;
+        lastSyncedTextRef.current = value;
+        return;
+      }
+
+      if (lastSyncedTextRef.current === value) return;
+      if (document.activeElement === node && dirty) {
+        lastSyncedTextRef.current = normalizeNewlines(node.innerText);
+        return;
+      }
+
+      node.textContent = value;
+      lastSyncedTextRef.current = value;
     }, [dirty, value]);
 
     useEffect(() => {
@@ -132,7 +143,8 @@ export const PlainTextDocumentEditor = memo(
           const preview = previewReplacementValue(node, snapshot, replacementText);
           if (!preview.ok) return preview;
 
-          node.innerText = preview.value;
+          node.textContent = preview.value;
+          lastSyncedTextRef.current = preview.value;
           node.focus();
           onChange(preview.value);
           return { ok: true };
@@ -146,7 +158,9 @@ export const PlainTextDocumentEditor = memo(
     const handleEditorInput = useCallback(() => {
       const node = editorFieldRef.current;
       if (!node) return;
-      onChange(normalizeNewlines(node.innerText));
+      const nextText = normalizeNewlines(node.innerText);
+      lastSyncedTextRef.current = nextText;
+      onChange(nextText);
     }, [onChange]);
 
     const handleEditorPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
@@ -160,7 +174,13 @@ export const PlainTextDocumentEditor = memo(
       selection.deleteFromDocument();
       selection.getRangeAt(0).insertNode(document.createTextNode(text));
       selection.collapseToEnd();
-    }, []);
+      const node = editorFieldRef.current;
+      if (node) {
+        const nextText = normalizeNewlines(node.innerText);
+        lastSyncedTextRef.current = nextText;
+        onChange(nextText);
+      }
+    }, [onChange]);
 
     return (
       <div

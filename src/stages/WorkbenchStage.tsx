@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import type { MutableRefObject } from "react";
 import type {
   AppSettings,
@@ -118,6 +118,10 @@ export const WorkbenchStage = memo(function WorkbenchStage({
     }
   });
 
+  const handleToggleMarkers = useCallback(() => {
+    setShowMarkers((value) => !value);
+  }, []);
+
   const suggestionsByRewriteUnit = useMemo(
     () => groupSuggestionsByRewriteUnit(currentSession?.suggestions ?? []),
     [currentSession?.suggestions]
@@ -201,7 +205,7 @@ export const WorkbenchStage = memo(function WorkbenchStage({
             onDiscardEditorChanges={onDiscardEditorChanges}
             onExitEditor={onExitEditor}
             onRewriteSelection={onRewriteSelection}
-            onToggleMarkers={() => setShowMarkers((value) => !value)}
+            onToggleMarkers={handleToggleMarkers}
           />
         </div>
 
