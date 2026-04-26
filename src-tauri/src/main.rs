@@ -57,7 +57,7 @@ fn apply_linux_graphics_compat_env() {
         }
     }
 
-    fn parse_graphics_mode(_appimage_runtime: bool) -> (GraphicsMode, bool) {
+    fn parse_graphics_mode(appimage_runtime: bool) -> (GraphicsMode, bool) {
         match std::env::var("LESSAI_LINUX_GRAPHICS_MODE") {
             Ok(raw_mode) => {
                 let mode = raw_mode.to_ascii_lowercase();
@@ -78,7 +78,7 @@ fn apply_linux_graphics_compat_env() {
                 let force_gpu = std::env::var("LESSAI_FORCE_GPU")
                     .map(|value| value == "1")
                     .unwrap_or(false);
-                if force_gpu {
+                if force_gpu || appimage_runtime {
                     (GraphicsMode::Native, false)
                 } else {
                     (GraphicsMode::Auto, false)
@@ -117,10 +117,10 @@ fn apply_linux_graphics_compat_env() {
     let appimage_runtime = std::env::var_os("APPIMAGE").is_some();
 
     let (graphics_mode, has_explicit_graphics_mode) = parse_graphics_mode(appimage_runtime);
-    if appimage_runtime && !has_explicit_graphics_mode && graphics_mode == GraphicsMode::Auto {
+    if appimage_runtime && !has_explicit_graphics_mode && graphics_mode == GraphicsMode::Native {
         eprintln!(
-            "AppImage detected: defaulting LESSAI_LINUX_GRAPHICS_MODE to auto. \
-Set LESSAI_LINUX_GRAPHICS_MODE=safe or native to override."
+            "AppImage detected: defaulting LESSAI_LINUX_GRAPHICS_MODE to native. \
+Set LESSAI_LINUX_GRAPHICS_MODE=safe or auto to override."
         );
     }
 
