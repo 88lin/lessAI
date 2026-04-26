@@ -236,6 +236,22 @@
   background: var(--theme-surface-4);
 }
 
+:root[data-theme="dark"] .version-dropdown-panel {
+  background: var(--theme-surface-2);
+}
+
+:root[data-theme="dark"] .version-dropdown-option {
+  background: var(--theme-surface-2);
+}
+
+:root[data-theme="dark"] .version-dropdown-option:hover:not(:disabled) {
+  background: var(--theme-surface-3);
+}
+
+:root[data-theme="dark"] .version-dropdown-option-selected {
+  background: linear-gradient(135deg, rgba(239, 193, 34, 0.16), var(--theme-surface-3));
+}
+
 :root[data-theme="dark"] input::placeholder,
 :root[data-theme="dark"] textarea::placeholder {
   color: rgba(156, 163, 175, 0.9);
