@@ -31,6 +31,36 @@ echo "[INFO] AppDir: $APPDIR"
 echo "[INFO] Output AppImage: $OUT_APPIMAGE"
 echo "[INFO] Plugin: $PLUGIN_APPIMAGE"
 
+# Align desktop Icon=<name> with actual icon file casing in AppDir.
+# Some toolchains emit `LessAI.png` while desktop entry uses `lessai`,
+# which makes appimagetool fail on Linux.
+ensure_desktop_icon_alias() {
+  local desktop_file icon_name icon_path match_path
+
+  desktop_file="$(find "$APPDIR/usr/share/applications" -maxdepth 1 -type f -name '*.desktop' | head -n 1 || true)"
+  if [[ -z "$desktop_file" || ! -f "$desktop_file" ]]; then
+    return
+  fi
+
+  icon_name="$(awk -F= '/^Icon=/{print $2; exit}' "$desktop_file" | tr -d '\r' | xargs || true)"
+  if [[ -z "$icon_name" ]]; then
+    return
+  fi
+
+  icon_path="$APPDIR/${icon_name}.png"
+  if [[ -e "$icon_path" ]]; then
+    return
+  fi
+
+  match_path="$(find "$APPDIR" -maxdepth 1 -type f -iname "${icon_name}.png" | head -n 1 || true)"
+  if [[ -n "$match_path" ]]; then
+    ln -sfn "$(basename "$match_path")" "$icon_path"
+    echo "[INFO] Added icon alias: $(basename "$match_path") -> ${icon_name}.png"
+  fi
+}
+
+ensure_desktop_icon_alias
+
 # Ensure WebKit subprocess binaries are available in common probe paths.
 WEBKIT_SRC=""
 for candidate in \

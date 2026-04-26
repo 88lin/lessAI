@@ -84,24 +84,26 @@ export const ReviewPanel = memo(function ReviewPanel({
             inert={editorMode}
           >
             <div className="workbench-mode-content workbench-review-mode-content">
-              <SuggestionReviewPane
-                settingsReady={settingsReady}
-                currentSession={currentSession}
-                currentStats={currentStats}
-                activeRewriteUnit={activeRewriteUnit}
-                activeSuggestionId={activeSuggestionId}
-                orderedSuggestions={orderedSuggestions}
-                anyBusy={anyBusy}
-                busyAction={busyAction}
-                rewriteRunning={rewriteRunning ?? false}
-                rewritePaused={rewritePaused ?? false}
-                onSelectRewriteUnit={onSelectRewriteUnit}
-                onSelectSuggestion={onSelectSuggestion}
-                onApplySuggestion={onApplySuggestion}
-                onDismissSuggestion={onDismissSuggestion}
-                onDeleteSuggestion={onDeleteSuggestion}
-                onRetry={onRetry}
-              />
+              {!editorMode ? (
+                <SuggestionReviewPane
+                  settingsReady={settingsReady}
+                  currentSession={currentSession}
+                  currentStats={currentStats}
+                  activeRewriteUnit={activeRewriteUnit}
+                  activeSuggestionId={activeSuggestionId}
+                  orderedSuggestions={orderedSuggestions}
+                  anyBusy={anyBusy}
+                  busyAction={busyAction}
+                  rewriteRunning={rewriteRunning ?? false}
+                  rewritePaused={rewritePaused ?? false}
+                  onSelectRewriteUnit={onSelectRewriteUnit}
+                  onSelectSuggestion={onSelectSuggestion}
+                  onApplySuggestion={onApplySuggestion}
+                  onDismissSuggestion={onDismissSuggestion}
+                  onDeleteSuggestion={onDeleteSuggestion}
+                  onRetry={onRetry}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -111,13 +113,15 @@ export const ReviewPanel = memo(function ReviewPanel({
             inert={!editorMode}
           >
             <div className="workbench-mode-content workbench-review-mode-content">
-              <EditorReviewPane
-                currentSession={currentSession}
-                editorText={editorText}
-                editorSlotOverrides={editorSlotOverrides}
-                editorDirty={editorDirty}
-                showMarkers={showMarkers}
-              />
+              {editorMode ? (
+                <EditorReviewPane
+                  currentSession={currentSession}
+                  editorText={editorText}
+                  editorSlotOverrides={editorSlotOverrides}
+                  editorDirty={editorDirty}
+                  showMarkers={showMarkers}
+                />
+              ) : null}
             </div>
           </div>
         </div>
