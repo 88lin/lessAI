@@ -88,8 +88,6 @@ fn apply_linux_graphics_compat_env() {
     }
 
     fn apply_safe_mode(session_is_wayland: bool, has_wayland: bool, has_x11: bool) {
-        set_if_unset("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        set_if_unset("WEBKIT_DMABUF_RENDERER_DISABLE_GBM", "1");
         set_if_unset("GSK_RENDERER", "cairo");
         set_if_unset("LIBGL_ALWAYS_SOFTWARE", "1");
         set_if_unset("NO_AT_BRIDGE", "1");
@@ -155,15 +153,15 @@ Set LESSAI_LINUX_GRAPHICS_MODE=safe or auto to override."
                 }
             }
 
-            // AppImage 使用系统 WebKitGTK 库时，dmabuf 可能触发行锁导致 contentEditable 卡死，
-            // 因此不再在 auto 模式下统一禁用 dmabuf；遇到 dmabuf 崩溃的用户可手动设置
-            // WEBKIT_DISABLE_DMABUF_RENDERER=1 或切换到 safe 模式。
+            // WEBKIT_DISABLE_DMABUF_RENDERER 会强制 CPU 渲染，在 AppImage
+            // 环境下触发 WebKitGTK 行锁导致 contentEditable 卡死，因此不再
+            // 在任何模式下设置该变量。
         }
         GraphicsMode::Safe => {
             apply_safe_mode(session_is_wayland, has_wayland, has_x11);
             if appimage_runtime {
                 eprintln!(
-                    "linux graphics safe-mode enabled: WEBKIT_DISABLE_DMABUF_RENDERER=1, WEBKIT_DMABUF_RENDERER_DISABLE_GBM=1, GSK_RENDERER=cairo, LIBGL_ALWAYS_SOFTWARE=1"
+                    "linux graphics safe-mode enabled: GSK_RENDERER=cairo, LIBGL_ALWAYS_SOFTWARE=1"
                 );
             }
         }

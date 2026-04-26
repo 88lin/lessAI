@@ -431,7 +431,7 @@ export function useUpdateChecker(options: {
         );
       });
     } catch (error) {
-      showNotice("error", `拉取版本列表失败：${readableError(error)}`);
+      showNotice("error", readableError(error));
     }
   }, [normalizedProxy, showNotice, withBusy]);
 
