@@ -557,6 +557,7 @@
 
 .document-flow-wrap {
   position: relative;
+  padding-top: 2px;
 }
 
 .document-flow-wrap.has-status .unit-legend {
@@ -565,7 +566,7 @@
 
 .document-flow-status {
   position: absolute;
-  top: 0;
+  top: 2px;
   right: 0;
   z-index: 2;
   display: flex;

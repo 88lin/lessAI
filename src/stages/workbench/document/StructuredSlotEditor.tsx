@@ -78,10 +78,19 @@ export const StructuredSlotEditor = memo(
     ref
   ) {
     const slotNodesRef = useRef<Record<string, HTMLSpanElement | null>>({});
+    const editableSlotIdSetRef = useRef<Set<string>>(new Set());
+    const nodeSlotIdMapRef = useRef<WeakMap<Node, string>>(new WeakMap());
     const hasSelectionRef = useRef(false);
 
     const registerNode = useCallback((slotId: string, node: HTMLSpanElement | null) => {
+      const previous = slotNodesRef.current[slotId];
+      if (previous) {
+        nodeSlotIdMapRef.current.delete(previous);
+      }
       slotNodesRef.current[slotId] = node;
+      if (node) {
+        nodeSlotIdMapRef.current.set(node, slotId);
+      }
     }, []);
 
     const findSessionSlot = useCallback(
@@ -89,22 +98,50 @@ export const StructuredSlotEditor = memo(
       [session.writebackSlots]
     );
 
+    useEffect(() => {
+      const set = new Set<string>();
+      for (const slot of session.writebackSlots) {
+        if (slot.editable) {
+          set.add(slot.id);
+        }
+      }
+      editableSlotIdSetRef.current = set;
+    }, [session.writebackSlots]);
+
     const captureSlotSelection = useCallback(() => {
       const selection = window.getSelection();
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       if (!range) return null;
 
-      for (const slot of session.writebackSlots) {
-        if (!slot.editable) continue;
-        const node = slotNodesRef.current[slot.id];
-        if (!node) continue;
-        if (!node.contains(range.startContainer) || !node.contains(range.endContainer)) {
-          continue;
+      const resolveSlotIdFromNode = (node: Node | null): string | null => {
+        let current: Node | null = node;
+        while (current) {
+          const mapped = nodeSlotIdMapRef.current.get(current);
+          if (mapped && editableSlotIdSetRef.current.has(mapped)) {
+            return mapped;
+          }
+          if (current instanceof HTMLElement) {
+            const direct = current.dataset.slotId;
+            if (direct && editableSlotIdSetRef.current.has(direct)) {
+              return direct;
+            }
+          }
+          current = current.parentNode;
         }
-        return buildSlotSelectionSnapshot(node, slot.id, range);
-      }
+        return null;
+      };
 
-      return null;
+      const startSlotId = resolveSlotIdFromNode(range.startContainer);
+      if (!startSlotId) return null;
+      const endSlotId = resolveSlotIdFromNode(range.endContainer);
+      if (!endSlotId || endSlotId !== startSlotId) return null;
+
+      const node = slotNodesRef.current[startSlotId];
+      if (!node) return null;
+      if (!node.contains(range.startContainer) || !node.contains(range.endContainer)) {
+        return null;
+      }
+      return buildSlotSelectionSnapshot(node, startSlotId, range);
     }, [session.writebackSlots]);
 
     useEffect(() => {
