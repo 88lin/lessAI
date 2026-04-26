@@ -65,7 +65,10 @@ pub(super) fn finish_auto_loop(
             mark_session_failed(app, state, session_id, error.clone())?;
             Err(error)
         }
-        AutoLoopStop::SettledFailure(error) => Err(error),
+        AutoLoopStop::SettledFailure(error) => {
+            mark_session_failed(app, state, session_id, error.clone())?;
+            Err(error)
+        }
         AutoLoopStop::BatchFailed {
             rewrite_unit_ids,
             error,

@@ -1,6 +1,5 @@
 use std::{collections::HashSet, sync::Arc};
 
-use log::error;
 use tauri::{AppHandle, Manager};
 
 use crate::{
@@ -179,6 +178,9 @@ pub(super) async fn run_auto_loop(
         {
             Ok(Some(joined)) => match joined {
                 Ok((rewrite_unit_ids, Ok(responses))) => {
+                    if runtime.is_cancelled() {
+                        return runtime.cancel();
+                    }
                     finish_completed_batch_steps(
                         &mut runtime,
                         &rewrite_unit_ids,
@@ -208,11 +210,10 @@ pub(super) async fn run_auto_loop(
                 match ensure_in_flight_batches_drained(runtime.in_flight_batches()) {
                     Err(error) => return runtime.session_result(Err(error)),
                     Ok(()) => {
-                        error!(
-                            "join set 已排空但无进行中批次：session_id={}",
-                            session_id
-                        );
-                        break;
+                        return runtime.session_result(Err(
+                            "自动任务内部状态不一致：后台任务集合已清空但跟踪的进行中批次也为空，请刷新页面重试。"
+                                .to_string(),
+                        ));
                     }
                 }
             }

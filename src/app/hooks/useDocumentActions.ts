@@ -148,6 +148,11 @@ export function useDocumentActions(options: {
       return;
     }
 
+    if (busyAction) {
+      showNotice("warning", "当前有操作在执行，请稍后再试。");
+      return;
+    }
+
     const latestSession = await refreshAllowedSessionOrNotify({
       session,
       refreshSessionState,
