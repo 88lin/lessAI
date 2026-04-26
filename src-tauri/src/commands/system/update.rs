@@ -20,11 +20,11 @@ use crate::network_proxy::normalize_proxy_url;
 use crate::storage;
 
 const GITHUB_RELEASES_API_URL: &str =
-    "https://api.github.com/repos/GTJasonMK/lessAI/releases?per_page=50";
+    "https://api.github.com/repos/88lin/lessAI/releases?per_page=50";
 const GITHUB_RELEASE_BY_TAG_API_URL_TEMPLATE: &str =
-    "https://api.github.com/repos/GTJasonMK/lessAI/releases/tags/{tag}";
+    "https://api.github.com/repos/88lin/lessAI/releases/tags/{tag}";
 const RELEASE_MANIFEST_URL_TEMPLATE: &str =
-    "https://github.com/GTJasonMK/lessAI/releases/download/{tag}/latest.json";
+    "https://github.com/88lin/lessAI/releases/download/{tag}/latest.json";
 const SYSTEM_PACKAGE_MANIFEST_ASSET_NAME: &str = "system-packages.json";
 const SYSTEM_PACKAGE_MANIFEST_SIGNATURE_ASSET_NAME: &str = "system-packages.json.sig";
 const RELEASES_USER_AGENT: &str = "LessAI-VersionManager/1.0";

@@ -1,6 +1,6 @@
 export type SegmentationPreset = "clause" | "sentence" | "paragraph";
 export type RewriteMode = "manual" | "auto";
-export type PromptPresetId = "aigc_v1" | "humanizer_zh" | (string & {});
+export type PromptPresetId = "aigc_v1" | "humanizer_zh" | "thesis_ai_reduction" | (string & {});
 export type RewriteUnitStatus = "idle" | "running" | "done" | "failed";
 export type DiffType = "unchanged" | "insert" | "delete";
 export type RunningState = "idle" | "running" | "paused" | "completed" | "cancelled" | "failed";

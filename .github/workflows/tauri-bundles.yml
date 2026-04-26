@@ -1,5 +1,12 @@
 name: Tauri Bundles
 
+permissions:
+  contents: read
+
+concurrency:
+  group: tauri-bundles-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,12 +15,16 @@ on:
         required: false
         default: ""
       release_tag:
-        description: "Upload artifacts to this release tag (e.g. v0.1.8). Leave empty to skip release."
+        description: "Upload artifacts to this release tag (e.g. v0.3.10). Leave empty to auto-release on master."
         required: false
         default: ""
   push:
+    branches:
+      - master
     tags:
       - "v*"
+  schedule:
+    - cron: "*/15 * * * *"
 
 jobs:
   preflight:
@@ -23,6 +34,8 @@ jobs:
       build_sha: ${{ steps.resolve-build.outputs.build_sha }}
       release_tag: ${{ steps.resolve-build.outputs.release_tag }}
       release_version: ${{ steps.resolve-build.outputs.release_version }}
+      release_enabled: ${{ steps.resolve-build.outputs.release_enabled }}
+      release_prerelease: ${{ steps.resolve-build.outputs.release_prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,10 +47,16 @@ jobs:
         env:
           INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
           INPUT_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
           build_ref=""
+          release_tag=""
+          release_version=""
+          release_enabled="false"
+          release_prerelease="false"
+
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             if [[ -n "${INPUT_REF}" ]]; then
               build_ref="${INPUT_REF}"
@@ -60,11 +79,52 @@ jobs:
             fi
           fi
 
-          release_tag=""
+          release_version_from_tag() {
+            local tag="$1"
+            if [[ "${tag}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
+              printf '%s-%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+            else
+              printf '%s' "${tag#v}"
+            fi
+          }
+
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            release_tag="${INPUT_RELEASE_TAG}"
+            if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+              release_tag="${INPUT_RELEASE_TAG}"
+              release_enabled="true"
+            fi
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             release_tag="${GITHUB_REF_NAME}"
+            release_enabled="true"
+          elif [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_REF_NAME}" == "${DEFAULT_BRANCH}" || "${GITHUB_REF_NAME}" == "master" ]]; then
+            base_version="$(python3 -c 'import json,re; version=json.load(open("src-tauri/tauri.conf.json", "r", encoding="utf-8"))["version"]; assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"Unsupported base version for automatic branch release: {version}"; print(version)')"
+            base_tag_regex="^v${base_version//./\\.}(\\.[0-9]+)?$"
+            existing_auto_tag="$(git tag --points-at HEAD | grep -E "${base_tag_regex}" | head -n 1 || true)"
+            if [[ -n "${existing_auto_tag}" ]]; then
+              echo "[INFO] Current HEAD already has fork release tag ${existing_auto_tag}; skipping duplicate auto release."
+            elif ! git rev-parse --verify "v${base_version}^{commit}" >/dev/null 2>&1; then
+              release_tag="v${base_version}"
+              release_version="${base_version}"
+              release_enabled="true"
+            else
+              next_auto_index="$(
+                git tag --list "v${base_version}.*" | awk -v prefix="v${base_version}." '
+                  $0 ~ ("^" prefix "[0-9]+$") {
+                    value = $0
+                    sub("^" prefix, "", value)
+                    if ((value + 0) > max) {
+                      max = value + 0
+                    }
+                  }
+                  END {
+                    print max + 1
+                  }
+                '
+              )"
+              release_tag="v${base_version}.${next_auto_index}"
+              release_version="${base_version}-${next_auto_index}"
+              release_enabled="true"
+            fi
           fi
 
           normalized_tag=""
@@ -74,7 +134,11 @@ jobs:
             if [[ "${normalized_tag}" != v* ]]; then
               normalized_tag="v${normalized_tag}"
             fi
-            version="${normalized_tag#v}"
+            if [[ -n "${release_version}" ]]; then
+              version="${release_version}"
+            else
+              version="$(release_version_from_tag "${normalized_tag}")"
+            fi
           fi
 
           build_sha="$(git rev-parse HEAD)"
@@ -103,8 +167,12 @@ jobs:
           fi
 
           if [[ -n "${version}" ]]; then
+            if [[ "${version}" == *-* ]]; then
+              release_prerelease="true"
+            fi
             echo "[INFO] Release tag: ${normalized_tag}"
             echo "[INFO] Release version: ${version}"
+            echo "[INFO] Release enabled: ${release_enabled}"
           else
             echo "[INFO] Not a release build (no tag detected / no release_tag input)."
           fi
@@ -112,6 +180,8 @@ jobs:
           echo "build_sha=${build_sha}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${normalized_tag}" >> "${GITHUB_OUTPUT}"
           echo "release_version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "release_enabled=${release_enabled}" >> "${GITHUB_OUTPUT}"
+          echo "release_prerelease=${release_prerelease}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -156,6 +226,7 @@ jobs:
   bundle:
     name: Bundle (${{ matrix.os }})
     needs: preflight
+    if: ${{ needs.preflight.outputs.release_enabled == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ${{ matrix.os }}
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -184,6 +255,20 @@ jobs:
           else
             echo "[INFO] Not a release build (no tag detected / no release_tag input)."
           fi
+
+      - name: Write Windows prerelease bundle override
+        if: ${{ matrix.os == 'windows-latest' && contains(env.RELEASE_VERSION, '-') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > src-tauri/tauri.windows-prerelease.conf.json <<EOF
+          {
+            "bundle": {
+              "targets": ["nsis"]
+            }
+          }
+          EOF
+          echo "[INFO] Windows prerelease build will use NSIS only."
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -341,6 +426,9 @@ jobs:
           if [ -f src-tauri/tauri.release.conf.json ]; then
             args+=(-c src-tauri/tauri.release.conf.json)
           fi
+          if [ -f src-tauri/tauri.windows-prerelease.conf.json ]; then
+            args+=(-c src-tauri/tauri.windows-prerelease.conf.json)
+          fi
           pnpm exec tauri build "${args[@]}"
 
       - name: Build bundles (without updater artifacts)
@@ -357,6 +445,9 @@ jobs:
           args=()
           if [ -f src-tauri/tauri.release.conf.json ]; then
             args+=(-c src-tauri/tauri.release.conf.json)
+          fi
+          if [ -f src-tauri/tauri.windows-prerelease.conf.json ]; then
+            args+=(-c src-tauri/tauri.windows-prerelease.conf.json)
           fi
           pnpm exec tauri build "${args[@]}"
 
@@ -550,7 +641,7 @@ jobs:
 
   release:
     name: Release (GitHub)
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') }}
+    if: ${{ needs.preflight.outputs.release_enabled == 'true' }}
     needs: [preflight, bundle]
     runs-on: ubuntu-latest
     env:
@@ -700,7 +791,7 @@ jobs:
 
           extract_semver() {
             local name="$1"
-            if [[ "$name" =~ ([0-9]+\\.[0-9]+\\.[0-9]+) ]]; then
+            if [[ "$name" =~ ([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?) ]]; then
               printf '%s' "${BASH_REMATCH[1]}"
             fi
           }
@@ -915,6 +1006,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ needs.preflight.outputs.build_sha }}
           files: release-assets/*
           body: |
             ## 文档兼容边界（重要）
@@ -924,3 +1016,4 @@ jobs:
             - 如遇写回阻断，可先导出为新文件继续处理。
             - 详细口径见：`docs/release-writeback-compatibility.md`
           generate_release_notes: true
+          prerelease: ${{ needs.preflight.outputs.release_prerelease == 'true' }}

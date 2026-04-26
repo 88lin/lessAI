@@ -9,18 +9,18 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/GTJasonMK/lessAI/releases">Releases</a>
+  <a href="https://github.com/88lin/lessAI/releases">Releases</a>
   ·
   <a href="https://gtjasonmk.github.io/lessAI/">Web Demo</a>
   ·
-  <a href="https://github.com/GTJasonMK/lessAI/issues">Issues</a>
+  <a href="https://github.com/88lin/lessAI/issues">Issues</a>
   ·
   <a href="LICENSE">License</a>
 </p>
 
 <p align="center">
-  <img alt="CI" src="https://github.com/GTJasonMK/lessAI/actions/workflows/ci.yml/badge.svg" />
-  <img alt="Bundles" src="https://github.com/GTJasonMK/lessAI/actions/workflows/tauri-bundles.yml/badge.svg" />
+  <img alt="CI" src="https://github.com/88lin/lessAI/actions/workflows/ci.yml/badge.svg" />
+  <img alt="Bundles" src="https://github.com/88lin/lessAI/actions/workflows/tauri-bundles.yml/badge.svg" />
 </p>
 
 ---
@@ -156,7 +156,7 @@ LessAI 是一个基于 **Tauri 2** 的桌面端中文改写工作台：把“改
 1. 打开设置，填写：
    - `Base URL`（例如 OpenAI / 兼容中转的地址）
    - `API Key`
-   - `Model`（例如 `gpt-4.1-mini`）
+   - `Model`（例如 `gpt-5.5`）
 2. 打开文件（`.txt` / `.md` / `.markdown` / `.tex` / `.latex` / `.docx` / `.pdf`）。
 3. 选择切分粒度（小句/整句/段落），以及生成模式（手动/自动）。
 4. 在右侧时间线审阅每条“修改对”：
@@ -175,7 +175,7 @@ LessAI 是一个基于 **Tauri 2** 的桌面端中文改写工作台：把“改
 
 推荐直接使用 GitHub Releases 安装包（Windows/macOS/Linux）：
 
-- <https://github.com/GTJasonMK/lessAI/releases>
+- <https://github.com/88lin/lessAI/releases>
 
 Web 演示版（GitHub Pages）：
 
@@ -275,8 +275,8 @@ cargo test
 - `master` 分支 push 会触发 `.github/workflows/pages-demo.yml`，自动发布 TXT 演示站到 GitHub Pages
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.10
+git push origin v0.3.10
 ```
 
 ## 🗂️ 目录结构（速览）
