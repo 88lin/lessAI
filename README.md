@@ -20,7 +20,7 @@
 
 <p align="center">
   <img alt="CI" src="https://github.com/GTJasonMK/lessAI/actions/workflows/ci.yml/badge.svg" />
-  <img alt="Bundles" src="https://github.com/GTJasonMK/lessAI/actions/workflows/tauri-bundles.yml/badge.svg" />
+  <img alt="Bundles" src="https://github.com/GTJasonMK/lessAI/actions/workflows/tauri-bundles.yml/badge.svg?branch=master" />
 </p>
 
 ---

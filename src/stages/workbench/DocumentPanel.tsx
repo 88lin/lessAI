@@ -411,27 +411,29 @@ export const DocumentPanel = memo(function DocumentPanel({
                   ref={flowScrollRef}
                   className="workbench-mode-content workbench-doc-mode-content"
                 >
-                  <div className="workbench-doc-flow-shell">
-                    <DocumentFlow
-                      sessionId={currentSession.id}
-                      session={currentSession}
-                      rewriteUnits={currentSession.rewriteUnits}
-                      documentView={documentView}
-                      documentFormat={documentFormat}
-                      rewriteEnabled={!rewriteBlockReason}
-                      rewriteBlockedReason={rewriteBlockReason}
-                      showMarkers={showMarkers}
-                      suggestionsByRewriteUnit={suggestionsByRewriteUnit}
-                      runningRewriteUnitIdSet={runningRewriteUnitIdSet}
-                      optimisticManualRunningRewriteUnitId={optimisticManualRunningRewriteUnitId}
-                      activeRewriteUnitId={activeRewriteUnitId}
-                      activeSuggestionId={activeSuggestionId}
-                      activeReviewNavigationRequestId={activeReviewNavigationRequestId}
-                      selectedRewriteUnitIds={selectedRewriteUnitIds}
-                      onSelectRewriteUnit={onSelectRewriteUnit}
-                      onSelectSuggestion={onSelectSuggestion}
-                    />
-                  </div>
+                  {!editorMode ? (
+                    <div className="workbench-doc-flow-shell">
+                      <DocumentFlow
+                        sessionId={currentSession.id}
+                        session={currentSession}
+                        rewriteUnits={currentSession.rewriteUnits}
+                        documentView={documentView}
+                        documentFormat={documentFormat}
+                        rewriteEnabled={!rewriteBlockReason}
+                        rewriteBlockedReason={rewriteBlockReason}
+                        showMarkers={showMarkers}
+                        suggestionsByRewriteUnit={suggestionsByRewriteUnit}
+                        runningRewriteUnitIdSet={runningRewriteUnitIdSet}
+                        optimisticManualRunningRewriteUnitId={optimisticManualRunningRewriteUnitId}
+                        activeRewriteUnitId={activeRewriteUnitId}
+                        activeSuggestionId={activeSuggestionId}
+                        activeReviewNavigationRequestId={activeReviewNavigationRequestId}
+                        selectedRewriteUnitIds={selectedRewriteUnitIds}
+                        onSelectRewriteUnit={onSelectRewriteUnit}
+                        onSelectSuggestion={onSelectSuggestion}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -444,21 +446,23 @@ export const DocumentPanel = memo(function DocumentPanel({
                   ref={editorScrollRef}
                   className="workbench-mode-content workbench-doc-mode-content"
                 >
-                  <div className="workbench-doc-flow-shell">
-                    <DocumentEditor
-                      ref={editorRef}
-                      session={currentSession}
-                      value={editorText}
-                      slotOverrides={editorSlotOverrides}
-                      showMarkers={showMarkers}
-                      dirty={editorDirty}
-                      busy={anyBusy}
-                      onChange={onChangeEditorText}
-                      onChangeSlotText={onChangeEditorSlotText}
-                      onSave={onSaveEditor}
-                      onSelectionChange={onChangeEditorHasSelection}
-                    />
-                  </div>
+                  {editorMode ? (
+                    <div className="workbench-doc-flow-shell">
+                      <DocumentEditor
+                        ref={editorRef}
+                        session={currentSession}
+                        value={editorText}
+                        slotOverrides={editorSlotOverrides}
+                        showMarkers={showMarkers}
+                        dirty={editorDirty}
+                        busy={anyBusy}
+                        onChange={onChangeEditorText}
+                        onChangeSlotText={onChangeEditorSlotText}
+                        onSave={onSaveEditor}
+                        onSelectionChange={onChangeEditorHasSelection}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
