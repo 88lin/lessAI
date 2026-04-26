@@ -275,8 +275,8 @@ cargo test
 - `master` 分支 push 会触发 `.github/workflows/pages-demo.yml`，自动发布 TXT 演示站到 GitHub Pages
 
 ```bash
-git tag v0.3.10
-git push origin v0.3.10
+git tag v0.3.12
+git push origin v0.3.12
 ```
 
 ## 🗂️ 目录结构（速览）

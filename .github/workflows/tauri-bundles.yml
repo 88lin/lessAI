@@ -15,7 +15,7 @@ on:
         required: false
         default: ""
       release_tag:
-        description: "Upload artifacts to this release tag (e.g. v0.3.10). Leave empty to auto-release on master."
+        description: "Upload artifacts to this release tag (e.g. v0.3.12). Leave empty to auto-release on master."
         required: false
         default: ""
   push:
@@ -167,7 +167,7 @@ jobs:
           fi
 
           if [[ -n "${version}" ]]; then
-            if [[ "${version}" == *-* ]]; then
+            if [[ "${normalized_tag}" == *-* ]]; then
               release_prerelease="true"
             fi
             echo "[INFO] Release tag: ${normalized_tag}"
