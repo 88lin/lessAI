@@ -169,6 +169,68 @@ fn finish_completed_batch_steps_stops_before_progress_when_commit_fails() {
 }
 
 #[test]
+fn finish_completed_batch_steps_short_circuits_on_remove_failure() {
+    let mut settlement = TestBatchSettlement {
+        remove_error: Some("remove failed".to_string()),
+        ..Default::default()
+    };
+    let batch = vec!["unit-5".to_string()];
+
+    let error = super::finish_completed_batch_steps(&mut settlement, &batch, |settlement| {
+        settlement.calls.push("commit".to_string());
+        Ok(1usize)
+    })
+    .expect_err("expected remove failure to short-circuit commit and progress");
+
+    assert_eq!(error, "remove failed");
+    assert_eq!(settlement.calls, vec!["remove:[\"unit-5\"]".to_string()]);
+}
+
+#[test]
+fn finish_completed_batch_steps_propagates_progress_error() {
+    let mut settlement = TestBatchSettlement {
+        progress_error: Some("progress failed".to_string()),
+        ..Default::default()
+    };
+    let batch = vec!["unit-6".to_string()];
+
+    let error = super::finish_completed_batch_steps(&mut settlement, &batch, |settlement| {
+        settlement.calls.push("commit".to_string());
+        Ok(1usize)
+    })
+    .expect_err("expected progress failure to propagate");
+
+    assert_eq!(error, "progress failed");
+    assert_eq!(
+        settlement.calls,
+        vec![
+            "remove:[\"unit-6\"]".to_string(),
+            "commit".to_string(),
+            "progress:1".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn finish_failed_batch_steps_short_circuits_on_remove_failure() {
+    let mut settlement = TestBatchSettlement {
+        remove_error: Some("remove failed".to_string()),
+        ..Default::default()
+    };
+    let batch = vec!["unit-7".to_string()];
+
+    let error = super::finish_failed_batch_steps::<_, ()>(
+        &mut settlement,
+        &batch,
+        "batch failed".to_string(),
+    )
+    .expect_err("expected remove failure to short-circuit batch error writing");
+
+    assert_eq!(error, "remove failed");
+    assert_eq!(settlement.calls, vec!["remove:[\"unit-7\"]".to_string()]);
+}
+
+#[test]
 fn finish_failed_batch_steps_runs_remove_before_failure_handler() {
     let mut settlement = TestBatchSettlement::default();
     let batch = vec!["unit-4".to_string()];

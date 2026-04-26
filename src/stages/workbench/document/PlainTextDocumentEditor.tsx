@@ -94,7 +94,10 @@ export const PlainTextDocumentEditor = memo(
     }, [dirty, value]);
 
     useEffect(() => {
-      editorFieldRef.current?.focus();
+      const id = requestAnimationFrame(() => {
+        editorFieldRef.current?.focus();
+      });
+      return () => cancelAnimationFrame(id);
     }, []);
 
     useEffect(() => {

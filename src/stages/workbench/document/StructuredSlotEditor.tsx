@@ -161,7 +161,10 @@ export const StructuredSlotEditor = memo(
     useEffect(() => {
       const firstEditable = session.writebackSlots.find((slot) => slot.editable);
       if (!firstEditable) return;
-      slotNodesRef.current[firstEditable.id]?.focus();
+      const id = requestAnimationFrame(() => {
+        slotNodesRef.current[firstEditable.id]?.focus();
+      });
+      return () => cancelAnimationFrame(id);
     }, [session.id, session.writebackSlots]);
 
     const renderedUnitCount = useProgressiveRevealCount({
