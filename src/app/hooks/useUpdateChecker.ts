@@ -4,7 +4,7 @@ import {
   listReleaseVersions,
   switchReleaseVersion
 } from "../../lib/api";
-import { formatBytes, readableError } from "../../lib/helpers";
+import { readableError } from "../../lib/helpers";
 import { normalizeNetworkProxy } from "../../lib/networkProxy";
 import {
   RuntimeBundleType,
@@ -16,6 +16,7 @@ import {
 } from "../../lib/runtimeUpdater";
 import type { ReleaseVersionSummary } from "../../lib/types";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
+import { type UpdatePhase } from "../../components/UpdateProgressModal";
 import type { ShowNotice, WithBusy } from "./sessionActionShared";
 
 const UPDATE_MANIFEST_URL =
@@ -134,6 +135,11 @@ export function useUpdateChecker(options: {
   const [runtimeBundleType, setRuntimeBundleType] = useState<RuntimeBundleTypeValue>(
     RuntimeBundleType.Other
   );
+  const [updateProgress, setUpdateProgress] = useState<{
+    phase: UpdatePhase;
+    downloadedBytes: number;
+    totalBytes: number | null;
+  } | null>(null);
   const normalizedProxy = useMemo(
     () => normalizeNetworkProxy(updateProxy),
     [updateProxy]
@@ -313,27 +319,12 @@ export function useUpdateChecker(options: {
 
         let contentLength: number | null = null;
         let downloadedBytes = 0;
-        let lastNoticeAt = 0;
 
-        const pushDownloadNotice = (force = false) => {
-          const now = Date.now();
-          if (!force && now - lastNoticeAt < 120) return;
-          lastNoticeAt = now;
-
-          const totalBytes = contentLength ?? 0;
-          const hasTotal = totalBytes > 0;
-          const percent = hasTotal
-            ? Math.max(0, Math.min(100, Math.floor((downloadedBytes / totalBytes) * 100)))
-            : null;
-
-          const progressText = hasTotal
-            ? `${percent}%（${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}）`
-            : `已下载 ${formatBytes(downloadedBytes)}`;
-
-          showNotice("info", `正在下载更新… ${progressText}`, { autoDismissMs: null });
-        };
-
-        pushDownloadNotice(true);
+        setUpdateProgress({
+          phase: "downloading",
+          downloadedBytes: 0,
+          totalBytes: null
+        });
 
         try {
           await update.downloadAndInstall((event) => {
@@ -341,14 +332,26 @@ export function useUpdateChecker(options: {
               case "Started":
                 contentLength = event.data.contentLength ?? null;
                 downloadedBytes = 0;
-                pushDownloadNotice(true);
+                setUpdateProgress({
+                  phase: "downloading",
+                  downloadedBytes: 0,
+                  totalBytes: contentLength
+                });
                 break;
               case "Progress":
                 downloadedBytes += event.data.chunkLength;
-                pushDownloadNotice(false);
+                setUpdateProgress({
+                  phase: "downloading",
+                  downloadedBytes,
+                  totalBytes: contentLength
+                });
                 break;
               case "Finished":
-                showNotice("info", "下载完成，正在安装更新…", { autoDismissMs: null });
+                setUpdateProgress({
+                  phase: "installing",
+                  downloadedBytes,
+                  totalBytes: contentLength
+                });
                 break;
               default:
                 break;
@@ -365,13 +368,19 @@ export function useUpdateChecker(options: {
         // 注意：Windows 平台由于系统限制，安装程序执行时应用可能会直接退出。
         // 其他平台安装完成后可调用 relaunch() 自动重启。
         try {
-          showNotice("success", "更新已安装，正在重启应用…", { autoDismissMs: null });
+          setUpdateProgress({
+            phase: "relaunching",
+            downloadedBytes,
+            totalBytes: contentLength
+          });
           await runtimeRelaunch();
         } catch (error) {
+          setUpdateProgress(null);
           showNotice("warning", `更新已安装，请手动重启应用：${readableError(error)}`);
         }
       });
     } catch (error) {
+      setUpdateProgress(null);
       const message = readableError(error);
 
       if (
@@ -403,6 +412,10 @@ export function useUpdateChecker(options: {
     }
   }, [dismissNotice, normalizedProxy, requestConfirm, showNotice, withBusy]);
 
+  const handleCancelUpdate = useCallback(() => {
+    setUpdateProgress(null);
+  }, []);
+
   const handleRefreshReleaseVersions = useCallback(async () => {
     try {
       await withBusy("list-releases", async () => {
@@ -431,7 +444,7 @@ export function useUpdateChecker(options: {
         );
       });
     } catch (error) {
-      showNotice("error", `拉取版本列表失败：${readableError(error)}`);
+      showNotice("error", readableError(error));
     }
   }, [normalizedProxy, showNotice, withBusy]);
 
@@ -559,9 +572,11 @@ export function useUpdateChecker(options: {
     selectedReleaseIsCurrent,
     releaseListLoadedAt,
     switchRequiresUpdaterManifest,
+    updateProgress,
     handleCheckUpdate,
     handleRefreshReleaseVersions,
     handleSelectReleaseTag: setSelectedReleaseTag,
-    handleSwitchSelectedRelease
+    handleSwitchSelectedRelease,
+    handleCancelUpdate
   } as const;
 }

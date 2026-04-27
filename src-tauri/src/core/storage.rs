@@ -6,8 +6,7 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    atomic_write::write_bytes_atomically,
-    documents::hydrated_session_clone,
+    atomic_write::{write_bytes_atomically, write_bytes_atomically_no_parent_sync},
     models::{AppSettings, DocumentSession},
     settings_validation::validate_numeric_settings,
 };
@@ -46,6 +45,13 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
 fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let content = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
     write_json_bytes(path, &content)
+}
+
+fn write_session_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let content = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
+    write_bytes_atomically_no_parent_sync(path, &content)?;
+    restrict_json_file_permissions(path);
+    Ok(())
 }
 
 fn write_json_bytes(path: &Path, payload: &[u8]) -> Result<(), String> {
@@ -102,7 +108,7 @@ pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<AppSetti
 
 pub fn save_session(app: &AppHandle, session: &DocumentSession) -> Result<(), String> {
     let path = session_path(app, &session.id)?;
-    write_json(&path, &hydrated_session_clone(session))
+    write_session_json(&path, session)
 }
 
 pub fn load_session(app: &AppHandle, session_id: &str) -> Result<DocumentSession, String> {

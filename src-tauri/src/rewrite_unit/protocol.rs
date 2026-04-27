@@ -54,13 +54,20 @@ pub struct RewriteUnitRequest {
 
 impl RewriteUnitRequest {
     pub fn new(rewrite_unit_id: &str, format: &str, slots: Vec<RewriteUnitSlot>) -> Self {
+        // 预计算容量，避免 collect() 多次重分配和 per-slot format!() 中间分配
+        let cap: usize = slots
+            .iter()
+            .map(|s| s.text.len() + s.separator_after.len())
+            .sum();
+        let mut display_text = String::with_capacity(cap);
+        for slot in &slots {
+            display_text.push_str(&slot.text);
+            display_text.push_str(&slot.separator_after);
+        }
         Self {
             rewrite_unit_id: rewrite_unit_id.to_string(),
             format: format.to_string(),
-            display_text: slots
-                .iter()
-                .map(|slot| format!("{}{}", slot.text, slot.separator_after))
-                .collect(),
+            display_text,
             slots,
         }
     }

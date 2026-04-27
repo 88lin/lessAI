@@ -10,7 +10,7 @@ use crate::{
     rewrite_writeback::execute_session_writeback,
     session_access::{access_current_session, CurrentSessionRequest},
     session_messages::ACTIVE_JOB_FINALIZE_ERROR,
-    state::AppState,
+    state::{remove_session_lock, AppState},
     storage,
 };
 
@@ -41,7 +41,7 @@ pub fn finalize_document(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<String, String> {
-    access_current_session(
+    let result = access_current_session(
         CurrentSessionRequest::guarded_refresh(
             &app,
             state.inner(),
@@ -52,12 +52,18 @@ pub fn finalize_document(
         |session| {
             execute_session_writeback(&session, WritebackMode::Write)?;
 
-            // 写回成功后再清理记录，避免“写失败但记录被删”的风险。
+            // 写回成功后再清理记录，避免”写失败但记录被删”的风险。
             storage::delete_session(&app, &session_id)?;
 
             Ok(session.document_path)
         },
-    )
+    );
+
+    // 会话已删除，回收会话锁条目防止内存泄漏。
+    if result.is_ok() {
+        remove_session_lock(state.inner(), &session_id);
+    }
+    result
 }
 
 fn write_exported_text(path: &std::path::Path, content: &str) -> Result<(), String> {

@@ -61,7 +61,7 @@ fn finalize_singleline_candidate(source_text: &str, candidate_text: &str) -> Str
     }
 
     let rewritten = collapse_line_breaks_to_spaces(candidate_text);
-    let body = strip_redundant_prefix(&rewritten, &prefix);
+    let body = strip_redundant_prefix(&rewritten, prefix);
     if body.trim().is_empty() {
         return source_text.to_string();
     }

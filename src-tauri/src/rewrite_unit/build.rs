@@ -134,25 +134,40 @@ fn unit_char_count(group: &[&WritebackSlot]) -> usize {
 }
 
 fn ends_semantic_group(current: &[&WritebackSlot], preset: SegmentationPreset) -> bool {
-    let text = display_text(current);
-    let mut chars = text.chars().collect::<Vec<_>>();
-    while chars.last().is_some_and(|ch| ch.is_whitespace()) {
-        chars.pop();
-    }
-    while chars
-        .last()
-        .is_some_and(|ch| CLOSING_PUNCTUATION.contains(ch))
-    {
-        chars.pop();
-    }
-    let Some(last) = chars.last() else {
-        return false;
+    let boundary_set: &[char] = match preset {
+        SegmentationPreset::Clause => &CLAUSE_BOUNDARIES,
+        SegmentationPreset::Sentence => &SENTENCE_BOUNDARIES,
+        SegmentationPreset::Paragraph => return false,
     };
-    match preset {
-        SegmentationPreset::Clause => CLAUSE_BOUNDARIES.contains(last),
-        SegmentationPreset::Sentence => SENTENCE_BOUNDARIES.contains(last),
-        SegmentationPreset::Paragraph => false,
+
+    // 从末尾反向扫描 slots，避免重建完整 display_text（消除 String + Vec<char> 分配）
+    let mut skipping = true; // 先跳过空白，再跳过 CLOSING_PUNCTUATION
+
+    for slot in current.iter().rev() {
+        // separator_after 在拼接字符串中最靠后，先处理
+        for ch in slot.separator_after.chars().rev() {
+            if skipping && ch.is_whitespace() {
+                continue;
+            }
+            skipping = false;
+            if CLOSING_PUNCTUATION.contains(&ch) {
+                continue;
+            }
+            return boundary_set.contains(&ch);
+        }
+        for ch in slot.text.chars().rev() {
+            if skipping && ch.is_whitespace() {
+                continue;
+            }
+            skipping = false;
+            if CLOSING_PUNCTUATION.contains(&ch) {
+                continue;
+            }
+            return boundary_set.contains(&ch);
+        }
     }
+
+    false
 }
 
 #[cfg(test)]

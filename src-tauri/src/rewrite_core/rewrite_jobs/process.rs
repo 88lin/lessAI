@@ -70,12 +70,13 @@ pub(super) async fn process_loaded_rewrite_batch(
     let prepared = prepare_loaded_rewrite_batch(session, rewrite_unit_ids)?;
     crate::rewrite_job_state::mark_units_running(app, state, session_id, rewrite_unit_ids)?;
 
+    let client = rewrite::build_client(&settings)?;
     let completed_batch = commit_rewrite_result(
         app,
         state,
         session_id,
         &prepared.rewrite_unit_ids,
-        rewrite::rewrite_batch(&settings, &prepared.batch_request).await,
+        rewrite::rewrite_batch_with_client(&client, &settings, &prepared.batch_request).await,
         batch_commit_mode(auto_approve),
         validate_candidate_batch_writeback,
     )?;

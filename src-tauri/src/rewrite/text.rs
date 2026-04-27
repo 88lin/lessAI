@@ -1,22 +1,24 @@
 pub fn normalize_text(input: &str) -> String {
-    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
-    let mut lines = Vec::new();
-    let mut blank_streak = 0usize;
+    let normalized = normalize_line_endings_to_lf(input);
+    let mut out = String::with_capacity(normalized.len());
+    let mut blank_streak = 0u32;
 
     for raw_line in normalized.lines() {
         let trimmed = raw_line.trim();
         if trimmed.is_empty() {
-            blank_streak += 1;
-            if blank_streak <= 1 {
-                lines.push(String::new());
+            if blank_streak == 0 {
+                out.push('\n');
             }
+            blank_streak = blank_streak.saturating_add(1);
         } else {
             blank_streak = 0;
-            lines.push(trimmed.to_string());
+            out.push_str(trimmed);
+            out.push('\n');
         }
     }
 
-    lines.join("\n").trim().to_string()
+    out.truncate(out.trim_end_matches('\n').len());
+    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,7 +69,22 @@ pub fn detect_line_ending(text: &str) -> LineEnding {
 }
 
 pub(super) fn normalize_line_endings_to_lf(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
+    if !text.contains('\r') {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\r' {
+            out.push('\n');
+            if chars.as_str().starts_with('\n') {
+                chars.next();
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub fn convert_line_endings(text: &str, ending: LineEnding) -> String {
@@ -241,14 +258,14 @@ fn detect_line_marker_len(rest: &str) -> usize {
     0
 }
 
-pub(super) fn split_line_skeleton(line: &str) -> (String, String, String) {
+pub(super) fn split_line_skeleton(line: &str) -> (&str, &str, &str) {
     // 说明：
-    // - 该函数用于“格式骨架锁定”：尽量把缩进、列表符号、编号、引用前缀等视为不可变格式；
+    // - 该函数用于”格式骨架锁定”：尽量把缩进、列表符号、编号、引用前缀等视为不可变格式；
     // - 让模型只改写核心正文，避免空格/缩进/列表结构漂移。
     //
     // 这里仅把行尾空格/制表符视为 suffix；其他 Unicode 空白（例如 NBSP）更可能是正文的一部分。
     let base = trim_ascii_spaces_tabs_end(line);
-    let suffix = line[base.len()..].to_string();
+    let suffix = &line[base.len()..];
 
     let bytes = base.as_bytes();
     let mut indent_end = 0usize;
@@ -264,8 +281,8 @@ pub(super) fn split_line_skeleton(line: &str) -> (String, String, String) {
         prefix_end += 1;
     }
 
-    let prefix = base[..prefix_end].to_string();
-    let core = base[prefix_end..].to_string();
+    let prefix = &base[..prefix_end];
+    let core = &base[prefix_end..];
 
     (prefix, core, suffix)
 }
@@ -297,7 +314,7 @@ pub(super) fn enforce_line_skeleton(source_line: &str, candidate_line: &str) -> 
         return source_line.to_string();
     }
 
-    let body = strip_redundant_prefix(candidate_line, &prefix);
+    let body = strip_redundant_prefix(candidate_line, prefix);
     if body.trim().is_empty() {
         return source_line.to_string();
     }

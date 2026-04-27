@@ -132,7 +132,3 @@ export async function callChatModel(
   return extractChatContent(json);
 }
 
-export function sanitizeFileName(name: string) {
-  const cleaned = name.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
-  return cleaned.length > 0 ? cleaned : "lessai-result";
-}

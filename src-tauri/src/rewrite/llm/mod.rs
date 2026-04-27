@@ -111,14 +111,6 @@ pub async fn rewrite_selection_text(
         .await
 }
 
-pub async fn rewrite_batch(
-    settings: &AppSettings,
-    request: &RewriteBatchRequest,
-) -> Result<RewriteBatchResponse, String> {
-    let client = build_client(settings)?;
-    rewrite_batch_with_client(&client, settings, request).await
-}
-
 fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     validate_numeric_settings(settings)?;
     if settings.base_url.trim().is_empty() {

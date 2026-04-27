@@ -35,6 +35,7 @@ import { useBusyAction } from "./hooks/useBusyAction";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { SettingsModal } from "./components/SettingsModal";
+import { UpdateProgressModal } from "./components/UpdateProgressModal";
 import { BootScreen } from "./app/components/BootScreen";
 import { NoticeToast } from "./app/components/NoticeToast";
 import { ThemeToggle } from "./app/components/ThemeToggle";
@@ -146,10 +147,12 @@ export default function App() {
     selectedReleaseIsCurrent,
     releaseListLoadedAt,
     switchRequiresUpdaterManifest,
+    updateProgress,
     handleCheckUpdate,
     handleRefreshReleaseVersions,
     handleSelectReleaseTag,
-    handleSwitchSelectedRelease
+    handleSwitchSelectedRelease,
+    handleCancelUpdate
   } = useUpdateChecker({
     updateProxy: settings.updateProxy,
     showNotice,
@@ -485,10 +488,15 @@ export default function App() {
           rewriteUnitId: payload.rewriteUnitId,
           suggestionId: payload.suggestionId
         });
-        await refreshSessionState(payload.sessionId, {
-          preferredRewriteUnitId: payload.rewriteUnitId,
-          preferredSuggestionId: payload.suggestionId
-        });
+        try {
+          await refreshSessionState(payload.sessionId, {
+            preferredRewriteUnitId: payload.rewriteUnitId,
+            preferredSuggestionId: payload.suggestionId
+          });
+        } catch (error) {
+          console.error("刷新会话状态失败（rewrite_unit_completed）：", error);
+          showNotice("warning", "改写结果已生成，但刷新状态时出错，请手动刷新。");
+        }
       }
     },
     onFinished: async (payload) => {
@@ -498,12 +506,17 @@ export default function App() {
       const session = currentSessionRef.current;
       if (session && payload.sessionId === session.id) {
         logScrollRestore("tauri-finished", { sessionId: payload.sessionId });
-        const refreshed = await refreshSessionState(payload.sessionId, {
-          preserveRewriteUnit: true,
-          preserveSuggestion: true
-        });
-        if (refreshed.status === "completed") {
-          showNotice("success", "自动批处理已完成，当前文稿可以直接导出。");
+        try {
+          const refreshed = await refreshSessionState(payload.sessionId, {
+            preserveRewriteUnit: true,
+            preserveSuggestion: true
+          });
+          if (refreshed.status === "completed") {
+            showNotice("success", "自动批处理已完成，当前文稿可以直接导出。");
+          }
+        } catch (error) {
+          console.error("刷新会话状态失败（rewrite_finished）：", error);
+          showNotice("warning", "改写已完成，但刷新状态时出错，请手动刷新。");
         }
       }
     },
@@ -518,10 +531,14 @@ export default function App() {
           sessionId: payload.sessionId,
           error: payload.error
         });
-        await refreshSessionState(payload.sessionId, {
-          preserveRewriteUnit: true,
-          preserveSuggestion: true
-        });
+        try {
+          await refreshSessionState(payload.sessionId, {
+            preserveRewriteUnit: true,
+            preserveSuggestion: true
+          });
+        } catch (error) {
+          console.error("刷新会话状态失败（rewrite_failed）：", error);
+        }
       }
     }
   });
@@ -699,6 +716,65 @@ export default function App() {
     withBusy
   });
 
+  // 稳定化内联箭头函数：避免每次渲染创建新函数引用导致 memo 子组件失效
+  const onOpenDocumentStable = useCallback(() => {
+    void handleOpenDocument();
+  }, [handleOpenDocument]);
+  const onExportStable = useCallback(() => {
+    void handleExport();
+  }, [handleExport]);
+  const onStartWindowDragStable = useCallback(() => {
+    void handleStartWindowDrag();
+  }, [handleStartWindowDrag]);
+  const onMinimizeWindowStable = useCallback(() => {
+    void handleMinimizeWindow();
+  }, [handleMinimizeWindow]);
+  const onToggleMaximizeWindowStable = useCallback(() => {
+    void handleToggleMaximizeWindow();
+  }, [handleToggleMaximizeWindow]);
+  const onCloseWindowStable = useCallback(() => {
+    void handleCloseWindow();
+  }, [handleCloseWindow]);
+  const onStartRewriteStable = useCallback(
+    (mode: AppSettings["rewriteMode"]) => {
+      void handleStartRewrite(mode);
+    },
+    [handleStartRewrite]
+  );
+  const onPauseStable = useCallback(() => {
+    void handlePause();
+  }, [handlePause]);
+  const onResumeStable = useCallback(() => {
+    void handleResume();
+  }, [handleResume]);
+  const onCancelRewriteStable = useCallback(() => {
+    void handleCancelRewrite();
+  }, [handleCancelRewrite]);
+  const onFinalizeDocumentStable = useCallback(() => {
+    void handleFinalizeDocument();
+  }, [handleFinalizeDocument]);
+  const onResetSessionStable = useCallback(() => {
+    void handleResetSession();
+  }, [handleResetSession]);
+  const onSaveEditorStable = useCallback(() => {
+    void handleSaveEditor();
+  }, [handleSaveEditor]);
+  const onSaveEditorAndExitStable = useCallback(() => {
+    void handleSaveEditor({ returnToWorkbench: true });
+  }, [handleSaveEditor]);
+  const onRewriteSelectionStable = useCallback(() => {
+    void handleRewriteSelection();
+  }, [handleRewriteSelection]);
+  const onCheckUpdateStable = useCallback(() => {
+    void handleCheckUpdate();
+  }, [handleCheckUpdate]);
+  const onRefreshReleaseVersionsStable = useCallback(() => {
+    void handleRefreshReleaseVersions();
+  }, [handleRefreshReleaseVersions]);
+  const onSwitchSelectedReleaseStable = useCallback(() => {
+    void handleSwitchSelectedRelease();
+  }, [handleSwitchSelectedRelease]);
+
   if (booting) {
     return <BootScreen />;
   }
@@ -722,13 +798,13 @@ export default function App() {
             windowMaximized={windowMaximized}
             showWindowControls={desktopRuntime}
             enableWindowDrag={desktopRuntime}
-            onOpenDocument={() => void handleOpenDocument()}
+            onOpenDocument={onOpenDocumentStable}
             onOpenSettings={openSettings}
-            onExport={() => void handleExport()}
-            onStartWindowDrag={() => void handleStartWindowDrag()}
-            onMinimizeWindow={() => void handleMinimizeWindow()}
-            onToggleMaximizeWindow={() => void handleToggleMaximizeWindow()}
-            onCloseWindow={() => void handleCloseWindow()}
+            onExport={onExportStable}
+            onStartWindowDrag={onStartWindowDragStable}
+            onMinimizeWindow={onMinimizeWindowStable}
+            onToggleMaximizeWindow={onToggleMaximizeWindowStable}
+            onCloseWindow={onCloseWindowStable}
           />
 
           <div className="workspace-stage">
@@ -753,12 +829,12 @@ export default function App() {
               onOpenDocument={handleOpenDocument}
               onSelectRewriteUnit={handleSelectRewriteUnit}
               onSelectSuggestion={handleSelectSuggestion}
-              onStartRewrite={(mode) => void handleStartRewrite(mode)}
-              onPause={() => void handlePause()}
-              onResume={() => void handleResume()}
-              onCancel={() => void handleCancelRewrite()}
-              onFinalizeDocument={() => void handleFinalizeDocument()}
-              onResetSession={() => void handleResetSession()}
+              onStartRewrite={onStartRewriteStable}
+              onPause={onPauseStable}
+              onResume={onResumeStable}
+              onCancel={onCancelRewriteStable}
+              onFinalizeDocument={onFinalizeDocumentStable}
+              onResetSession={onResetSessionStable}
               onApplySuggestion={handleApplySuggestion}
               onDismissSuggestion={handleDismissSuggestion}
               onDeleteSuggestion={handleDeleteSuggestion}
@@ -768,13 +844,11 @@ export default function App() {
               onChangeEditorText={handleChangeEditorText}
               onChangeEditorSlotText={handleChangeEditorSlotText}
               onChangeEditorHasSelection={setEditorHasSelection}
-              onSaveEditor={() => void handleSaveEditor()}
-              onSaveEditorAndExit={() =>
-                void handleSaveEditor({ returnToWorkbench: true })
-              }
+              onSaveEditor={onSaveEditorStable}
+              onSaveEditorAndExit={onSaveEditorAndExitStable}
               onDiscardEditorChanges={handleDiscardEditorChanges}
               onExitEditor={handleExitEditor}
-              onRewriteSelection={() => void handleRewriteSelection()}
+              onRewriteSelection={onRewriteSelectionStable}
             />
           </div>
 
@@ -806,10 +880,10 @@ export default function App() {
             onConfirm={requestConfirm}
             onTestProvider={handleTestProvider}
             onSaveSettings={handleSaveSettings}
-            onCheckUpdate={() => void handleCheckUpdate()}
-            onRefreshReleaseVersions={() => void handleRefreshReleaseVersions()}
+            onCheckUpdate={onCheckUpdateStable}
+            onRefreshReleaseVersions={onRefreshReleaseVersionsStable}
             onSelectReleaseTag={handleSelectReleaseTag}
-            onSwitchSelectedRelease={() => void handleSwitchSelectedRelease()}
+            onSwitchSelectedRelease={onSwitchSelectedReleaseStable}
           />
         </main>
       </div>
@@ -825,6 +899,14 @@ export default function App() {
         variant={confirmDialog?.variant}
         onResult={handleConfirmResult}
       />
+      {updateProgress != null ? (
+        <UpdateProgressModal
+          phase={updateProgress.phase}
+          downloadedBytes={updateProgress.downloadedBytes}
+          totalBytes={updateProgress.totalBytes}
+          onCancel={handleCancelUpdate}
+        />
+      ) : null}
       {desktopRuntime && customResizeEnabled && !windowMaximized ? (
         <WindowResizeLayer onResize={handleResizeWindow} />
       ) : null}

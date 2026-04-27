@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use log::error;
 use tauri::AppHandle;
 
 use crate::{
@@ -55,11 +56,11 @@ impl<'a> AutoLoopRuntime<'a> {
 
     pub(super) fn set_progress_baseline(&mut self, total_units: usize, completed_units: usize) {
         self.total_units = total_units;
-        self.completed_units = completed_units;
+        self.completed_units = completed_units.min(total_units);
     }
 
     pub(super) fn apply_settings(&mut self, settings: &AppSettings) {
-        self.max_concurrency = settings.max_concurrency;
+        self.max_concurrency = settings.max_concurrency.max(1);
     }
 
     pub(super) fn emit_progress(&self) -> Result<(), String> {
@@ -129,8 +130,13 @@ impl<'a> AutoLoopRuntime<'a> {
     }
 
     pub(super) fn settled_batch_error<T>(&mut self, error: String) -> Result<T, String> {
-        match self.finish(AutoLoopStop::SettledFailure(error)) {
-            Ok(()) => unreachable!("已落库批次失败不应返回成功"),
+        match self.finish(AutoLoopStop::SettledFailure(error.clone())) {
+            Ok(()) => {
+                error!(
+                    "已落库批次失败处理器意外返回 Ok：原错误={error}。已降级为通用错误避免 panic。"
+                );
+                Err("自动任务异常终止，请刷新页面重试。".to_string())
+            }
             Err(error) => Err(error),
         }
     }
@@ -184,8 +190,13 @@ where
 {
     match result {
         Ok(value) => Ok(value),
-        Err(error) => match handle(error) {
-            Ok(()) => unreachable!("自动改写失败处理器不应返回成功"),
+        Err(error) => match handle(error.clone()) {
+            Ok(()) => {
+                error!(
+                    "自动改写失败处理器意外返回 Ok：原错误={error}。已降级为通用错误避免 panic。"
+                );
+                Err("自动任务异常终止，请刷新页面重试。".to_string())
+            }
             Err(error) => Err(error),
         },
     }

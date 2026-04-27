@@ -40,25 +40,43 @@ export const EditableSlotSpan = memo(function EditableSlotSpan({
   classNameOptions?: { baseClassName?: string; protectedClassName?: string };
 }) {
   const nodeRef = useRef<HTMLSpanElement | null>(null);
+  const lastSyncedTextRef = useRef<string | null>(null);
 
   useEffect(() => {
     registerNode(slot.id, nodeRef.current);
-    return () => registerNode(slot.id, null);
+    return () => {
+      registerNode(slot.id, null);
+      lastSyncedTextRef.current = null;
+    };
   }, [registerNode, slot.id]);
 
   useLayoutEffect(() => {
     const node = nodeRef.current;
     if (!node) return;
-    const domText = normalizeNewlines(node.innerText);
-    if (domText === text) return;
-    if (document.activeElement === node) return;
-    node.innerText = text;
+
+    // On first mount, initialize text directly without forcing a layout read.
+    if (lastSyncedTextRef.current == null) {
+      node.textContent = text;
+      lastSyncedTextRef.current = text;
+      return;
+    }
+
+    if (lastSyncedTextRef.current === text) return;
+    if (document.activeElement === node) {
+      lastSyncedTextRef.current = normalizeNewlines(node.innerText);
+      return;
+    }
+
+    node.textContent = text;
+    lastSyncedTextRef.current = text;
   }, [text]);
 
   const handleInput = useCallback(() => {
     const node = nodeRef.current;
     if (!node) return;
-    onChange(slot.id, normalizeNewlines(node.innerText));
+    const nextText = normalizeNewlines(node.innerText);
+    lastSyncedTextRef.current = nextText;
+    onChange(slot.id, nextText);
   }, [onChange, slot.id]);
 
   const handlePaste = useCallback((event: ClipboardEvent<HTMLSpanElement>) => {

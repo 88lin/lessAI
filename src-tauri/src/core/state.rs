@@ -50,6 +50,14 @@ pub(crate) fn with_session_lock<T>(
     f()
 }
 
+/// 清理不再需要的会话锁条目，防止长期运行后内存膨胀。
+/// 应在会话已被删除（如 `finalize_document`）之后调用。
+pub(crate) fn remove_session_lock(state: &AppState, session_id: &str) {
+    if let Ok(mut locks) = state.session_locks.lock() {
+        locks.remove(session_id);
+    }
+}
+
 pub(crate) fn remove_job(state: &AppState, session_id: &str) -> Result<(), String> {
     let mut jobs = state
         .jobs

@@ -148,6 +148,11 @@ export function useDocumentActions(options: {
       return;
     }
 
+    if (busyAction) {
+      showNotice("warning", "当前有操作在执行，请稍后再试。");
+      return;
+    }
+
     const latestSession = await refreshAllowedSessionOrNotify({
       session,
       refreshSessionState,
@@ -271,12 +276,13 @@ export function useDocumentActions(options: {
           preservedScrollTop,
           run: () =>
             withBusy(actionKey, () => {
-              if (documentEditorMode(session) !== "slotBased") {
-                return runDocumentWriteback(session.id, "write", { kind: "text", content }, editorBaseSnapshotRef.current);
+              const latestSession = currentSessionRef.current ?? session;
+              if (documentEditorMode(latestSession) !== "slotBased") {
+                return runDocumentWriteback(latestSession.id, "write", { kind: "text", content }, editorBaseSnapshotRef.current);
               }
 
-              const edits = buildEditorSlotEdits(session, editorSlotOverridesRef.current);
-              return runDocumentWriteback(session.id, "write", { kind: "slotEdits", edits }, editorBaseSnapshotRef.current);
+              const edits = buildEditorSlotEdits(latestSession, editorSlotOverridesRef.current);
+              return runDocumentWriteback(latestSession.id, "write", { kind: "slotEdits", edits }, editorBaseSnapshotRef.current);
             }),
           resolveState: () => ({
             preferredRewriteUnitId: activeRewriteUnitIdRef.current

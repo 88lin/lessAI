@@ -1,4 +1,4 @@
-import { sanitizeFileName } from "./webBridgeModelApi";
+import { sanitizeFileName } from "./helpers";
 import { buildAppliedProjection, downloadTextFile, mergedTextFromSlots } from "./webBridgeSessionUtils";
 import { normalizeTextAgainstSourceLayout } from "./webBridgeText";
 import type { EditorWritebackPayload } from "./webBridgeEditorWriteback";
@@ -79,6 +79,7 @@ export function createWritebackCommands(deps: WritebackCommandDeps) {
 
   async function exportDocumentCommand(sessionId: string, path: string) {
     const session = deps.getSessionOrThrow(sessionId);
+    deps.ensureSessionSourceMatches(session);
     const merged = normalizeTextAgainstSourceLayout(
       session.sourceText,
       mergedTextFromSlots(buildAppliedProjection(session))

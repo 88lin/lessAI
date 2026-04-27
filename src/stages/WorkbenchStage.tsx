@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import type { MutableRefObject } from "react";
 import type {
   AppSettings,
@@ -118,6 +118,10 @@ export const WorkbenchStage = memo(function WorkbenchStage({
     }
   });
 
+  const handleToggleMarkers = useCallback(() => {
+    setShowMarkers((value) => !value);
+  }, []);
+
   const suggestionsByRewriteUnit = useMemo(
     () => groupSuggestionsByRewriteUnit(currentSession?.suggestions ?? []),
     [currentSession?.suggestions]
@@ -150,7 +154,7 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   const orderedSuggestions = useMemo(() => {
     if (!currentSession) return [];
     return [...currentSession.suggestions].sort((a, b) => a.sequence - b.sequence);
-  }, [currentSession]);
+  }, [currentSession?.suggestions]);
 
   const activeSuggestion = useMemo<RewriteSuggestion | null>(() => {
     if (!currentSession || !activeSuggestionId) return null;
@@ -201,7 +205,7 @@ export const WorkbenchStage = memo(function WorkbenchStage({
             onDiscardEditorChanges={onDiscardEditorChanges}
             onExitEditor={onExitEditor}
             onRewriteSelection={onRewriteSelection}
-            onToggleMarkers={() => setShowMarkers((value) => !value)}
+            onToggleMarkers={handleToggleMarkers}
           />
         </div>
 

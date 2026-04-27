@@ -1,5 +1,5 @@
-import { memo } from "react";
-import { ArrowUpCircle, GitBranch, ListRestart } from "lucide-react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowUpCircle, ChevronDown, GitBranch, ListRestart } from "lucide-react";
 import { formatDate } from "../../lib/helpers";
 import type { ReleaseVersionSummary } from "../../lib/types";
 import { ActionButton } from "../ActionButton";
@@ -25,6 +25,13 @@ interface VersionSettingsPageProps {
   onSwitchSelectedRelease: () => void;
 }
 
+function formatOptionLabel(release: ReleaseVersionSummary): string {
+  const parts = [release.tag];
+  if (release.prerelease) parts.push("（预发布）");
+  if (!release.updaterAvailable) parts.push("（仅手动下载）");
+  return parts.join(" ");
+}
+
 export const VersionSettingsPage = memo(function VersionSettingsPage({
   currentVersion,
   releaseVersions,
@@ -44,6 +51,35 @@ export const VersionSettingsPage = memo(function VersionSettingsPage({
   onSelectReleaseTag,
   onSwitchSelectedRelease
 }: VersionSettingsPageProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleOptionMouseDown = useCallback(
+    (tag: string) => (event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDropdownOpen(false);
+      onSelectReleaseTag(tag);
+    },
+    [onSelectReleaseTag]
+  );
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [dropdownOpen]);
+
+  const selectedLabel =
+    selectedRelease != null
+      ? formatOptionLabel(selectedRelease)
+      : "请先刷新版本列表";
+
   return (
     <div className="settings-page">
       <div className="settings-page-head">
@@ -60,22 +96,42 @@ export const VersionSettingsPage = memo(function VersionSettingsPage({
         </div>
         <label className="field">
           <span>目标版本</span>
-          <select
-            value={selectedReleaseTag}
-            onChange={(event) => onSelectReleaseTag(event.target.value)}
-            disabled={releaseVersions.length === 0}
-          >
-            {releaseVersions.length === 0 ? (
-              <option value="">请先刷新版本列表</option>
-            ) : null}
-            {releaseVersions.map((release) => (
-              <option key={release.tag} value={release.tag}>
-                {release.tag}
-                {release.prerelease ? "（预发布）" : ""}
-                {release.updaterAvailable ? "" : "（仅手动下载）"}
-              </option>
-            ))}
-          </select>
+          <div className="version-dropdown" ref={dropdownRef}>
+            <button
+              type="button"
+              className="button button-secondary version-dropdown-trigger"
+              disabled={releaseVersions.length === 0}
+              onClick={() => setDropdownOpen((open) => !open)}
+            >
+              <span>{selectedLabel}</span>
+              <ChevronDown className={`version-chevron ${dropdownOpen ? "version-chevron-open" : ""}`} />
+            </button>
+
+            {dropdownOpen && (
+              <div className="version-dropdown-panel">
+                <div className="version-dropdown-list">
+                  {releaseVersions.map((release) => (
+                    <button
+                      key={release.tag}
+                      type="button"
+                      className={`version-dropdown-option ${
+                        release.tag === selectedReleaseTag ? "version-dropdown-option-selected" : ""
+                      }`}
+                      onMouseDown={handleOptionMouseDown(release.tag)}
+                    >
+                      <span>{release.tag}</span>
+                      <span className="version-dropdown-option-extra">
+                        {release.prerelease ? "预发布" : ""}
+                        {!release.updaterAvailable ? (
+                          <span className="version-dropdown-option-warn">需手动下载</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </label>
         {selectedRelease ? (
           <span className="workspace-hint">
@@ -94,7 +150,7 @@ export const VersionSettingsPage = memo(function VersionSettingsPage({
           </span>
         ) : null}
         <span className="workspace-hint">
-          版本列表刷新 / 检查更新 / 版本切换都会读取“模型与接口”页配置的网络代理。
+          版本列表刷新 / 检查更新 / 版本切换都会读取"模型与接口"页配置的网络代理。
         </span>
         <div className="settings-page-actions">
           <ActionButton

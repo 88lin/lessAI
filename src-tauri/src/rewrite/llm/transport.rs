@@ -124,7 +124,35 @@ fn parse_json_chat_response_body(body: &str) -> Result<String, String> {
     }
     let value: Value =
         serde_json::from_str(trimmed).map_err(|error| format!("响应解析失败：{error}"))?;
-    sanitize_completion_text(extract_response_content(&value, ResponseContentMode::Json))
+
+    // 中转 API 可能返回非 OpenAI 标准格式的错误，先检查。
+    // 仅在没有 choices 数组时才视为错误，避免将正常响应中的非 error 字段误判。
+    if value["choices"].as_array().is_none() {
+        if let Some(error_message) = extract_api_error_message(trimmed) {
+            return Err(format!("模型返回错误：{error_message}"));
+        }
+    }
+
+    if let Some(content) = extract_response_content(&value, ResponseContentMode::Json) {
+        return sanitize_completion_text(Some(content));
+    }
+
+    // 响应解析失败时截取部分原文，帮助用户排查中转 API 兼容性。
+    let preview = body_preview(body);
+    Err(format!(
+        "模型没有返回有效文本。响应格式可能与 OpenAI chat/completions 不兼容。响应预览：{preview}"
+    ))
+}
+
+fn body_preview(body: &str) -> String {
+    let trimmed = body.trim();
+    let limit = 300usize;
+    if trimmed.len() <= limit {
+        trimmed.to_string()
+    } else {
+        let preview = &trimmed[..limit];
+        format!("{preview}…（共 {} 字符）", trimmed.len())
+    }
 }
 
 pub(in crate::rewrite) fn parse_stream_chat_response_body(body: &str) -> Result<String, String> {
@@ -221,14 +249,20 @@ pub(in crate::rewrite) fn extract_api_error_message(body: &str) -> Option<String
 
     value["error"]["message"]
         .as_str()
+        .or_else(|| value["error"].as_str())
         .or_else(|| value["message"].as_str())
+        .or_else(|| value["msg"].as_str())
+        .or_else(|| value["detail"].as_str())
         .map(|message| message.trim().to_string())
         .filter(|message| !message.is_empty())
 }
 
 fn sanitize_completion_text(content: Option<String>) -> Result<String, String> {
     let Some(content) = content else {
-        return Err("模型没有返回有效文本。".to_string());
+        return Err(
+            "模型没有返回有效文本，请检查 Base URL 是否正确（如是否为 /v1 路径）以及 API Key 是否有效。"
+                .to_string(),
+        );
     };
 
     let sanitized = content.trim().to_string();

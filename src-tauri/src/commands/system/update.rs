@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -426,6 +427,38 @@ fn resolve_effective_proxy(app: &AppHandle, proxy: Option<String>) -> Option<Str
         .and_then(|settings| normalize_proxy_url(&settings.update_proxy))
 }
 
+fn extract_github_api_error_message(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    value["message"].as_str().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+fn format_github_api_error(error: reqwest::Error, action: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(format!("{action}失败：{error}"));
+
+    if error.is_timeout() {
+        lines.push("提示：请求超时。可尝试在网络设置中配置代理（如 http://127.0.0.1:7890）后重试。".to_string());
+    }
+    if error.is_connect() {
+        lines.push(
+            "提示：连接失败。常见原因：代理未生效 / DNS 异常 / 网络被拦截。\n\
+             GitHub API 在某些地区可能无法直连，请在“模型与接口”设置页填写网络代理后重试。"
+                .to_string(),
+        );
+    }
+    if error.is_request() {
+        lines.push("提示：请求构造失败，可能是代理 URL 格式不正确。".to_string());
+    }
+
+    let mut source = error.source();
+    while let Some(cause) = source {
+        lines.push(format!("底层错误：{cause}"));
+        source = cause.source();
+    }
+
+    lines.join("\n")
+}
+
 #[tauri::command]
 pub async fn list_release_versions(
     app: AppHandle,
@@ -438,10 +471,26 @@ pub async fn list_release_versions(
         .header(ACCEPT, "application/vnd.github+json")
         .send()
         .await
-        .map_err(|error| format!("拉取版本列表失败：{error}"))?;
+        .map_err(|error| format_github_api_error(error, "拉取版本列表"))?;
 
     if !response.status().is_success() {
-        return Err(format!("拉取版本列表失败：HTTP {}", response.status()));
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        let detail = extract_github_api_error_message(&body)
+            .unwrap_or_else(|| body.trim().to_string());
+        if status.as_u16() == 403
+            && detail.to_lowercase().contains("rate limit")
+        {
+            return Err(format!(
+                "拉取版本列表失败：GitHub API 请求次数超限（未认证限制 60 次/小时）。\n\
+                 请在网络畅通的环境稍等片刻后重试，或前往 GitHub 页面手动下载安装。\n\
+                 原始错误：{detail}"
+            ));
+        }
+        if detail.is_empty() {
+            return Err(format!("拉取版本列表失败：HTTP {status}"));
+        }
+        return Err(format!("拉取版本列表失败：HTTP {status} — {detail}"));
     }
 
     let releases: Vec<GithubRelease> = response
@@ -546,10 +595,26 @@ pub async fn install_system_package_release(
         .header(ACCEPT, "application/vnd.github+json")
         .send()
         .await
-        .map_err(|error| format!("查询目标版本失败：{error}"))?;
+        .map_err(|error| format_github_api_error(error, "查询目标版本"))?;
 
     if !response.status().is_success() {
-        return Err(format!("查询目标版本失败：HTTP {}", response.status()));
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        let detail = extract_github_api_error_message(&body)
+            .unwrap_or_else(|| body.trim().to_string());
+        if status.as_u16() == 403
+            && detail.to_lowercase().contains("rate limit")
+        {
+            return Err(format!(
+                "查询目标版本失败：GitHub API 请求次数超限（未认证限制 60 次/小时）。\n\
+                 请在网络畅通的环境稍等片刻后重试，或前往 GitHub 页面手动下载安装。\n\
+                 原始错误：{detail}"
+            ));
+        }
+        if detail.is_empty() {
+            return Err(format!("查询目标版本失败：HTTP {status}"));
+        }
+        return Err(format!("查询目标版本失败：HTTP {status} — {detail}"));
     }
 
     let release: GithubRelease = response

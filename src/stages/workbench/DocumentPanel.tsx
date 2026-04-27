@@ -336,6 +336,9 @@ export const DocumentPanel = memo(function DocumentPanel({
 
   useLayoutEffect(() => {
     documentScrollRef.current = editorMode ? editorScrollRef.current : flowScrollRef.current;
+    return () => {
+      documentScrollRef.current = null;
+    };
   }, [documentScrollRef, editorMode]);
 
   return (

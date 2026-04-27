@@ -20,13 +20,21 @@ use super::{
 
 const AUTO_LOOP_UNINITIALIZED_CONCURRENCY: usize = 0;
 
+/// 批次结算抽象：将 `remove → commit → progress` 和 `remove → failure` 两步流程
+/// 从具体的 `AutoLoopRuntime` 解耦出来，便于在单元测试中用 mock 替代。
+///
+/// 实际生产中只有 `AutoLoopRuntime` 这一个实现（通过 `impl BatchSettlement for AutoLoopRuntime<'_>`）；
+/// 测试中由 [`TestBatchSettlement`] 提供可控的 mock。
 trait BatchSettlement {
+    /// 从进行中批次集合中移除指定批次，若 `AutoLoopRuntime` 会话状态异常则失败。
     fn remove_batch_checked(&mut self, rewrite_unit_ids: &[String]) -> Result<(), String>;
+    /// 将批次结果写入结算对象，用于落盘或错误传递。
     fn apply_batch_result<T>(
         &mut self,
         rewrite_unit_ids: &[String],
         result: Result<T, String>,
     ) -> Result<T, String>;
+    /// 记录已完成改写单元数量并发送进度通知。
     fn record_completed_checked(&mut self, completed_count: usize) -> Result<(), String>;
 }
 
@@ -170,6 +178,9 @@ pub(super) async fn run_auto_loop(
         {
             Ok(Some(joined)) => match joined {
                 Ok((rewrite_unit_ids, Ok(responses))) => {
+                    if runtime.is_cancelled() {
+                        return runtime.cancel();
+                    }
                     finish_completed_batch_steps(
                         &mut runtime,
                         &rewrite_unit_ids,
@@ -196,11 +207,15 @@ pub(super) async fn run_auto_loop(
                 }
             },
             Ok(None) => {
-                let error = ensure_in_flight_batches_drained(runtime.in_flight_batches())
-                    .expect_err(
-                        "join set drained branch should only occur when in-flight batches remain",
-                    );
-                return runtime.session_result(Err(error));
+                match ensure_in_flight_batches_drained(runtime.in_flight_batches()) {
+                    Err(error) => return runtime.session_result(Err(error)),
+                    Ok(()) => {
+                        return runtime.session_result(Err(
+                            "自动任务内部状态不一致：后台任务集合已清空但跟踪的进行中批次也为空，请刷新页面重试。"
+                                .to_string(),
+                        ));
+                    }
+                }
             }
             Err(_) => {}
         }
@@ -209,6 +224,9 @@ pub(super) async fn run_auto_loop(
     runtime.finish_successfully()
 }
 
+/// 完成批次的三步结算流程：移除进行中批次 → 提交结果到会话 → 记录进度。
+///
+/// 任一步骤失败都会立即短路，不会继续后续步骤，保证会话状态一致。
 fn finish_completed_batch_steps<S, Commit>(
     settlement: &mut S,
     rewrite_unit_ids: &[String],
@@ -223,6 +241,9 @@ where
     settlement.record_completed_checked(completed_count)
 }
 
+/// 失败批次的两步结算流程：移除进行中批次 → 将错误写入会话。
+///
+/// 移除失败时短路，不会执行后续的错误写入，避免在会话状态异常时重复写入。
 fn finish_failed_batch_steps<S, T>(
     settlement: &mut S,
     rewrite_unit_ids: &[String],

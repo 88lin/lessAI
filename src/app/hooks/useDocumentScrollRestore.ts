@@ -90,7 +90,9 @@ export function useDocumentScrollRestore() {
     ensurePendingRestore();
   }, [ensurePendingRestore]);
 
-  useLayoutEffect(() => cancelScheduledRestore, [cancelScheduledRestore]);
+  useLayoutEffect(() => {
+    return () => cancelScheduledRestore();
+  }, [cancelScheduledRestore]);
 
   return {
     documentScrollRef,

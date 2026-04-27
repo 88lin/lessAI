@@ -5,6 +5,7 @@ import type { DocumentSession } from "../../../lib/types";
 import type { EditorSlotOverrides } from "../../../lib/editorSlots";
 import { guessClientDocumentFormat, renderInlineProtectedText } from "../../../lib/protectedText";
 import { useEditorHunks } from "../hooks/useEditorHunks";
+import { useProgressiveRevealCount } from "../hooks/useProgressiveRevealCount";
 
 type EditorReviewView = "diff" | "source" | "current";
 
@@ -33,7 +34,9 @@ export const EditorReviewPane = memo(function EditorReviewPane({
   showMarkers
 }: EditorReviewPaneProps) {
   const [editorReviewView, setEditorReviewView] = useState<EditorReviewView>("diff");
+  const [deferHeavyReview, setDeferHeavyReview] = useState(true);
   const editorDiffViewRef = useRef<HTMLDivElement | null>(null);
+  const heavyReviewTimerRef = useRef<number | null>(null);
   const documentFormat = useMemo(
     () => guessClientDocumentFormat(currentSession.documentPath),
     [currentSession.documentPath]
@@ -43,17 +46,44 @@ export const EditorReviewPane = memo(function EditorReviewPane({
     return renderInlineProtectedText(value, documentFormat, key, { slot: null });
   };
 
+  useEffect(() => {
+    setDeferHeavyReview(true);
+    if (heavyReviewTimerRef.current != null) {
+      window.clearTimeout(heavyReviewTimerRef.current);
+    }
+    heavyReviewTimerRef.current = window.setTimeout(() => {
+      setDeferHeavyReview(false);
+    }, 0);
+    return () => {
+      if (heavyReviewTimerRef.current != null) {
+        window.clearTimeout(heavyReviewTimerRef.current);
+        heavyReviewTimerRef.current = null;
+      }
+    };
+  }, [currentSession.id]);
+
   const {
     editorDiffStats,
     editorHunks,
     activeEditorHunk,
     setActiveEditorHunkId
   } = useEditorHunks({
-    enabled: editorDirty,
+    enabled: editorDirty && !deferHeavyReview,
     currentSession,
     editorText,
     editorSlotOverrides
   });
+  const renderedHunkCount = useProgressiveRevealCount({
+    total: editorHunks.length,
+    key: currentSession.id,
+    enabled: editorHunks.length > 260,
+    initial: 220,
+    step: 260
+  });
+  const visibleEditorHunks = useMemo(
+    () => editorHunks.slice(0, renderedHunkCount),
+    [editorHunks, renderedHunkCount]
+  );
 
   useEffect(() => {
     const node = editorDiffViewRef.current;
@@ -123,7 +153,7 @@ export const EditorReviewPane = memo(function EditorReviewPane({
           </div>
 
           <div className="suggestion-list scroll-region">
-            {editorHunks.map((hunk) => {
+            {visibleEditorHunks.map((hunk) => {
               const compact = (value: string) => value.replace(/\s+/g, " ").trim();
               const preferred = compact(hunk.afterText) || compact(hunk.beforeText);
               const preview =
@@ -155,6 +185,11 @@ export const EditorReviewPane = memo(function EditorReviewPane({
                 </button>
               );
             })}
+            {renderedHunkCount < editorHunks.length ? (
+              <div className="empty-inline" aria-hidden="true">
+                <span>正在加载更多变更块…</span>
+              </div>
+            ) : null}
           </div>
         </>
       ) : (

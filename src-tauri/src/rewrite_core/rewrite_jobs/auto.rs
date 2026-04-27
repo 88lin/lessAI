@@ -148,7 +148,16 @@ where
     session.updated_at = updated_at;
     let saved_session = hydrated_session_clone(session);
     if let Err(error) = save(&saved_session) {
-        let _ = rollback(&session.id);
+        // 回滚失败会导致 job 永久残留在 HashMap 中，阻塞该 session
+        // 的后续改写操作。设置 cancelled 标志作为防御，即使回滚失败
+        // 也能让后续流程识别该 job 为无效。
+        if let Err(rollback_error) = rollback(&session.id) {
+            job.cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+            error!(
+                "无法回滚任务预留：session_id={} error={rollback_error}",
+                session.id
+            );
+        }
         return Err(error);
     }
     Ok((saved_session, target_unit_ids, job))

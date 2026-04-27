@@ -28,6 +28,24 @@ fn format_atomic_write_error(path: &Path, action: &str, error: std::io::Error) -
 }
 
 pub(crate) fn write_bytes_atomically(path: &Path, payload: &[u8]) -> Result<(), String> {
+    write_bytes_atomically_impl(path, payload, true)
+}
+
+/// 跳过父目录 fsync 的原子写入，适用于中间产物（如 session 文件），
+/// 避免并发场景下 I/O 停顿。Unix `rename()` 本身已是原子操作，
+/// 仅在极端崩溃后可能丢失最近的目录项更新，不会损坏已有数据。
+pub(crate) fn write_bytes_atomically_no_parent_sync(
+    path: &Path,
+    payload: &[u8],
+) -> Result<(), String> {
+    write_bytes_atomically_impl(path, payload, false)
+}
+
+fn write_bytes_atomically_impl(
+    path: &Path,
+    payload: &[u8],
+    sync_parent: bool,
+) -> Result<(), String> {
     let parent = parent_dir(path);
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
 
@@ -37,7 +55,9 @@ pub(crate) fn write_bytes_atomically(path: &Path, payload: &[u8]) -> Result<(), 
         let _ = fs::remove_file(&temp_path);
         return Err(error);
     }
-    sync_parent_dir(parent)?;
+    if sync_parent {
+        sync_parent_dir(parent)?;
+    }
     Ok(())
 }
 

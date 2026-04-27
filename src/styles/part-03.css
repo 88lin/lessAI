@@ -428,6 +428,104 @@
   width: 100%;
 }
 
+.version-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.version-dropdown-trigger {
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.version-dropdown-trigger span {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-chevron {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  transition: transform var(--transition);
+}
+
+.version-chevron-open {
+  transform: rotate(180deg);
+}
+
+.version-dropdown-panel {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  border: var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--paper-strong);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+
+.version-dropdown-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.version-dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border: var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    transform var(--transition),
+    background-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.version-dropdown-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--panel-shadow-sm);
+  transform: translate(-2px, -2px);
+}
+
+.version-dropdown-option:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.version-dropdown-option-selected {
+  background: linear-gradient(135deg, rgba(239, 193, 34, 0.18), rgba(255, 250, 241, 0.95));
+  font-weight: 700;
+}
+
+.version-dropdown-option-extra {
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.version-dropdown-option-warn {
+  color: var(--muted);
+  margin-left: 4px;
+}
+
 .notice {
   display: flex;
   align-items: center;
@@ -584,4 +682,106 @@
 .mini-step.is-active {
   background:
     linear-gradient(135deg, rgba(23, 68, 207, 0.12), rgba(255, 250, 241, 0.92));
+}
+
+/* ── 更新进度弹窗 ──────────────────────────────────────── */
+
+.update-progress-card {
+  width: 420px;
+  max-width: 94vw;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.update-progress-header {
+  padding: 18px 24px 14px;
+  border-bottom: 2px solid rgba(20, 20, 20, 0.12);
+}
+
+.update-progress-header h3 {
+  margin: 0;
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.2rem;
+}
+
+.update-progress-body {
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.update-progress-spinner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.update-progress-spinner svg {
+  width: 24px;
+  height: 24px;
+  color: var(--blue);
+}
+
+.update-progress-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.update-progress-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.96rem;
+}
+
+.update-progress-info svg {
+  width: 20px;
+  height: 20px;
+  color: var(--blue);
+}
+
+.update-progress-track {
+  width: 100%;
+  height: 18px;
+  border: var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.65);
+  overflow: hidden;
+  box-shadow: var(--panel-shadow-sm);
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 999px;
+  transition: width 280ms ease;
+  min-width: 0;
+}
+
+.update-progress-data {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.update-progress-footer {
+  padding: 14px 24px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 2px solid rgba(20, 20, 20, 0.12);
 }

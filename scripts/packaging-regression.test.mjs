@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(import.meta.dirname, "..");
+const root = fileURLToPath(new URL("..", import.meta.url));
 const tauriConfigPath = resolve(root, "src-tauri/tauri.conf.json");
 const tauriBundlesWorkflowPath = resolve(root, ".github/workflows/tauri-bundles.yml");
 const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, "utf8"));

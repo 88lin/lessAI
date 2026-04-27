@@ -124,7 +124,7 @@ export function formatDate(value: string) {
   return zhDateFormatter.format(new Date(value));
 }
 
-export function buildWritebackSlotMap(slots: ReadonlyArray<WritebackSlot>) {
+function buildWritebackSlotMap(slots: ReadonlyArray<WritebackSlot>) {
   return new Map(slots.map((slot) => [slot.id, slot] as const));
 }
 
@@ -164,7 +164,7 @@ export function mergedTextFromSlots(slots: ReadonlyArray<WritebackSlot>) {
   return slots.map((slot) => `${slot.text}${slot.separatorAfter}`).join("");
 }
 
-export function applySlotUpdatesToSlots(
+function applySlotUpdatesToSlots(
   slots: ReadonlyArray<WritebackSlot>,
   updates: ReadonlyArray<SlotUpdate>
 ) {
@@ -511,14 +511,6 @@ export function rewriteUnitStatusTone(
   return "info";
 }
 
-export function isRewriteUnitDone(rewriteUnit: RewriteUnit) {
-  return rewriteUnit.status === "done";
-}
-
-export function isRewriteUnitPending(rewriteUnit: RewriteUnit) {
-  return rewriteUnit.status === "idle" || rewriteUnit.status === "failed";
-}
-
 export function buildRunningRewriteUnitIdSet(
   session: DocumentSession | null,
   liveProgress: { sessionId: string; runningUnitIds: string[] } | null
@@ -527,8 +519,4 @@ export function buildRunningRewriteUnitIdSet(
     return new Set<string>();
   }
   return new Set(liveProgress.runningUnitIds);
-}
-
-export function sortRewriteUnitsByOrder(units: ReadonlyArray<RewriteUnit>) {
-  return [...units].sort((left, right) => left.order - right.order);
 }
