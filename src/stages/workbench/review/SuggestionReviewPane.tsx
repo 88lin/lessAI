@@ -91,6 +91,69 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
     ]
   );
 
+  // 稳定化每行回调：避免 inline 闭包导致 ReviewSuggestionRow(memo) 全部重渲染
+  const rowCallbacks = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        onSelect: () => void;
+        onApply: () => void;
+        onDelete: () => void;
+        onDismiss: () => void;
+        onRetry: () => void;
+        onToggleMenu: () => void;
+      }
+    >();
+    for (const suggestion of orderedSuggestions) {
+      map.set(suggestion.id, {
+        onSelect: () => {
+          logScrollRestore("review-row-select", {
+            sessionId: currentSession.id,
+            clickedSuggestionId: suggestion.id,
+            clickedRewriteUnitId: suggestion.rewriteUnitId,
+            currentActiveSuggestionId: activeSuggestionId,
+            currentActiveRewriteUnitId: activeRewriteUnit?.id ?? null
+          });
+          setOpenMenuSuggestionId(null);
+          onSelectRewriteUnit(suggestion.rewriteUnitId);
+          onSelectSuggestion(suggestion.id, { forceScroll: true });
+        },
+        onApply: () => {
+          setOpenMenuSuggestionId(null);
+          onApplySuggestion(suggestion.id);
+        },
+        onDelete: () => {
+          setOpenMenuSuggestionId(null);
+          onDeleteSuggestion(suggestion.id);
+        },
+        onDismiss: () => {
+          setOpenMenuSuggestionId(null);
+          onDismissSuggestion(suggestion.id);
+        },
+        onRetry: () => {
+          setOpenMenuSuggestionId(null);
+          onRetry();
+        },
+        onToggleMenu: () =>
+          setOpenMenuSuggestionId((current) =>
+            current === suggestion.id ? null : suggestion.id
+          )
+      });
+    }
+    return map;
+  }, [
+    orderedSuggestions,
+    currentSession.id,
+    activeSuggestionId,
+    activeRewriteUnit,
+    onSelectRewriteUnit,
+    onSelectSuggestion,
+    onApplySuggestion,
+    onDeleteSuggestion,
+    onDismissSuggestion,
+    onRetry
+  ]);
+
   return (
     <>
       <div className="review-summary-strip">
@@ -142,39 +205,7 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
               active={suggestion.id === activeSuggestionId}
               menuOpen={openMenuSuggestionId === suggestion.id}
               actionState={suggestionActionStates.get(suggestion.id)!}
-              onSelect={() => {
-                logScrollRestore("review-row-select", {
-                  sessionId: currentSession.id,
-                  clickedSuggestionId: suggestion.id,
-                  clickedRewriteUnitId: suggestion.rewriteUnitId,
-                  currentActiveSuggestionId: activeSuggestionId,
-                  currentActiveRewriteUnitId: activeRewriteUnit?.id ?? null
-                });
-                setOpenMenuSuggestionId(null);
-                onSelectRewriteUnit(suggestion.rewriteUnitId);
-                onSelectSuggestion(suggestion.id, { forceScroll: true });
-              }}
-              onApply={() => {
-                setOpenMenuSuggestionId(null);
-                onApplySuggestion(suggestion.id);
-              }}
-              onDelete={() => {
-                setOpenMenuSuggestionId(null);
-                onDeleteSuggestion(suggestion.id);
-              }}
-              onDismiss={() => {
-                setOpenMenuSuggestionId(null);
-                onDismissSuggestion(suggestion.id);
-              }}
-              onRetry={() => {
-                setOpenMenuSuggestionId(null);
-                onRetry();
-              }}
-              onToggleMenu={() =>
-                setOpenMenuSuggestionId((current) =>
-                  current === suggestion.id ? null : suggestion.id
-                )
-              }
+              {...rowCallbacks.get(suggestion.id)!}
             />
           ))}
           {renderedSuggestionCount < orderedSuggestions.length ? (

@@ -30,11 +30,11 @@ pub(crate) fn apply_slot_updates(
     Ok(next)
 }
 
-fn slot_positions(slots: &[WritebackSlot]) -> HashMap<String, usize> {
+fn slot_positions(slots: &[WritebackSlot]) -> HashMap<&str, usize> {
     slots
         .iter()
         .enumerate()
-        .map(|(index, slot)| (slot.id.clone(), index))
+        .map(|(index, slot)| (slot.id.as_str(), index))
         .collect()
 }
 

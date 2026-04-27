@@ -716,6 +716,65 @@ export default function App() {
     withBusy
   });
 
+  // 稳定化内联箭头函数：避免每次渲染创建新函数引用导致 memo 子组件失效
+  const onOpenDocumentStable = useCallback(() => {
+    void handleOpenDocument();
+  }, [handleOpenDocument]);
+  const onExportStable = useCallback(() => {
+    void handleExport();
+  }, [handleExport]);
+  const onStartWindowDragStable = useCallback(() => {
+    void handleStartWindowDrag();
+  }, [handleStartWindowDrag]);
+  const onMinimizeWindowStable = useCallback(() => {
+    void handleMinimizeWindow();
+  }, [handleMinimizeWindow]);
+  const onToggleMaximizeWindowStable = useCallback(() => {
+    void handleToggleMaximizeWindow();
+  }, [handleToggleMaximizeWindow]);
+  const onCloseWindowStable = useCallback(() => {
+    void handleCloseWindow();
+  }, [handleCloseWindow]);
+  const onStartRewriteStable = useCallback(
+    (mode: AppSettings["rewriteMode"]) => {
+      void handleStartRewrite(mode);
+    },
+    [handleStartRewrite]
+  );
+  const onPauseStable = useCallback(() => {
+    void handlePause();
+  }, [handlePause]);
+  const onResumeStable = useCallback(() => {
+    void handleResume();
+  }, [handleResume]);
+  const onCancelRewriteStable = useCallback(() => {
+    void handleCancelRewrite();
+  }, [handleCancelRewrite]);
+  const onFinalizeDocumentStable = useCallback(() => {
+    void handleFinalizeDocument();
+  }, [handleFinalizeDocument]);
+  const onResetSessionStable = useCallback(() => {
+    void handleResetSession();
+  }, [handleResetSession]);
+  const onSaveEditorStable = useCallback(() => {
+    void handleSaveEditor();
+  }, [handleSaveEditor]);
+  const onSaveEditorAndExitStable = useCallback(() => {
+    void handleSaveEditor({ returnToWorkbench: true });
+  }, [handleSaveEditor]);
+  const onRewriteSelectionStable = useCallback(() => {
+    void handleRewriteSelection();
+  }, [handleRewriteSelection]);
+  const onCheckUpdateStable = useCallback(() => {
+    void handleCheckUpdate();
+  }, [handleCheckUpdate]);
+  const onRefreshReleaseVersionsStable = useCallback(() => {
+    void handleRefreshReleaseVersions();
+  }, [handleRefreshReleaseVersions]);
+  const onSwitchSelectedReleaseStable = useCallback(() => {
+    void handleSwitchSelectedRelease();
+  }, [handleSwitchSelectedRelease]);
+
   if (booting) {
     return <BootScreen />;
   }
@@ -739,13 +798,13 @@ export default function App() {
             windowMaximized={windowMaximized}
             showWindowControls={desktopRuntime}
             enableWindowDrag={desktopRuntime}
-            onOpenDocument={() => void handleOpenDocument()}
+            onOpenDocument={onOpenDocumentStable}
             onOpenSettings={openSettings}
-            onExport={() => void handleExport()}
-            onStartWindowDrag={() => void handleStartWindowDrag()}
-            onMinimizeWindow={() => void handleMinimizeWindow()}
-            onToggleMaximizeWindow={() => void handleToggleMaximizeWindow()}
-            onCloseWindow={() => void handleCloseWindow()}
+            onExport={onExportStable}
+            onStartWindowDrag={onStartWindowDragStable}
+            onMinimizeWindow={onMinimizeWindowStable}
+            onToggleMaximizeWindow={onToggleMaximizeWindowStable}
+            onCloseWindow={onCloseWindowStable}
           />
 
           <div className="workspace-stage">
@@ -770,12 +829,12 @@ export default function App() {
               onOpenDocument={handleOpenDocument}
               onSelectRewriteUnit={handleSelectRewriteUnit}
               onSelectSuggestion={handleSelectSuggestion}
-              onStartRewrite={(mode) => void handleStartRewrite(mode)}
-              onPause={() => void handlePause()}
-              onResume={() => void handleResume()}
-              onCancel={() => void handleCancelRewrite()}
-              onFinalizeDocument={() => void handleFinalizeDocument()}
-              onResetSession={() => void handleResetSession()}
+              onStartRewrite={onStartRewriteStable}
+              onPause={onPauseStable}
+              onResume={onResumeStable}
+              onCancel={onCancelRewriteStable}
+              onFinalizeDocument={onFinalizeDocumentStable}
+              onResetSession={onResetSessionStable}
               onApplySuggestion={handleApplySuggestion}
               onDismissSuggestion={handleDismissSuggestion}
               onDeleteSuggestion={handleDeleteSuggestion}
@@ -785,13 +844,11 @@ export default function App() {
               onChangeEditorText={handleChangeEditorText}
               onChangeEditorSlotText={handleChangeEditorSlotText}
               onChangeEditorHasSelection={setEditorHasSelection}
-              onSaveEditor={() => void handleSaveEditor()}
-              onSaveEditorAndExit={() =>
-                void handleSaveEditor({ returnToWorkbench: true })
-              }
+              onSaveEditor={onSaveEditorStable}
+              onSaveEditorAndExit={onSaveEditorAndExitStable}
               onDiscardEditorChanges={handleDiscardEditorChanges}
               onExitEditor={handleExitEditor}
-              onRewriteSelection={() => void handleRewriteSelection()}
+              onRewriteSelection={onRewriteSelectionStable}
             />
           </div>
 
@@ -823,10 +880,10 @@ export default function App() {
             onConfirm={requestConfirm}
             onTestProvider={handleTestProvider}
             onSaveSettings={handleSaveSettings}
-            onCheckUpdate={() => void handleCheckUpdate()}
-            onRefreshReleaseVersions={() => void handleRefreshReleaseVersions()}
+            onCheckUpdate={onCheckUpdateStable}
+            onRefreshReleaseVersions={onRefreshReleaseVersionsStable}
             onSelectReleaseTag={handleSelectReleaseTag}
-            onSwitchSelectedRelease={() => void handleSwitchSelectedRelease()}
+            onSwitchSelectedRelease={onSwitchSelectedReleaseStable}
           />
         </main>
       </div>

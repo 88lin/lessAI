@@ -154,7 +154,7 @@ export const WorkbenchStage = memo(function WorkbenchStage({
   const orderedSuggestions = useMemo(() => {
     if (!currentSession) return [];
     return [...currentSession.suggestions].sort((a, b) => a.sequence - b.sequence);
-  }, [currentSession]);
+  }, [currentSession?.suggestions]);
 
   const activeSuggestion = useMemo<RewriteSuggestion | null>(() => {
     if (!currentSession || !activeSuggestionId) return null;

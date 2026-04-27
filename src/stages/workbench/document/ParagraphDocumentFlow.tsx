@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   logScrollRestore,
   snapshotScrollNode
@@ -177,12 +177,10 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
     });
   }, [activeRewriteUnitId, activeReviewNavigationRequestId, activeSuggestionId, sessionId]);
 
-  const computed = useMemo(
+  // 第一层：计算全部单元的元数据（不含 renderedUnitCount 依赖，避免渐进揭示时每帧 O(N) 重算）
+  const unitMeta = useMemo(
     () =>
-      rewriteUnits.map((rewriteUnit, index) => {
-        if (index >= renderedUnitCount) {
-          return null;
-        }
+      rewriteUnits.map((rewriteUnit) => {
         const unitSuggestions = suggestionsByRewriteUnit.get(rewriteUnit.id) ?? [];
         const summary = summarizeRewriteUnitSuggestions(unitSuggestions);
         const displaySuggestion = summary.applied ?? summary.proposed ?? null;
@@ -214,51 +212,72 @@ export const ParagraphDocumentFlow = memo(function ParagraphDocumentFlow({
       optimisticManualRunningRewriteUnitId,
       rewriteUnits,
       runningRewriteUnitIdSet,
-      renderedUnitCount,
       selectedRewriteUnitIds,
       session,
       suggestionsByRewriteUnit
     ]
   );
 
-  return computed.map((item) => {
-    if (!item) {
-      return null;
-    }
-    const { rewriteUnit, displaySuggestion, classes } = item;
-    const rendered = renderRewriteUnitContent(
-      session,
-      rewriteUnit,
-      displaySuggestion,
-      documentView,
-      showMarkers,
-      documentFormat
-    );
+  // 第二层：截取渐进揭示的可见范围（仅 renderedUnitCount 变更时重新切片，O(1)）
+  const visibleUnitMeta = useMemo(
+    () => unitMeta.slice(0, renderedUnitCount),
+    [unitMeta, renderedUnitCount]
+  );
 
-    return (
-      <span key={rewriteUnit.id} className="doc-unit-wrap">
-        <span
-          ref={(node) => {
-            rewriteUnitNodesRef.current[rewriteUnit.id] = node;
-          }}
-          className={classes}
-          data-rewrite-unit-id={rewriteUnit.id}
-          title={rewriteUnitTitle(session, rewriteUnit, rewriteEnabled, rewriteBlockedReason)}
-          onClick={(event) => {
-            onSelectRewriteUnit(rewriteUnit.id, {
-              multiSelect: event.metaKey || event.ctrlKey
-            });
-            if (displaySuggestion) {
-              onSelectSuggestion(displaySuggestion.id);
-            }
-          }}
-        >
-          {rendered.body}
-        </span>
-        {rendered.separatorText ? (
-          <span className="doc-unit-separator">{rendered.separatorText}</span>
-        ) : null}
-      </span>
-    );
-  });
+  // 委托点击处理：单个回调替代每个单元的 inline onClick，消除每次渲染 N 个闭包
+  const handleUnitClick = useCallback(
+    (event: React.MouseEvent) => {
+      const target = (event.target as HTMLElement).closest<HTMLElement>(
+        "[data-rewrite-unit-id]"
+      );
+      if (!target) return;
+      const rewriteUnitId = target.dataset.rewriteUnitId;
+      if (!rewriteUnitId) return;
+
+      onSelectRewriteUnit(rewriteUnitId, {
+        multiSelect: event.metaKey || event.ctrlKey
+      });
+
+      const suggestionId = target.dataset.displaySuggestionId;
+      if (suggestionId) {
+        onSelectSuggestion(suggestionId);
+      }
+    },
+    [onSelectRewriteUnit, onSelectSuggestion]
+  );
+
+  return (
+    <span onClick={handleUnitClick}>
+      {visibleUnitMeta.map((item) => {
+        const { rewriteUnit, displaySuggestion, classes } = item;
+        const rendered = renderRewriteUnitContent(
+          session,
+          rewriteUnit,
+          displaySuggestion,
+          documentView,
+          showMarkers,
+          documentFormat
+        );
+
+        return (
+          <span key={rewriteUnit.id} className="doc-unit-wrap">
+            <span
+              ref={(node) => {
+                rewriteUnitNodesRef.current[rewriteUnit.id] = node;
+              }}
+              className={classes}
+              data-rewrite-unit-id={rewriteUnit.id}
+              data-display-suggestion-id={displaySuggestion?.id}
+              title={rewriteUnitTitle(session, rewriteUnit, rewriteEnabled, rewriteBlockedReason)}
+            >
+              {rendered.body}
+            </span>
+            {rendered.separatorText ? (
+              <span className="doc-unit-separator">{rendered.separatorText}</span>
+            ) : null}
+          </span>
+        );
+      })}
+    </span>
+  );
 });
