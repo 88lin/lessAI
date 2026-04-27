@@ -62,6 +62,35 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
     [currentSession.rewriteUnits]
   );
 
+  const suggestionActionStates = useMemo(
+    () =>
+      new Map(
+        orderedSuggestions.map((suggestion) => [
+          suggestion.id,
+          buildSuggestionRowActionState({
+            suggestionId: suggestion.id,
+            decision: suggestion.decision,
+            busyAction,
+            anyBusy,
+            editorMode: false,
+            rewriteRunning,
+            rewritePaused,
+            settingsReady,
+            rewriteUnitFailed: failedRewriteUnitIds.has(suggestion.rewriteUnitId)
+          })
+        ])
+      ),
+    [
+      orderedSuggestions,
+      busyAction,
+      anyBusy,
+      rewriteRunning,
+      rewritePaused,
+      settingsReady,
+      failedRewriteUnitIds
+    ]
+  );
+
   return (
     <>
       <div className="review-summary-strip">
@@ -112,17 +141,7 @@ export const SuggestionReviewPane = memo(function SuggestionReviewPane({
               suggestion={suggestion}
               active={suggestion.id === activeSuggestionId}
               menuOpen={openMenuSuggestionId === suggestion.id}
-              actionState={buildSuggestionRowActionState({
-                suggestionId: suggestion.id,
-                decision: suggestion.decision,
-                busyAction,
-                anyBusy,
-                editorMode: false,
-                rewriteRunning,
-                rewritePaused,
-                settingsReady,
-                rewriteUnitFailed: failedRewriteUnitIds.has(suggestion.rewriteUnitId)
-              })}
+              actionState={suggestionActionStates.get(suggestion.id)!}
               onSelect={() => {
                 logScrollRestore("review-row-select", {
                   sessionId: currentSession.id,

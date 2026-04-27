@@ -93,7 +93,8 @@ fn myers_diff<T: Eq + Copy>(before: &[T], after: &[T], max_trace_bytes: usize) -
     };
     v[start_index] = 0;
 
-    let mut trace: Vec<Vec<i32>> = Vec::new();
+    let mut trace: Vec<i32> = Vec::with_capacity(v_len.saturating_mul(64));
+    let mut trace_offsets: Vec<usize> = Vec::with_capacity(64);
     let mut found = false;
 
     for d in 0..=max {
@@ -158,7 +159,8 @@ fn myers_diff<T: Eq + Copy>(before: &[T], after: &[T], max_trace_bytes: usize) -
         if trace_bytes_used.saturating_add(bytes_per_trace) > max_trace_bytes {
             return degrade_to_prefix_suffix_diff(before, after, "trace_growth_budget_exceeded");
         }
-        trace.push(v.clone());
+        trace_offsets.push(trace.len());
+        trace.extend_from_slice(&v);
         trace_bytes_used = trace_bytes_used.saturating_add(bytes_per_trace);
 
         if found {
@@ -174,8 +176,9 @@ fn myers_diff<T: Eq + Copy>(before: &[T], after: &[T], max_trace_bytes: usize) -
     let mut y = m as i32;
     let mut reversed_ops: Vec<DiffOp<T>> = Vec::with_capacity(n.saturating_add(m));
 
-    for d in (1..trace.len()).rev() {
-        let v_prev = &trace[d - 1];
+    for d in (1..trace_offsets.len()).rev() {
+        let start = trace_offsets[d - 1];
+        let v_prev = &trace[start..start + v_len];
         let d_i32 = d as i32;
         let k = x - y;
 

@@ -251,6 +251,17 @@ export function buildDiffHunks(
   const maxHunks = Math.max(1, options?.maxHunks ?? DEFAULT_MAX_HUNKS);
   const work = spans.map((item) => ({ ...item }));
 
+  // 预计算每个位置之后下一个非 unchanged span 的索引，
+  // 避免内层 while 循环在连续 unchanged 区间重复扫描导致 O(n²)。
+  const nextChangeIdx: number[] = new Array(work.length).fill(work.length);
+  let next = work.length;
+  for (let idx = work.length - 1; idx >= 0; idx -= 1) {
+    nextChangeIdx[idx] = next;
+    if (work[idx].type !== "unchanged") {
+      next = idx;
+    }
+  }
+
   const hunks: DiffHunk[] = [];
   let lastUnchangedText = "";
   let i = 0;
@@ -287,12 +298,9 @@ export function buildDiffHunks(
       }
 
       // 变更对合并策略：
-      // - 若两段变更之间的 unchanged 很短，则视为同一组（避免“随手改一下就几十个变更对”）
+      // - 若两段变更之间的 unchanged 很短，则视为同一组（避免”随手改一下就几十个变更对”）
       // - 若 unchanged 很长，则切分为新的变更对，仅保留末尾/开头少量上下文
-      let nextChangeIndex = i + 1;
-      while (nextChangeIndex < work.length && work[nextChangeIndex].type === "unchanged") {
-        nextChangeIndex += 1;
-      }
+      const nextChangeIndex = nextChangeIdx[i];
       const hasNextChange = nextChangeIndex < work.length;
 
       if (!hasNextChange) {

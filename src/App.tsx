@@ -35,6 +35,7 @@ import { useBusyAction } from "./hooks/useBusyAction";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { SettingsModal } from "./components/SettingsModal";
+import { UpdateProgressModal } from "./components/UpdateProgressModal";
 import { BootScreen } from "./app/components/BootScreen";
 import { NoticeToast } from "./app/components/NoticeToast";
 import { ThemeToggle } from "./app/components/ThemeToggle";
@@ -146,10 +147,12 @@ export default function App() {
     selectedReleaseIsCurrent,
     releaseListLoadedAt,
     switchRequiresUpdaterManifest,
+    updateProgress,
     handleCheckUpdate,
     handleRefreshReleaseVersions,
     handleSelectReleaseTag,
-    handleSwitchSelectedRelease
+    handleSwitchSelectedRelease,
+    handleCancelUpdate
   } = useUpdateChecker({
     updateProxy: settings.updateProxy,
     showNotice,
@@ -839,6 +842,14 @@ export default function App() {
         variant={confirmDialog?.variant}
         onResult={handleConfirmResult}
       />
+      {updateProgress != null ? (
+        <UpdateProgressModal
+          phase={updateProgress.phase}
+          downloadedBytes={updateProgress.downloadedBytes}
+          totalBytes={updateProgress.totalBytes}
+          onCancel={handleCancelUpdate}
+        />
+      ) : null}
       {desktopRuntime && customResizeEnabled && !windowMaximized ? (
         <WindowResizeLayer onResize={handleResizeWindow} />
       ) : null}
