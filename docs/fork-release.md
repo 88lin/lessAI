@@ -6,7 +6,7 @@ This fork publishes its own GitHub Releases and its own Tauri updater feed.
 
 - GitHub repository: `88lin/lessAI`
 - Updater endpoint: `https://github.com/88lin/lessAI/releases/latest/download/latest.json`
-- Stable base version in repo config: `0.3.12`
+- Stable base version in repo config: `0.3.4`
 
 ## Signing key
 
@@ -35,9 +35,9 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo 88lin/lessAI
 When you push to `master`, GitHub Actions:
 
 1. Reads the base version from `src-tauri/tauri.conf.json`.
-2. Publishes the first fork release as `v0.3.12` if that tag does not exist.
-3. Publishes later fork releases as `v0.3.12.1`, `v0.3.12.2`, and so on.
-4. Uses Tauri-compatible internal versions such as `0.3.12` and `0.3.12-1`.
+2. Publishes the first fork release as `v0.3.4` if that tag does not exist.
+3. Publishes later fork releases as `v0.3.4.1`, `v0.3.4.2`, and so on.
+4. Uses Tauri-compatible internal versions such as `0.3.4` and `0.3.4-1`.
 5. Builds Windows, Linux, and macOS installers.
 6. Publishes a GitHub Release with installers, signatures, `latest.json`, `system-packages.json`, and checksums.
 
@@ -48,8 +48,8 @@ There is also a scheduled fallback every 15 minutes. If a `master` push does not
 If you want a manually controlled version number, create and push a `v*` tag.
 
 ```powershell
-git tag v0.3.12
-git push origin v0.3.12
+git tag v0.3.4
+git push origin v0.3.4
 ```
 
 ## Suggested sync flow
