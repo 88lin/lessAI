@@ -253,7 +253,7 @@ mod tests {
         assert!(!settings.rewrite_headings);
         assert_eq!(settings.rewrite_mode, crate::models::RewriteMode::Auto);
         assert_eq!(settings.max_concurrency, 2);
-        assert_eq!(settings.units_per_batch, 2);
+        assert_eq!(settings.units_per_batch, 1);
 
         let stored = fs::read_to_string(&path).expect("read migrated settings");
         assert_eq!(stored, original);

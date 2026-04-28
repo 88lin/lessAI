@@ -27,7 +27,7 @@ fn default_max_concurrency() -> usize {
 }
 
 fn default_units_per_batch() -> usize {
-    2
+    1
 }
 
 fn default_prompt_preset_id() -> String {

@@ -57,7 +57,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   rewriteHeadings: false,
   rewriteMode: "auto",
   maxConcurrency: 2,
-  unitsPerBatch: 2,
+  unitsPerBatch: 1,
   promptPresetId: "humanizer_zh",
   customPrompts: []
 };

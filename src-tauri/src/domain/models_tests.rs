@@ -42,7 +42,7 @@ fn fills_missing_app_settings_fields_from_defaults() {
         "rewriteHeadings": false,
         "rewriteMode": "auto",
         "maxConcurrency": 2,
-        "unitsPerBatch": 2,
+        "unitsPerBatch": 1,
         "promptPresetId": "humanizer_zh",
         "customPrompts": []
     });
