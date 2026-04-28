@@ -23,8 +23,8 @@ use super::{
     specials::{classify_block_sdt, classify_inline_special_region, is_inline_special_name},
     styles::ParagraphStyles,
     xml::{
-        attr_value, hyperlink_target, local_name, local_name_owned, toggle_attr_enabled,
-        underline_enabled,
+        attr_value, capture_subtree_events_from_slice, hyperlink_target, local_name,
+        local_name_owned, toggle_attr_enabled, underline_enabled,
     },
 };
 use crate::{
@@ -190,21 +190,20 @@ pub(crate) struct LoadedDocxWritebackSource {
     blocks: Vec<WritebackBlockTemplate>,
 }
 
-
+mod simple_editor_writeback;
+mod simple_extract;
+mod simple_extract_runs;
+mod simple_merge;
+mod simple_signature;
 mod simple_source;
 mod simple_utils;
-mod simple_signature;
-mod simple_extract;
-mod simple_merge;
-mod simple_extract_runs;
-mod simple_editor_writeback;
 mod simple_writer;
 
+use self::simple_editor_writeback::*;
+use self::simple_extract::*;
+use self::simple_extract_runs::*;
+use self::simple_merge::*;
+use self::simple_signature::*;
 use self::simple_source::*;
 use self::simple_utils::*;
-use self::simple_signature::*;
-use self::simple_extract::*;
-use self::simple_merge::*;
-use self::simple_extract_runs::*;
-use self::simple_editor_writeback::*;
 use self::simple_writer::*;

@@ -103,8 +103,9 @@ mod tests {
 
     use crate::{
         documents::LoadedDocumentSource,
-        models::{DocumentSession, DocumentSnapshot, RunningState, SegmentationPreset},
+        models::{DocumentSnapshot, RunningState, SegmentationPreset},
         rewrite_unit::WritebackSlot,
+        test_support::sample_clean_session,
     };
 
     fn sample_loaded(source_text: &str) -> LoadedDocumentSource {
@@ -166,32 +167,7 @@ mod tests {
     #[test]
     fn disk_clean_session_load_input_for_existing_reuses_existing_identity_and_path() {
         let now = Utc::now();
-        let existing = DocumentSession {
-            id: "session-9".to_string(),
-            title: "示例".to_string(),
-            document_path: "/tmp/example.txt".to_string(),
-            source_text: "正文".to_string(),
-            source_snapshot: None,
-            template_kind: None,
-            template_signature: None,
-            slot_structure_signature: None,
-            template_snapshot: None,
-            normalized_text: "正文".to_string(),
-            capabilities: crate::session_capability_models::DocumentSessionCapabilities {
-                source_writeback: crate::session_capability_models::CapabilityGate::allowed(),
-                editor_writeback: crate::session_capability_models::CapabilityGate::allowed(),
-                ..Default::default()
-            },
-            segmentation_preset: Some(SegmentationPreset::Paragraph),
-            rewrite_headings: Some(false),
-            writeback_slots: Vec::new(),
-            rewrite_units: Vec::new(),
-            suggestions: Vec::new(),
-            next_suggestion_sequence: 1,
-            status: RunningState::Idle,
-            created_at: now,
-            updated_at: now,
-        };
+        let existing = sample_clean_session("session-9", "/tmp/example.txt", "正文");
 
         let input = super::disk_clean_session_load_input_for_existing(&existing, now, true);
 

@@ -201,7 +201,9 @@ export default function App() {
       normalized
     );
 
-    setEditorSlotOverrides(nextOverrides);
+    setEditorSlotOverrides((prev) =>
+      applyEditorSlotOverride(prev, slot, normalized)
+    );
     setEditorText(buildEditorTextFromSession(session, nextOverrides));
   }, []);
 
@@ -650,6 +652,7 @@ export default function App() {
     currentSessionRef,
     editorBaseSnapshotRef,
     editorRef,
+    editorSlotOverridesRef,
     requestConfirm,
     showNotice,
     withBusy

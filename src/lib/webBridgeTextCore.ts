@@ -1,4 +1,7 @@
 import type { DocumentSnapshot } from "./types";
+import { normalizeNewlines } from "./textNormalize";
+
+export { normalizeNewlines } from "./textNormalize";
 
 export function simpleHash(input: string) {
   let hash = 0;
@@ -7,10 +10,6 @@ export function simpleHash(input: string) {
     hash |= 0;
   }
   return Math.abs(hash).toString(16);
-}
-
-export function normalizeNewlines(text: string) {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 export function normalizeText(input: string) {

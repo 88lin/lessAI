@@ -3,12 +3,7 @@ use super::environments::{
 };
 use super::scan::find_command_span_end;
 
-#[derive(Clone, Copy)]
-pub(super) struct IndexedLine<'a> {
-    pub line: &'a str,
-    pub start: usize,
-    pub end: usize,
-}
+use crate::text_boundaries::{split_indexed_lines_with_offsets, IndexedTextLine as IndexedLine};
 
 pub(super) struct BlankLines {
     pub text: String,
@@ -153,55 +148,7 @@ pub(super) fn slice_text(
 }
 
 pub(super) fn split_lines_with_offsets(text: &str) -> Vec<IndexedLine<'_>> {
-    let bytes = text.as_bytes();
-    let mut lines = Vec::new();
-    let mut start = 0usize;
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\n' => {
-                lines.push(IndexedLine {
-                    line: &text[start..index],
-                    start,
-                    end: index + 1,
-                });
-                index += 1;
-                start = index;
-            }
-            b'\r' => {
-                let end = if index + 1 < bytes.len() && bytes[index + 1] == b'\n' {
-                    index + 2
-                } else {
-                    index + 1
-                };
-                lines.push(IndexedLine {
-                    line: &text[start..index],
-                    start,
-                    end,
-                });
-                index = end;
-                start = index;
-            }
-            _ => index += 1,
-        }
-    }
-
-    if start < bytes.len() {
-        lines.push(IndexedLine {
-            line: &text[start..bytes.len()],
-            start,
-            end: bytes.len(),
-        });
-    } else if text.is_empty() {
-        lines.push(IndexedLine {
-            line: "",
-            start: 0,
-            end: 0,
-        });
-    }
-
-    lines
+    split_indexed_lines_with_offsets(text)
 }
 
 fn matches_tex_command(line: &str, command: &str) -> bool {

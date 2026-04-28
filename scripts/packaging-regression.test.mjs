@@ -6,8 +6,12 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const tauriConfigPath = resolve(root, "src-tauri/tauri.conf.json");
 const tauriBundlesWorkflowPath = resolve(root, ".github/workflows/tauri-bundles.yml");
+const appImagePatchPath = resolve(root, "scripts/patch-linux-appimage.sh");
+const linuxDepsPath = resolve(root, "scripts/install-tauri-linux-deps.sh");
 const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, "utf8"));
 const tauriBundlesWorkflow = readFileSync(tauriBundlesWorkflowPath, "utf8");
+const appImagePatch = readFileSync(appImagePatchPath, "utf8");
+const linuxDeps = readFileSync(linuxDepsPath, "utf8");
 
 assert.ok(Array.isArray(tauriConfig.bundle?.icon), "bundle.icon 必须为数组");
 assert.ok(tauriConfig.bundle.icon.length > 0, "bundle.icon 不能为空");
@@ -48,5 +52,25 @@ assert.ok(
   tauriBundlesWorkflow.includes("DOCX / PDF 当前采用“安全优先”的原文件写回策略。"),
   "发布流程缺少 DOCX/PDF 安全优先写回口径"
 );
+
+for (const expected of [
+  "libgstapp.so",
+  "gst-plugin-scanner",
+  "GST_PLUGIN_SYSTEM_PATH_1_0",
+  "GST_PLUGIN_SCANNER_1_0"
+]) {
+  assert.ok(appImagePatch.includes(expected), `AppImage 补丁缺少 GStreamer 配置：${expected}`);
+}
+
+for (const expected of ["GStreamer", "appsink", "gst-plugin-scanner", "libgstapp"]) {
+  assert.ok(
+    tauriBundlesWorkflow.includes(expected),
+    `AppImage smoke test 缺少 GStreamer 致命特征匹配：${expected}`
+  );
+}
+
+for (const expected of ["gstreamer1.0-plugins-base", "gstreamer1.0-tools"]) {
+  assert.ok(linuxDeps.includes(expected), `Linux 打包依赖缺少 GStreamer 包：${expected}`);
+}
 
 console.log("[packaging-regression] OK");

@@ -1,14 +1,14 @@
 import { normalizeNewlines } from "../../../lib/helpers";
 import type { DocumentEditorSelectionSnapshotBase } from "./documentEditorTypes";
 
-function selectionPointOffset(root: Node, container: Node, offset: number) {
+export function selectionPointOffset(root: Node, container: Node, offset: number) {
   const range = document.createRange();
   range.selectNodeContents(root);
   range.setEnd(container, offset);
   return normalizeNewlines(range.toString()).length;
 }
 
-function normalizeSelectionComparableText(text: string) {
+export function normalizeSelectionComparableText(text: string) {
   return normalizeNewlines(text).replace(/[\u00a0\u202f]/g, " ");
 }
 

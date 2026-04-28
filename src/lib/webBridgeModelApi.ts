@@ -39,19 +39,40 @@ function chatUrl(baseUrl: string) {
   return `${normalized}/v1/chat/completions`;
 }
 
-function extractChatContent(payload: unknown) {
-  const data = payload as {
-    error?: { message?: unknown };
-    choices?: Array<{ text?: unknown; message?: { content?: unknown } }>;
-  };
-  if (typeof data.error?.message === "string" && data.error.message.trim()) {
-    throw new Error(data.error.message.trim());
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessageFromPayload(payload: unknown) {
+  if (!isRecord(payload) || !isRecord(payload.error)) {
+    return null;
   }
-  const choice = data.choices?.[0];
-  if (!choice) {
+  const message = payload.error.message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
+function previewText(value: string, maxChars = 200) {
+  return Array.from(value.trim()).slice(0, maxChars).join("");
+}
+
+function extractChatContent(payload: unknown) {
+  if (!isRecord(payload)) {
+    throw new Error("模型返回格式不受支持。");
+  }
+
+  const providerError = errorMessageFromPayload(payload);
+  if (providerError) {
+    throw new Error(providerError);
+  }
+
+  const choices = payload.choices;
+  if (!Array.isArray(choices) || choices.length === 0 || !isRecord(choices[0])) {
     throw new Error("模型没有返回可用结果。");
   }
-  const content = choice.message?.content ?? choice.text;
+
+  const choice = choices[0];
+  const message = isRecord(choice.message) ? choice.message : null;
+  const content = message?.content ?? choice.text;
   if (typeof content === "string") {
     const trimmed = content.trim();
     if (!trimmed) {
@@ -83,6 +104,51 @@ function extractChatContent(payload: unknown) {
   throw new Error("模型返回格式不受支持。");
 }
 
+function createModelRequestSignal(timeoutMs: number, externalSignal?: AbortSignal) {
+  const controller = new AbortController();
+  let timedOut = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let timeoutError: Error | null = null;
+
+  const abort = (reason?: unknown) => {
+    if (!controller.signal.aborted) {
+      controller.abort(reason);
+    }
+  };
+  const handleExternalAbort = () => abort(externalSignal?.reason);
+
+  if (externalSignal?.aborted) {
+    abort(externalSignal.reason);
+  } else {
+    externalSignal?.addEventListener("abort", handleExternalAbort, { once: true });
+  }
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      if (!controller.signal.aborted) {
+        timedOut = true;
+        timeoutError = new Error(`模型调用超时：超过 ${timeoutMs}ms。`);
+        abort(timeoutError);
+        reject(timeoutError);
+      }
+    }, timeoutMs);
+  });
+
+  return {
+    signal: controller.signal,
+    timeoutPromise,
+    timedOut: () => timedOut,
+    timeoutError: () => timeoutError,
+    cleanup: () => {
+      if (timeoutId != null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      externalSignal?.removeEventListener("abort", handleExternalAbort);
+    }
+  };
+}
+
 export async function callChatModel(
   settings: AppSettings,
   systemPrompt: string,
@@ -90,27 +156,45 @@ export async function callChatModel(
   signal?: AbortSignal,
   temperatureOverride?: number
 ) {
-  const response = await fetch(chatUrl(settings.baseUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey.trim()}`
-    },
-    body: JSON.stringify({
-      model: settings.model.trim(),
-      temperature:
-        typeof temperatureOverride === "number"
-          ? temperatureOverride
-          : settings.temperature,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
-    }),
-    signal
-  });
+  const requestSignal = createModelRequestSignal(settings.timeoutMs, signal);
+  let response: Response;
+  let raw: string;
+  try {
+    response = await Promise.race([
+      fetch(chatUrl(settings.baseUrl), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.apiKey.trim()}`
+        },
+        body: JSON.stringify({
+          model: settings.model.trim(),
+          temperature:
+            typeof temperatureOverride === "number"
+              ? temperatureOverride
+              : settings.temperature,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        }),
+        signal: requestSignal.signal
+      }),
+      requestSignal.timeoutPromise
+    ]);
+    raw = await Promise.race([response.text(), requestSignal.timeoutPromise]);
+  } catch (error) {
+    if (requestSignal.timedOut()) {
+      throw (
+        requestSignal.timeoutError() ??
+        new Error(`模型调用超时：超过 ${settings.timeoutMs}ms。`)
+      );
+    }
+    throw error;
+  } finally {
+    requestSignal.cleanup();
+  }
 
-  const raw = await response.text();
   let json: unknown = null;
   try {
     json = JSON.parse(raw);
@@ -125,10 +209,18 @@ export async function callChatModel(
       "error" in json &&
       typeof (json as { error?: { message?: unknown } }).error?.message === "string"
         ? (json as { error: { message: string } }).error.message
-        : raw.slice(0, 200);
+        : previewText(raw);
     throw new Error(`模型调用失败：HTTP ${response.status} ${message}`);
+  }
+
+  if (json == null) {
+    const preview = previewText(raw);
+    throw new Error(
+      preview
+        ? `模型返回格式不受支持：${preview}`
+        : "模型返回格式不受支持。"
+    );
   }
 
   return extractChatContent(json);
 }
-

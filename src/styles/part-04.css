@@ -623,6 +623,17 @@
   margin: 0;
 }
 
+.document-flow-selection-shell {
+  min-height: 0;
+}
+
+.document-flow::selection,
+.document-flow *::selection {
+  background: var(--editor-selection-bg);
+  color: var(--editor-selection-ink);
+  text-shadow: none;
+}
+
 .doc-unit {
   border-radius: 10px;
   cursor: pointer;
@@ -1039,7 +1050,56 @@
 }
 
 .workbench-editor-editable {
+  position: relative;
+  z-index: 1;
   caret-color: var(--ink);
+}
+
+.workbench-editor-selection-shell {
+  position: relative;
+  min-height: 100%;
+}
+
+.workbench-editor-selection-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.workbench-editor-selection-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.workbench-editor-selection-shape {
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.workbench-editor-selection-shape.is-halo {
+  fill: none;
+  stroke: var(--editor-selection-halo);
+  stroke-width: 5;
+}
+
+.workbench-editor-selection-shape.is-border {
+  fill: var(--editor-selection-fill);
+  stroke: var(--editor-selection-border);
+  stroke-width: 1.5;
+}
+
+.workbench-editor-editable::selection,
+.workbench-editor-editable *::selection {
+  background: var(--editor-selection-bg);
+  color: var(--editor-selection-ink);
+  text-shadow: none;
 }
 
 .assistant-float {

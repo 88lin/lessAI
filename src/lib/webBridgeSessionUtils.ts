@@ -2,24 +2,12 @@ import type {
   CapabilityGate,
   DocumentSession,
   DocumentSnapshot,
-  RewriteUnit,
   RunningState,
   SlotUpdate,
   WritebackSlot
 } from "./types";
 
-export function mergedTextFromSlotIds(slots: WritebackSlot[], slotIds: string[]) {
-  return slotIds
-    .map((slotId) => {
-      const slot = slots.find((item) => item.id === slotId);
-      return slot ? `${slot.text}${slot.separatorAfter}` : "";
-    })
-    .join("");
-}
-
-export function rewriteUnitSourceText(session: DocumentSession, rewriteUnit: RewriteUnit) {
-  return mergedTextFromSlotIds(session.writebackSlots, rewriteUnit.slotIds);
-}
+export { mergedTextFromSlotIds, mergedTextFromSlots, rewriteUnitSourceText } from "./slotText";
 
 export function applySlotUpdates(slots: WritebackSlot[], updates: SlotUpdate[]) {
   const next = slots.map((slot) => ({ ...slot }));
@@ -45,10 +33,6 @@ export function buildAppliedProjection(session: DocumentSession) {
     projected = applySlotUpdates(projected, suggestion.slotUpdates);
   }
   return projected;
-}
-
-export function mergedTextFromSlots(slots: WritebackSlot[]) {
-  return slots.map((slot) => `${slot.text}${slot.separatorAfter}`).join("");
 }
 
 export function findSuggestionIndex(session: DocumentSession, suggestionId: string) {

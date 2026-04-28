@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
+use quick_xml::{events::Event, Reader};
 
-use super::styles::{ParagraphStyles, PartialNumberingSpec};
+use super::{
+    styles::{ParagraphStyles, PartialNumberingSpec},
+    xml::{attr_value, capture_subtree_events, local_name},
+};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NumberingDefinitions {
@@ -86,12 +86,24 @@ pub(crate) fn parse_numbering_xml(xml: &str) -> Result<NumberingDefinitions, Str
 
         match event {
             Event::Start(e) if local_name(e.name().as_ref()) == b"abstractNum" => {
-                let events = capture_subtree_events(&mut reader, Event::Start(e), &mut buf)?;
+                let events = capture_subtree_events(
+                    &mut reader,
+                    Event::Start(e),
+                    &mut buf,
+                    "numbering.xml",
+                    "编号节点未正常闭合。",
+                )?;
                 let (abstract_id, levels) = parse_abstract_num_events(&events)?;
                 abstract_levels.insert(abstract_id, levels);
             }
             Event::Start(e) if local_name(e.name().as_ref()) == b"num" => {
-                let events = capture_subtree_events(&mut reader, Event::Start(e), &mut buf)?;
+                let events = capture_subtree_events(
+                    &mut reader,
+                    Event::Start(e),
+                    &mut buf,
+                    "numbering.xml",
+                    "编号节点未正常闭合。",
+                )?;
                 numbering_instances.push(parse_num_events(&events)?);
             }
             Event::Eof => break,
@@ -533,32 +545,6 @@ fn roman_counter(value: i32) -> String {
     out
 }
 
-fn capture_subtree_events(
-    reader: &mut Reader<&[u8]>,
-    first_event: Event<'static>,
-    buf: &mut Vec<u8>,
-) -> Result<Vec<Event<'static>>, String> {
-    let mut depth = 1usize;
-    let mut events = vec![first_event];
-
-    while depth > 0 {
-        let event = match reader.read_event_into(buf) {
-            Ok(event) => event.into_owned(),
-            Err(error) => return Err(format!("解析 numbering.xml 失败：{error}")),
-        };
-        match &event {
-            Event::Start(_) => depth += 1,
-            Event::End(_) => depth -= 1,
-            Event::Eof => return Err("解析 numbering.xml 失败：编号节点未正常闭合。".to_string()),
-            _ => {}
-        }
-        events.push(event);
-        buf.clear();
-    }
-
-    Ok(events)
-}
-
 fn capture_nested_events(
     events: &[Event<'static>],
     start_index: usize,
@@ -587,27 +573,5 @@ fn capture_nested_events(
             Err("解析 numbering.xml 失败：编号子树未正常闭合。".to_string())
         }
         _ => Err("解析 numbering.xml 失败：非法的编号子树起点。".to_string()),
-    }
-}
-
-fn attr_value(event: &BytesStart<'_>, key: &[u8]) -> Option<String> {
-    for attr in event.attributes().flatten() {
-        if local_name(attr.key.as_ref()) != key {
-            continue;
-        }
-        if let Ok(value) = attr.unescape_value() {
-            return Some(value.into_owned());
-        }
-        if let Ok(value) = std::str::from_utf8(attr.value.as_ref()) {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
-fn local_name(name: &[u8]) -> &[u8] {
-    match name.iter().rposition(|byte| *byte == b':') {
-        Some(index) if index + 1 < name.len() => &name[index + 1..],
-        _ => name,
     }
 }

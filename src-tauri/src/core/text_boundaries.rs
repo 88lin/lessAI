@@ -3,6 +3,65 @@ const CLOSING_PUNCTUATION: [char; 13] = [
     '"', '\'', '”', '’', '）', ')', '】', ']', '}', '」', '』', '》', '〉',
 ];
 
+#[derive(Clone, Copy)]
+pub(crate) struct IndexedTextLine<'a> {
+    pub line: &'a str,
+    pub start: usize,
+    pub end: usize,
+}
+
+pub(crate) fn split_indexed_lines_with_offsets(text: &str) -> Vec<IndexedTextLine<'_>> {
+    let bytes = text.as_bytes();
+    let mut lines = Vec::new();
+    let mut start = 0usize;
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\n' => {
+                lines.push(IndexedTextLine {
+                    line: &text[start..index],
+                    start,
+                    end: index + 1,
+                });
+                index += 1;
+                start = index;
+            }
+            b'\r' => {
+                let end = if index + 1 < bytes.len() && bytes[index + 1] == b'\n' {
+                    index + 2
+                } else {
+                    index + 1
+                };
+                lines.push(IndexedTextLine {
+                    line: &text[start..index],
+                    start,
+                    end,
+                });
+                index = end;
+                start = index;
+            }
+            _ => index += 1,
+        }
+    }
+
+    if start < bytes.len() {
+        lines.push(IndexedTextLine {
+            line: &text[start..bytes.len()],
+            start,
+            end: bytes.len(),
+        });
+    } else if text.is_empty() {
+        lines.push(IndexedTextLine {
+            line: "",
+            start: 0,
+            end: 0,
+        });
+    }
+
+    lines
+}
+
 pub(crate) fn split_text_chunks_by_paragraph_separator(text: &str) -> Vec<&str> {
     let mut chunks = Vec::new();
     let mut start = 0usize;

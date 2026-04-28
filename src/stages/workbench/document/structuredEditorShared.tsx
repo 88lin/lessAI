@@ -1,5 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import type { ClipboardEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef } from "react";
 
 import { normalizeNewlines } from "../../../lib/helpers";
 import type { WritebackSlot } from "../../../lib/types";
@@ -27,16 +26,12 @@ export function slotPresentationClass(
 export const EditableSlotSpan = memo(function EditableSlotSpan({
   slot,
   text,
-  busy,
   registerNode,
-  onChange,
   classNameOptions
 }: {
   slot: WritebackSlot;
   text: string;
-  busy: boolean;
   registerNode: (slotId: string, node: HTMLSpanElement | null) => void;
-  onChange: (slotId: string, value: string) => void;
   classNameOptions?: { baseClassName?: string; protectedClassName?: string };
 }) {
   const nodeRef = useRef<HTMLSpanElement | null>(null);
@@ -62,6 +57,10 @@ export const EditableSlotSpan = memo(function EditableSlotSpan({
     }
 
     if (lastSyncedTextRef.current === text) return;
+    if (normalizeNewlines(node.innerText) === text) {
+      lastSyncedTextRef.current = text;
+      return;
+    }
     if (document.activeElement === node) {
       lastSyncedTextRef.current = normalizeNewlines(node.innerText);
       return;
@@ -71,39 +70,12 @@ export const EditableSlotSpan = memo(function EditableSlotSpan({
     lastSyncedTextRef.current = text;
   }, [text]);
 
-  const handleInput = useCallback(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-    const nextText = normalizeNewlines(node.innerText);
-    lastSyncedTextRef.current = nextText;
-    onChange(slot.id, nextText);
-  }, [onChange, slot.id]);
-
-  const handlePaste = useCallback((event: ClipboardEvent<HTMLSpanElement>) => {
-    event.preventDefault();
-    const text = event.clipboardData.getData("text/plain");
-    if (!text) return;
-
-    if (document.execCommand("insertText", false, text)) return;
-    const selection = window.getSelection();
-    if (!selection?.rangeCount) return;
-    selection.deleteFromDocument();
-    selection.getRangeAt(0).insertNode(document.createTextNode(text));
-    selection.collapseToEnd();
-  }, []);
-
   return (
     <span
       ref={nodeRef}
       className={slotPresentationClass(slot, classNameOptions)}
-      contentEditable={!busy}
-      suppressContentEditableWarning
-      spellCheck={false}
-      role="textbox"
       aria-label={`编辑槽位 ${slot.order + 1}`}
       data-slot-id={slot.id}
-      onInput={handleInput}
-      onPaste={handlePaste}
     />
   );
 });

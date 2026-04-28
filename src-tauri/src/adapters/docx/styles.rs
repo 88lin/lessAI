@@ -5,6 +5,8 @@ use quick_xml::{
     Reader,
 };
 
+use super::xml::{attr_value, capture_subtree_events, local_name};
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PartialNumberingSpec {
     pub num_id: Option<String>,
@@ -44,7 +46,13 @@ pub(crate) fn parse_styles_xml(xml: &str) -> Result<ParagraphStyles, String> {
 
         match event {
             Event::Start(e) if is_paragraph_style(&e) => {
-                let events = capture_subtree_events(&mut reader, Event::Start(e), &mut buf)?;
+                let events = capture_subtree_events(
+                    &mut reader,
+                    Event::Start(e),
+                    &mut buf,
+                    "styles.xml",
+                    "样式节点未正常闭合。",
+                )?;
                 let (style_id, style) = parse_paragraph_style_events(&events)?;
                 styles_by_id.insert(style_id, style);
             }
@@ -212,32 +220,6 @@ fn capture_style_fields(
     }
 }
 
-fn capture_subtree_events(
-    reader: &mut Reader<&[u8]>,
-    first_event: Event<'static>,
-    buf: &mut Vec<u8>,
-) -> Result<Vec<Event<'static>>, String> {
-    let mut depth = 1usize;
-    let mut events = vec![first_event];
-
-    while depth > 0 {
-        let event = match reader.read_event_into(buf) {
-            Ok(event) => event.into_owned(),
-            Err(error) => return Err(format!("解析 styles.xml 失败：{error}")),
-        };
-        match &event {
-            Event::Start(_) => depth += 1,
-            Event::End(_) => depth -= 1,
-            Event::Eof => return Err("解析 styles.xml 失败：样式节点未正常闭合。".to_string()),
-            _ => {}
-        }
-        events.push(event);
-        buf.clear();
-    }
-
-    Ok(events)
-}
-
 fn is_paragraph_style(event: &BytesStart<'_>) -> bool {
     local_name(event.name().as_ref()) == b"style"
         && attr_value(event, b"type").as_deref() == Some("paragraph")
@@ -245,26 +227,4 @@ fn is_paragraph_style(event: &BytesStart<'_>) -> bool {
 
 fn style_id(event: &BytesStart<'_>) -> Option<String> {
     attr_value(event, b"styleId")
-}
-
-fn attr_value(event: &BytesStart<'_>, key: &[u8]) -> Option<String> {
-    for attr in event.attributes().flatten() {
-        if local_name(attr.key.as_ref()) != key {
-            continue;
-        }
-        if let Ok(value) = attr.unescape_value() {
-            return Some(value.into_owned());
-        }
-        if let Ok(value) = std::str::from_utf8(attr.value.as_ref()) {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
-fn local_name(name: &[u8]) -> &[u8] {
-    match name.iter().rposition(|byte| *byte == b':') {
-        Some(index) if index + 1 < name.len() => &name[index + 1..],
-        _ => name,
-    }
 }

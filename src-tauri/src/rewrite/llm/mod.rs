@@ -1,10 +1,12 @@
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::models::{AppSettings, DocumentFormat, ProviderCheckResult};
 use crate::network_proxy::normalize_proxy_url;
 use crate::rewrite_unit::{
     parse_rewrite_batch_response, parse_rewrite_unit_response, RewriteBatchRequest,
-    RewriteBatchResponse, RewriteUnitRequest, RewriteUnitResponse,
+    RewriteBatchResponse, RewriteUnitRequest, RewriteUnitResponse, SlotUpdate,
 };
 use crate::settings_validation::validate_numeric_settings;
 
@@ -12,6 +14,15 @@ mod plain_support;
 mod selection;
 pub(in crate::rewrite) mod transport;
 mod validate;
+
+/// 编辑器逐槽位改写输入：前端直接传入已定义好的槽位文本与分隔符。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotTextInput {
+    pub slot_id: String,
+    pub text: String,
+    pub separator_after: String,
+}
 
 pub fn build_client(settings: &AppSettings) -> Result<reqwest::Client, String> {
     let mut builder =
@@ -111,6 +122,56 @@ pub async fn rewrite_selection_text(
         .await
 }
 
+/// 对已有槽位执行逐槽位改写，直接返回 `Vec<SlotUpdate>`。
+/// 复用 `rewrite_unit_with_client` 管线，避免前端合并后再 diff 拆分。
+pub async fn rewrite_slot_texts_with_client(
+    client: &reqwest::Client,
+    settings: &AppSettings,
+    slot_inputs: &[SlotTextInput],
+    format: DocumentFormat,
+) -> Result<Vec<SlotUpdate>, String> {
+    validate_settings(settings)?;
+
+    let slots: Vec<crate::rewrite_unit::WritebackSlot> = slot_inputs
+        .iter()
+        .enumerate()
+        .map(|(i, input)| crate::rewrite_unit::WritebackSlot {
+            id: input.slot_id.clone(),
+            order: i,
+            text: input.text.clone(),
+            editable: true,
+            role: crate::rewrite_unit::WritebackSlotRole::EditableText,
+            presentation: None,
+            anchor: None,
+            separator_after: input.separator_after.clone(),
+        })
+        .collect();
+
+    if !slots
+        .iter()
+        .any(|s| s.editable && !s.text.trim().is_empty())
+    {
+        return Err("选区不包含可改写文本。".to_string());
+    }
+
+    let request = crate::rewrite_unit::build_rewrite_unit_request_from_slots(
+        "editor-selection",
+        &slots,
+        format,
+    );
+    let response = rewrite_unit_with_client(client, settings, &request).await?;
+    selection::normalize_selection_updates(&slots, response)
+}
+
+pub async fn rewrite_slot_texts(
+    settings: &AppSettings,
+    slot_inputs: &[SlotTextInput],
+    format: DocumentFormat,
+) -> Result<Vec<SlotUpdate>, String> {
+    let client = build_client(settings)?;
+    rewrite_slot_texts_with_client(&client, settings, slot_inputs, format).await
+}
+
 fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     validate_numeric_settings(settings)?;
     if settings.base_url.trim().is_empty() {
@@ -163,9 +224,9 @@ mod tests {
 
     fn valid_settings() -> AppSettings {
         AppSettings {
-            base_url: "https://cliproxy.eqing.tech/v1".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
             api_key: "test-key".to_string(),
-            model: "gpt-5.5".to_string(),
+            model: "deepseek-v4-flash".to_string(),
             ..AppSettings::default()
         }
     }

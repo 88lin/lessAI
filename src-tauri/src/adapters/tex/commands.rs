@@ -1,6 +1,5 @@
 use crate::{
     adapters::TextRegion,
-    text_boundaries::split_text_and_trailing_separator,
     textual_template::models::{TextRegionSplitMode, TextTemplateRegion},
 };
 
@@ -31,6 +30,13 @@ const TEXT_COMMANDS: &[&str] = &[
     "textrm",
     "textsf",
     "textsc",
+    "texttt",
+    "textnormal",
+    "textsl",
+    "textup",
+    "textmd",
+    "textsuperscript",
+    "textsubscript",
 ];
 const LINK_TEXT_COMMANDS: &[&str] = &["href"];
 
@@ -42,7 +48,7 @@ pub(super) fn build_regions(
     parse_regions(text, rewrite_headings)
         .into_iter()
         .enumerate()
-        .map(|(region_index, region)| build_region(block_anchor, region_index, region))
+        .map(|(region_index, region)| region.into_template_region(block_anchor, region_index))
         .collect()
 }
 
@@ -179,20 +185,6 @@ pub(super) fn parse_regions(text: &str, rewrite_headings: bool) -> Vec<TextRegio
         return vec![TextRegion::editable(text)];
     }
     regions
-}
-
-fn build_region(block_anchor: &str, region_index: usize, region: TextRegion) -> TextTemplateRegion {
-    let (text, separator_after) = split_text_and_trailing_separator(&region.body);
-
-    TextTemplateRegion {
-        anchor: format!("{block_anchor}:r{region_index}"),
-        text,
-        editable: !region.skip_rewrite,
-        role: region.role,
-        presentation: region.presentation,
-        split_mode: region.split_mode,
-        separator_after,
-    }
 }
 
 fn push_region(regions: &mut Vec<TextRegion>, region: TextRegion) {

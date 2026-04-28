@@ -78,6 +78,60 @@ if [[ -n "$WEBKIT_SRC" ]]; then
   cp -a "$WEBKIT_SRC/." "$APPDIR/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/"
 fi
 
+# Ensure GStreamer can discover the app plugin that provides appsink.
+GSTREAMER_APPDIR="$APPDIR/usr/lib/gstreamer-1.0"
+GSTREAMER_APP_PLUGIN=""
+for candidate in \
+  /usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstapp.so \
+  /usr/lib/gstreamer-1.0/libgstapp.so \
+  /usr/lib64/gstreamer-1.0/libgstapp.so; do
+  if [[ -f "$candidate" ]]; then
+    GSTREAMER_APP_PLUGIN="$candidate"
+    break
+  fi
+done
+if [[ -z "$GSTREAMER_APP_PLUGIN" ]]; then
+  echo "[ERROR] GStreamer app plugin not found (libgstapp.so). Install gstreamer1.0-plugins-base." >&2
+  exit 1
+fi
+
+GSTREAMER_PLUGIN_SCANNER=""
+for candidate in \
+  /usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner \
+  /usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner \
+  /usr/lib64/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner \
+  /usr/libexec/gstreamer-1.0/gst-plugin-scanner \
+  /usr/lib/gstreamer-1.0/gst-plugin-scanner; do
+  if [[ -x "$candidate" ]]; then
+    GSTREAMER_PLUGIN_SCANNER="$candidate"
+    break
+  fi
+done
+if [[ -z "$GSTREAMER_PLUGIN_SCANNER" ]]; then
+  echo "[ERROR] GStreamer plugin scanner not found. Install libgstreamer1.0-0 or gstreamer1.0-tools." >&2
+  exit 1
+fi
+
+install -d "$GSTREAMER_APPDIR"
+cp -a "$GSTREAMER_APP_PLUGIN" "$GSTREAMER_APPDIR/libgstapp.so"
+cp -a "$GSTREAMER_PLUGIN_SCANNER" "$GSTREAMER_APPDIR/gst-plugin-scanner"
+chmod +x "$GSTREAMER_APPDIR/gst-plugin-scanner"
+echo "[INFO] Bundled GStreamer app plugin: $GSTREAMER_APP_PLUGIN"
+echo "[INFO] Bundled GStreamer plugin scanner: $GSTREAMER_PLUGIN_SCANNER"
+
+for candidate in \
+  /usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-ptp-helper \
+  /usr/lib/gstreamer1.0/gstreamer-1.0/gst-ptp-helper \
+  /usr/lib64/gstreamer1.0/gstreamer-1.0/gst-ptp-helper \
+  /usr/libexec/gstreamer-1.0/gst-ptp-helper; do
+  if [[ -x "$candidate" ]]; then
+    cp -a "$candidate" "$GSTREAMER_APPDIR/gst-ptp-helper"
+    chmod +x "$GSTREAMER_APPDIR/gst-ptp-helper"
+    echo "[INFO] Bundled GStreamer PTP helper: $candidate"
+    break
+  fi
+done
+
 # Compatibility links for runtimes that search under AppDir/lib*.
 install -d "$APPDIR/lib" "$APPDIR/lib64"
 ln -sfn ../usr/lib/x86_64-linux-gnu "$APPDIR/lib/x86_64-linux-gnu"
@@ -118,6 +172,13 @@ fi
 # Single source of truth lives in src-tauri/src/main.rs (apply_linux_graphics_compat_env).
 # AppImage defaults to safe mode when unset; users can override via LESSAI_LINUX_GRAPHICS_MODE.
 export LESSAI_LINUX_GRAPHICS_MODE="${LESSAI_LINUX_GRAPHICS_MODE:-safe}"
+
+GSTREAMER_PLUGIN_DIR="$APPDIR/usr/lib/gstreamer-1.0"
+export GST_REGISTRY_REUSE_PLUGIN_SCANNER="no"
+export GST_PLUGIN_SYSTEM_PATH_1_0="$GSTREAMER_PLUGIN_DIR"
+export GST_PLUGIN_PATH_1_0="$GSTREAMER_PLUGIN_DIR"
+export GST_PLUGIN_SCANNER_1_0="$GSTREAMER_PLUGIN_DIR/gst-plugin-scanner"
+export GST_PLUGIN_SCANNER="$GSTREAMER_PLUGIN_DIR/gst-plugin-scanner"
 
 WEBKIT_BASE=""
 if [[ "${LESSAI_FORCE_BUNDLED_WEBKIT:-0}" == "1" ]]; then

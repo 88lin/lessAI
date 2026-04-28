@@ -1,0 +1,189 @@
+@echo off
+
+set "LESSAI_COMMON_COMMAND=%~1"
+shift /1
+
+if "%LESSAI_COMMON_COMMAND%"=="require_tools" goto require_tools
+if "%LESSAI_COMMON_COMMAND%"=="prepare_node_env" goto prepare_node_env
+if "%LESSAI_COMMON_COMMAND%"=="ensure_deps" goto ensure_deps
+if "%LESSAI_COMMON_COMMAND%"=="ensure_dev_port_free" goto ensure_dev_port_free
+
+echo [ERROR] Unknown LessAI Windows helper command: %LESSAI_COMMON_COMMAND%
+exit /b 2
+
+:require_tools
+where pnpm >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] pnpm was not found.
+  echo [ERROR] Please install Node.js and pnpm first.
+  exit /b 1
+)
+
+where cargo >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] cargo was not found.
+  echo [ERROR] Please install the Rust toolchain first.
+  exit /b 1
+)
+
+exit /b 0
+
+:prepare_node_env
+rem 确保不会因为 NODE_ENV=production / 生产模式导致 devDependencies 被跳过
+set "NODE_ENV="
+set "PNPM_PRODUCTION=false"
+set "NPM_CONFIG_PRODUCTION=false"
+exit /b 0
+
+:ensure_deps
+rem 1) 依赖不存在 => 安装（强制包含 devDependencies）
+if not exist "node_modules" (
+  call :install_deps
+  exit /b !ERRORLEVEL!
+)
+
+rem 2) tauri.cmd 不存在 => 安装（通常是 devDependencies 没装上）
+if not exist "node_modules\.bin\tauri.cmd" (
+  echo [WARN] Tauri CLI was not found in node_modules.
+  call :install_deps
+  exit /b !ERRORLEVEL!
+)
+
+rem 3) tauri 可执行文件存在，但 native binding 缺失（可选依赖未正确安装）
+call pnpm exec tauri --version >nul 2>nul
+if not errorlevel 1 (
+  exit /b 0
+)
+
+echo [WARN] Tauri CLI exists but cannot run (native binding may be missing).
+echo [HINT] This often happens when optionalDependencies were not installed correctly.
+call :offer_repair_install
+exit /b !ERRORLEVEL!
+
+:install_deps
+echo [INFO] Installing dependencies (including devDependencies)...
+echo [INFO] Command: pnpm install --prefer-frozen-lockfile --no-prod
+call :cleanup_ignored_links
+call pnpm install --prefer-frozen-lockfile --no-prod
+if errorlevel 1 (
+  echo(
+  echo [ERROR] Dependency installation failed.
+  echo [INFO] Trying to cleanup broken .ignored_* links and retry once...
+  call :cleanup_ignored_links
+  call pnpm install --prefer-frozen-lockfile --no-prod
+  if errorlevel 1 (
+    echo(
+    echo [ERROR] Dependency installation failed again.
+    call :print_install_hints
+    exit /b 1
+  )
+)
+
+if not exist "node_modules\.bin\tauri.cmd" (
+  echo(
+  echo [ERROR] Tauri CLI is still missing after installation.
+  echo [HINT] Run: pnpm install --prefer-frozen-lockfile --no-prod
+  echo [HINT] Then verify: pnpm exec tauri --version
+  call :print_install_hints
+  exit /b 1
+)
+
+call pnpm exec tauri --version >nul 2>nul
+if errorlevel 1 (
+  echo(
+  echo [ERROR] Tauri CLI failed to run even though it is installed.
+  echo [HINT] This usually means the platform-specific package is missing.
+  call :offer_repair_install
+  exit /b !ERRORLEVEL!
+)
+
+exit /b 0
+
+:ensure_dev_port_free
+rem 确保 dev server 端口可用（Tauri 依赖固定 devUrl，端口被占用会直接启动失败）
+set "DEV_PORT=%~1"
+set "PIDS="
+
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /c:":%DEV_PORT%" ^| findstr /i "LISTENING"') do (
+  if "!PIDS!"=="" (
+    set "PIDS=%%p"
+  ) else (
+    set "PIDS=!PIDS! %%p"
+  )
+)
+
+if "!PIDS!"=="" (
+  exit /b 0
+)
+
+echo [WARN] Port %DEV_PORT% is already in use.
+echo [INFO] PID(s): !PIDS!
+for %%p in (!PIDS!) do (
+  for /f "usebackq delims=" %%l in (`tasklist /fi "PID eq %%p" /nh 2^>nul`) do (
+    if not "%%l"=="INFO: No tasks are running which match the specified criteria." (
+      echo [INFO] %%l
+    )
+  )
+)
+
+choice /c YN /n /m "Terminate these process(es) to continue? (Y/N) "
+if errorlevel 2 (
+  echo [INFO] Cancelled. Please close the program that is using port %DEV_PORT% and retry.
+  exit /b 1
+)
+
+for %%p in (!PIDS!) do (
+  taskkill /PID %%p /F >nul 2>nul
+)
+
+rem 给系统一点时间释放端口
+timeout /t 1 /nobreak >nul
+exit /b 0
+
+:cleanup_ignored_links
+rem 有些 Windows 环境会因为 node_modules\.ignored_*（junction/symlink）损坏导致 EACCES/lstat 失败。
+rem 这里在安装前/失败后做一次轻量清理，避免用户被卡住。
+if exist "node_modules\.ignored_*" (
+  for /d %%i in (node_modules\.ignored_*) do (
+    rmdir /s /q "%%i" >nul 2>nul
+  )
+)
+exit /b 0
+
+:offer_repair_install
+echo(
+echo [INFO] Repair option: remove node_modules and reinstall from scratch.
+echo [WARN] This will delete the node_modules directory under the project.
+choice /c YN /n /m "Proceed with repair install? (Y/N) "
+if errorlevel 2 (
+  echo [INFO] Repair install cancelled.
+  exit /b 1
+)
+
+rmdir /s /q node_modules >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] Failed to remove node_modules.
+  echo [HINT] Try running this script as Administrator, or close any editors that are using node_modules.
+  call :print_install_hints
+  exit /b 1
+)
+
+call :install_deps
+exit /b %ERRORLEVEL%
+
+:print_install_hints
+echo [HINT] Common Windows causes:
+echo [HINT] - EACCES/EPERM on node_modules\.ignored_* (e.g. .ignored_typescript) due to filesystem/permissions.
+echo [HINT] - Mixed WSL and Windows installs (node_modules created in WSL, then used on Windows).
+echo [HINT] - The drive is not NTFS (external drives like exFAT may break symlinks).
+echo [HINT] - Windows Developer Mode is off (symlink restrictions) or antivirus blocks node_modules.
+echo [HINT] Recommended fix:
+echo [HINT] - Open Windows Terminal (not WSL) in this folder.
+echo [HINT] - Delete node_modules and reinstall:
+echo [HINT]     rmdir /s /q node_modules
+echo [HINT]     takeown /f node_modules /r /d y
+echo [HINT]     icacls node_modules /grant %USERNAME%:F /t
+echo [HINT]     pnpm install --prefer-frozen-lockfile --no-prod
+echo [HINT] - Verify:
+echo [HINT]     pnpm exec tauri --version
+exit /b 0

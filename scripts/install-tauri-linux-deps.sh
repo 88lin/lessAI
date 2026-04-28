@@ -35,6 +35,8 @@ bundle_extra_packages=(
   libssl-dev
   rpm
   xvfb
+  gstreamer1.0-plugins-base
+  gstreamer1.0-tools
 )
 
 if [[ "${mode}" == "bundle" ]]; then

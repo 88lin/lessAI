@@ -58,7 +58,7 @@ fn build_selection_slots(
     textual_template::slots::build_slots(&template).slots
 }
 
-fn normalize_selection_updates(
+pub(super) fn normalize_selection_updates(
     slots: &[WritebackSlot],
     response: RewriteUnitResponse,
 ) -> Result<Vec<SlotUpdate>, String> {

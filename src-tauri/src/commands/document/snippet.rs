@@ -8,6 +8,7 @@ use crate::{
     editor_writeback::ensure_session_can_use_editor_writeback,
     models::{DocumentSession, DocumentSnapshot},
     rewrite,
+    rewrite_unit::SlotUpdate,
     session_access::{access_current_session, CurrentSessionRequest},
     session_messages::ACTIVE_EDITOR_SESSION_ERROR,
     state::AppState,
@@ -62,6 +63,42 @@ pub async fn rewrite_selection(
         session.rewrite_headings.unwrap_or(false),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn rewrite_editor_slots(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    slots: Vec<rewrite::SlotTextInput>,
+    editor_base_snapshot: Option<DocumentSnapshot>,
+) -> Result<Vec<SlotUpdate>, String> {
+    if slots.is_empty() {
+        return Err("槽位列表为空。".to_string());
+    }
+
+    let session = access_current_session(
+        CurrentSessionRequest::guarded_refresh(
+            &app,
+            state.inner(),
+            &session_id,
+            |session: &DocumentSession| {
+                ensure_editor_base_snapshot_matches_path(
+                    Path::new(&session.document_path),
+                    editor_base_snapshot.as_ref(),
+                )
+            },
+        )
+        .with_active_job_error(ACTIVE_EDITOR_SESSION_ERROR),
+        |session| {
+            ensure_session_can_rewrite_snippet(&session)?;
+            Ok(session)
+        },
+    )?;
+
+    let settings = storage::load_settings(&app)?;
+    let format = document_format(Path::new(&session.document_path));
+    rewrite::rewrite_slot_texts(&settings, &slots, format).await
 }
 
 #[cfg(test)]

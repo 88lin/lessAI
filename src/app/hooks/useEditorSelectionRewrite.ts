@@ -1,11 +1,16 @@
 import { useCallback } from "react";
 import type { MutableRefObject } from "react";
-import { rewriteSelection, runDocumentWriteback } from "../../lib/api";
+import { rewriteEditorSlots, rewriteSelection, runDocumentWriteback } from "../../lib/api";
 import type { DocumentSession, DocumentSnapshot } from "../../lib/types";
 import { countCharacters, readableError } from "../../lib/helpers";
 import type { ConfirmModalOptions } from "../../components/ConfirmModal";
 import type { DocumentEditorHandle } from "../../stages/workbench/document/DocumentEditor";
 import type { ShowNotice, WithBusy } from "./sessionActionShared";
+import type { EditorSlotOverrides } from "../../lib/editorSlots";
+import {
+  buildSelectionSlotInputs,
+  resolveSelectionSlotUpdates
+} from "./editorSelectionSlotUpdates";
 
 const SELECTION_RISK_WARNING_NON_WHITESPACE_CHARS = 6000;
 
@@ -21,6 +26,7 @@ export function useEditorSelectionRewrite(options: {
   currentSessionRef: MutableRefObject<DocumentSession | null>;
   editorBaseSnapshotRef: MutableRefObject<DocumentSnapshot | null>;
   editorRef: MutableRefObject<DocumentEditorHandle | null>;
+  editorSlotOverridesRef: MutableRefObject<EditorSlotOverrides>;
   requestConfirm: (options: ConfirmModalOptions) => Promise<boolean>;
   showNotice: ShowNotice;
   withBusy: WithBusy;
@@ -30,6 +36,7 @@ export function useEditorSelectionRewrite(options: {
     currentSessionRef,
     editorBaseSnapshotRef,
     editorRef,
+    editorSlotOverridesRef,
     requestConfirm,
     showNotice,
     withBusy
@@ -93,31 +100,69 @@ export function useEditorSelectionRewrite(options: {
     }
 
     try {
-      const rewritten = await withBusy("rewrite-selection", () =>
-        rewriteSelection(session.id, snapshot.text, editorBaseSnapshotRef.current)
-      );
-      const preview = editor.previewSelectionReplacement(snapshot, rewritten);
-      if (!preview.ok) {
-        showNotice("warning", preview.error);
-        return;
-      }
-
-      await withBusy("validate-document-edits", () => {
-        const input = preview.slotEdits
-          ? { kind: "slotEdits" as const, edits: preview.slotEdits }
-          : { kind: "text" as const, content: preview.value };
-        return runDocumentWriteback(
-          session.id,
-          "validate",
-          input,
-          editorBaseSnapshotRef.current
+      if (snapshot.kind === "text") {
+        // 纯文本编辑器：使用原有全文改写路径
+        const rewritten = await withBusy("rewrite-selection", () =>
+          rewriteSelection(session.id, snapshot.text, editorBaseSnapshotRef.current)
         );
-      });
+        const preview = editor.previewSelectionReplacement(snapshot, rewritten);
+        if (!preview.ok) {
+          showNotice("warning", preview.error);
+          return;
+        }
 
-      const applied = editor.applySelectionReplacement(snapshot, rewritten);
-      if (!applied.ok) {
-        showNotice("warning", applied.error);
-        return;
+        await withBusy("validate-document-edits", () => {
+          const input = preview.slotEdits
+            ? { kind: "slotEdits" as const, edits: preview.slotEdits }
+            : { kind: "text" as const, content: preview.value };
+          return runDocumentWriteback(
+            session.id,
+            "validate",
+            input,
+            editorBaseSnapshotRef.current
+          );
+        });
+
+        const applied = editor.applySelectionReplacement(snapshot, rewritten);
+        if (!applied.ok) {
+          showNotice("warning", applied.error);
+          return;
+        }
+      } else {
+        // 槽位编辑器：只把真实选区内的可编辑文本送入槽位改写 API。
+        const slotInputs = buildSelectionSlotInputs(snapshot);
+        if (slotInputs.length === 0) {
+          showNotice("warning", "当前选区不包含可改写文本。");
+          return;
+        }
+
+        const slotUpdates = await withBusy("rewrite-selection", () =>
+          rewriteEditorSlots(session.id, slotInputs, editorBaseSnapshotRef.current)
+        );
+
+        const resolved = resolveSelectionSlotUpdates(
+          session,
+          editorSlotOverridesRef.current,
+          snapshot,
+          slotUpdates
+        );
+        if (!resolved.ok) {
+          showNotice("warning", resolved.error);
+          return;
+        }
+
+        await withBusy("validate-document-edits", () =>
+          runDocumentWriteback(
+            session.id,
+            "validate",
+            { kind: "slotEdits", edits: resolved.slotEdits },
+            editorBaseSnapshotRef.current
+          )
+        );
+
+        editor.applySlotUpdates(resolved.slotUpdates, {
+          selectionRanges: resolved.selectionRanges
+        });
       }
 
       showNotice("success", "已完成：对选区执行降 AIGC 处理。");
@@ -129,6 +174,7 @@ export function useEditorSelectionRewrite(options: {
     currentSessionRef,
     editorBaseSnapshotRef,
     editorRef,
+    editorSlotOverridesRef,
     showNotice,
     stageRef,
     withBusy

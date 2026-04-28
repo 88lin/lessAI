@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
@@ -127,6 +127,8 @@ async function loadHelpersModule() {
   const dir = mkdtempSync(join(tempRoot, "lessai-helpers-"));
   const modules = [
     ["src/lib/helpers.ts", "helpers.ts"],
+    ["src/lib/textNormalize.ts", "textNormalize.ts"],
+    ["src/lib/slotText.ts", "slotText.ts"],
     ["src/lib/documentCapabilities.ts", "documentCapabilities.ts"],
     ["src/lib/path.ts", "path.ts"]
   ];
@@ -151,17 +153,34 @@ async function loadHelpersModule() {
   }
 }
 
+const part01 = read("src/styles/part-01.css");
 const part02 = read("src/styles/part-02.css");
 const part03 = read("src/styles/part-03.css");
 const part04 = read("src/styles/part-04.css");
+const part06 = read("src/styles/part-06.css");
 const documentActionBar = read("src/stages/workbench/document/DocumentActionBar.tsx");
 const documentPanel = read("src/stages/workbench/DocumentPanel.tsx");
 const documentFlow = read("src/stages/workbench/document/DocumentFlow.tsx");
 const paragraphDocumentFlow = read("src/stages/workbench/document/ParagraphDocumentFlow.tsx");
 const structuredSlotEditor = read("src/stages/workbench/document/StructuredSlotEditor.tsx");
+const plainTextDocumentEditor = read("src/stages/workbench/document/PlainTextDocumentEditor.tsx");
+const structuredSlotEditorShared = read("src/stages/workbench/document/structuredEditorShared.tsx");
+const documentEditorTypes = read("src/stages/workbench/document/documentEditorTypes.ts");
+const selectionDecorationOverlay = read("src/stages/workbench/document/SelectionDecorationOverlay.tsx");
+const selectionDecorationHook = read("src/stages/workbench/document/useSelectionDecorationRects.ts");
+const busyActionHook = read("src/hooks/useBusyAction.ts");
 const workspaceBar = read("src/app/components/WorkspaceBar.tsx");
+const helpersSource = read("src/lib/helpers.ts");
+const webBridgeAutoJobRuntime = read("src/lib/webBridgeAutoJobRuntime.ts");
+const webBridgeModelApi = read("src/lib/webBridgeModelApi.ts");
+const textNormalize = read("src/lib/textNormalize.ts");
+const slotText = read("src/lib/slotText.ts");
+const webBridgeTextCore = read("src/lib/webBridgeTextCore.ts");
+const webBridgeSessionUtils = read("src/lib/webBridgeSessionUtils.ts");
 const settingsTypes = read("src/lib/types.ts");
 const settingsConstants = read("src/lib/constants.ts");
+const frontendDiff = read("src/lib/diff.ts");
+const webBridgeSelectionText = read("src/lib/webBridgeSelectionText.ts");
 const rewriteStrategyPage = read("src/components/settings/RewriteStrategyPage.tsx");
 const settingsHandlers = read("src/app/hooks/useSettingsHandlers.ts");
 const documentActions = read("src/app/hooks/useDocumentActions.ts");
@@ -176,8 +195,26 @@ const reviewEmptyState = read("src/stages/workbench/review/ReviewEmptyState.tsx"
 const suggestionReviewPane = read("src/stages/workbench/review/SuggestionReviewPane.tsx");
 const reviewSuggestionRow = read("src/stages/workbench/review/ReviewSuggestionRow.tsx");
 const progressiveRevealHook = read("src/stages/workbench/hooks/useProgressiveRevealCount.ts");
+const useEditorHunks = read("src/stages/workbench/hooks/useEditorHunks.ts");
 const useRewriteActions = read("src/app/hooks/useRewriteActions.ts");
+const useEditorSelectionRewrite = read("src/app/hooks/useEditorSelectionRewrite.ts");
+const editorSelectionSlotUpdates = read("src/app/hooks/editorSelectionSlotUpdates.ts");
 const useSuggestionActions = read("src/app/hooks/useSuggestionActions.ts");
+const editorSaveShortcut = read("src/stages/workbench/document/useEditorSaveShortcut.ts");
+const rustDomainModels = read("src-tauri/src/domain/models.rs");
+const rustLlmValidate = read("src-tauri/src/rewrite/llm/validate.rs");
+const docxAdapterMod = read("src-tauri/src/adapters/mod.rs");
+const docxXml = read("src-tauri/src/adapters/docx/xml.rs");
+const docxNumbering = read("src-tauri/src/adapters/docx/numbering.rs");
+const docxStyles = read("src-tauri/src/adapters/docx/styles.rs");
+const markdownBlockSupport = read("src-tauri/src/adapters/markdown/block_support.rs");
+const texBlockSupport = read("src-tauri/src/adapters/tex/block_support.rs");
+const markdownInline = read("src-tauri/src/adapters/markdown/inline.rs");
+const texCommands = read("src-tauri/src/adapters/tex/commands.rs");
+const rustTextBoundaries = read("src-tauri/src/core/text_boundaries.rs");
+const startLessaiBat = read("start-lessai.bat");
+const buildLessaiBat = read("build-lessai.bat");
+const windowsCommonBat = read("scripts/lessai-windows-common.bat");
 const { renderInlineProtectedText } = await loadProtectedTextModule();
 const {
   buildSuggestionRowActionState,
@@ -196,8 +233,121 @@ assertIncludes(appSource, "isWindowDragExcludedTarget(event.target)");
 assertIncludes(workspaceBar, "isWindowDragExcludedTarget(event.target)");
 assertNotIncludes(appSource, "const WINDOW_DRAG_EXCLUDED_SELECTOR = [");
 assertNotIncludes(workspaceBar, "const HEADER_DRAG_EXCLUDED_SELECTOR = [");
+assert.equal(
+  existsSync("src-tauri/src/editor/editor_diff.rs"),
+  false,
+  "孤立的后端 editor_diff.rs 不应重新出现，编辑 diff 由前端 useEditorHunks 维护"
+);
+assert.equal(
+  existsSync("docs/images/setupui.png"),
+  false,
+  "setupui.png 与 settings.png 完全重复且未引用，不应重新加入仓库"
+);
+assertNotIncludes(
+  frontendDiff,
+  "buildDiffHunks(",
+  "未使用的 buildDiffHunks 不应重新引入"
+);
+assertNotIncludes(
+  frontendDiff,
+  "DEFAULT_CONTEXT_CHARS",
+  "buildDiffHunks 删除后不应保留孤立 hunk 上下文常量"
+);
+assertIncludes(
+  textNormalize,
+  "export function normalizeNewlines",
+  "换行归一化实现应集中在 textNormalize"
+);
+assert.equal(
+  [helpersSource, webBridgeTextCore, webBridgeSelectionText, textNormalize].filter((source) =>
+    source.includes('replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n")')
+  ).length,
+  1,
+  "前端换行归一化的正则实现应只保留一份"
+);
+assertIncludes(helpersSource, 'from "./textNormalize"');
+assertIncludes(webBridgeTextCore, 'from "./textNormalize"');
+assertIncludes(webBridgeSelectionText, 'from "./textNormalize"');
+assertIncludes(
+  slotText,
+  "export function mergedTextFromSlots",
+  "slot 文本拼接实现应集中在 slotText"
+);
+assertIncludes(slotText, "export function rewriteUnitSourceText");
+assertIncludes(helpersSource, 'from "./slotText"');
+assertIncludes(webBridgeSessionUtils, 'from "./slotText"');
+assertNotIncludes(webBridgeSessionUtils, "slots.find((item) => item.id === slotId)");
 assertIncludes(settingsTypes, "unitsPerBatch: number;");
-assertIncludes(settingsConstants, "unitsPerBatch: 2");
+assertIncludes(settingsConstants, "unitsPerBatch: 1");
+assertIncludes(settingsConstants, 'baseUrl: "https://api.deepseek.com/v1"');
+assertIncludes(rustDomainModels, 'base_url: "https://api.deepseek.com/v1".to_string()');
+assertIncludes(settingsConstants, 'model: "deepseek-v4-flash"');
+assertIncludes(rustDomainModels, 'model: "deepseek-v4-flash".to_string()');
+assertIncludes(settingsConstants, "timeoutMs: 45_000");
+assertIncludes(rustDomainModels, "timeout_ms: 45_000");
+assertIncludes(settingsConstants, "promptPresetId: \"humanizer_zh\"");
+assertIncludes(rustDomainModels, "\"humanizer_zh\".to_string()");
+for (const unwantedMetaPattern of [
+  "i am claude",
+  "made by anthropic",
+  "helpful, harmless, and honest",
+  "i'm an ai assistant",
+  "i am an ai assistant",
+  "as an ai language model",
+  "as an ai assistant",
+  "happy to help you",
+  "i don't have information about the specific model version",
+  "i don't have information about the specific model version or id"
+]) {
+  assertIncludes(webBridgeSelectionText, unwantedMetaPattern);
+  assertIncludes(rustLlmValidate, unwantedMetaPattern);
+}
+assertIncludes(
+  docxXml,
+  "pub(super) fn capture_subtree_events",
+  "DOCX 子树捕获 helper 应集中在 xml.rs"
+);
+assertIncludes(
+  docxXml,
+  "pub(super) fn capture_subtree_events_from_slice",
+  "DOCX event-slice 子树捕获 helper 也应集中在 xml.rs"
+);
+assertIncludes(docxNumbering, "xml::{attr_value, capture_subtree_events, local_name}");
+assertIncludes(docxStyles, "use super::xml::{attr_value, capture_subtree_events, local_name};");
+assertNotIncludes(docxNumbering, "fn attr_value(");
+assertNotIncludes(docxStyles, "fn attr_value(");
+assertIncludes(
+  rustTextBoundaries,
+  "pub(crate) fn split_indexed_lines_with_offsets",
+  "Markdown/TeX 行切分实现应集中在 text_boundaries"
+);
+assertIncludes(markdownBlockSupport, "split_indexed_lines_with_offsets(text)");
+assertIncludes(texBlockSupport, "split_indexed_lines_with_offsets(text)");
+assertIncludes(docxAdapterMod, "pub(crate) fn into_template_region");
+assertNotIncludes(markdownInline, "fn build_region(");
+assertNotIncludes(texCommands, "fn build_region(");
+assertIncludes(editorSaveShortcut, "export function useEditorSaveShortcut");
+assertIncludes(plainTextDocumentEditor, "useEditorSaveShortcut({ busy, dirty, onSave });");
+assertIncludes(structuredSlotEditor, "useEditorSaveShortcut({ busy, dirty, onSave });");
+assertIncludes(selectionDecorationHook, "export function useSelectionDecorationRects");
+assertIncludes(documentFlow, "useSelectionDecorationRects({ rootRef: flowRootRef })");
+assertIncludes(plainTextDocumentEditor, "useSelectionDecorationRects({");
+assertIncludes(structuredSlotEditor, "useSelectionDecorationRects({");
+assertNotIncludes(documentFlow, 'document.addEventListener("selectionchange"');
+assertNotIncludes(plainTextDocumentEditor, 'document.addEventListener("selectionchange"');
+assertNotIncludes(structuredSlotEditor, 'document.addEventListener("selectionchange"');
+assertIncludes(selectionDecorationHook, "cancelAnimationFrame(frameRef.current)");
+assertIncludes(busyActionHook, "Promise.resolve().then(operation)");
+assertIncludes(webBridgeAutoJobRuntime, "function isCurrentJob");
+assertIncludes(webBridgeAutoJobRuntime, "deps.autoJobs.get(sessionId) === job");
+assertIncludes(webBridgeAutoJobRuntime, "stopCurrentJob(sessionId, job)");
+assertIncludes(webBridgeAutoJobRuntime, "if (!activeSession || !isCurrentJob(sessionId, job))");
+assertIncludes(webBridgeModelApi, "function createModelRequestSignal");
+assertIncludes(webBridgeModelApi, "settings.timeoutMs");
+assertIncludes(webBridgeModelApi, "if (json == null)");
+assertIncludes(startLessaiBat, 'call "scripts\\lessai-windows-common.bat" ensure_deps');
+assertIncludes(buildLessaiBat, 'call "scripts\\lessai-windows-common.bat" ensure_deps');
+assertIncludes(windowsCommonBat, ":ensure_deps");
 assertIncludes(rewriteStrategyPage, "单批处理单元数");
 assertIncludes(rewriteStrategyPage, 'onUpdateNumberSetting("unitsPerBatch", event.target.value)');
 assertIncludes(settingsHandlers, '"unitsPerBatch"');
@@ -248,6 +398,246 @@ assertNotIncludes(
   structuredSlotEditor,
   "session.writebackSlots.map((slot) => {",
   "结构化编辑页不应再按 writeback slot 平铺渲染，避免与主页面分块不一致"
+);
+assertIncludes(
+  documentEditorTypes,
+  "slotStartOffsets: number[];",
+  "结构化编辑器跨槽位选区应记录每个槽位内的真实起点"
+);
+assertIncludes(
+  documentEditorTypes,
+  "slotEndOffsets: number[];",
+  "结构化编辑器跨槽位选区应记录每个槽位内的真实终点"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "selectionStartOffset - nodeStartOffset",
+  "结构化编辑器应按编辑器全文坐标与槽位坐标求交，避免 DOM 边界误判"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "if (endOffset <= startOffset) return null;",
+  "结构化编辑器不应把只贴到选区边界的槽位算进 AI 处理范围"
+);
+assertNotIncludes(
+  structuredSlotEditor,
+  "range.intersectsNode(node)",
+  "结构化编辑器选区范围不应再依赖 DOM intersectsNode，避免边界外槽位被误算"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "contentEditable={!busy}",
+  "结构化编辑器应使用单一父级编辑宿主，允许浏览器跨槽位拖选"
+);
+assertNotIncludes(
+  structuredSlotEditorShared,
+  "contentEditable={!busy}",
+  "结构化编辑器不应让每个槽位成为独立编辑宿主，否则无法跨句选择"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "slotStartOffsets: slotInfos.map((s) => s.startOffset)",
+  "结构化编辑器跨槽位快照不应退化为整槽位"
+);
+assertIncludes(
+  useEditorSelectionRewrite,
+  "buildSelectionSlotInputs(snapshot)",
+  "编辑选区改写应只提交真实选区文本，而不是完整槽位文本"
+);
+assertNotIncludes(
+  useEditorSelectionRewrite,
+  "text: snapshot.slotFullTexts[i]",
+  "编辑选区改写不应把跨槽位快照的完整槽位文本发给模型"
+);
+assertIncludes(
+  editorSelectionSlotUpdates,
+  "spliceSelection(currentText, range, replacement)",
+  "编辑选区改写结果应拼回原槽位局部位置，而不是覆盖整个槽位"
+);
+assertIncludes(
+  part01,
+  "--selection-bg:",
+  "亮色主题应提供原生文本选区色变量"
+);
+assertIncludes(
+  part06,
+  "--selection-bg:",
+  "暗色主题应覆盖原生文本选区色变量"
+);
+assertIncludes(
+  part01,
+  "--editor-selection-bg:",
+  "亮色主题应提供编辑器专用选区背景变量"
+);
+assertIncludes(
+  part06,
+  "--editor-selection-bg:",
+  "暗色主题应覆盖编辑器专用选区背景变量"
+);
+assertIncludes(
+  part01,
+  "--editor-selection-border:",
+  "亮色主题应提供编辑器选区边框变量"
+);
+assertIncludes(
+  part06,
+  "--editor-selection-border:",
+  "暗色主题应覆盖编辑器选区边框变量"
+);
+assertIncludes(
+  part01,
+  "--editor-selection-bg: transparent;",
+  "亮色主题编辑器选区应去掉填充底色，仅保留边框装饰"
+);
+assertIncludes(
+  part06,
+  "--editor-selection-bg: transparent;",
+  "暗色主题编辑器选区应去掉填充底色，仅保留边框装饰"
+);
+assertIncludes(
+  documentFlow,
+  "<SelectionDecorationOverlay rects={selectionDecorationRects} />",
+  "非编辑 AI 改写模式的真实文本选区应复用编辑器选区装饰层"
+);
+assertIncludes(
+  documentFlow,
+  "onDoubleClick={scheduleSelectionStateSync}",
+  "非编辑 AI 改写模式双击选中文本后应刷新选区装饰层"
+);
+assertIncludes(
+  part04,
+  ".document-flow *::selection",
+  "非编辑 AI 改写模式真实文本选区应使用透明原生选区并由 overlay 绘制"
+);
+assertIncludes(
+  part04,
+  ".document-flow-selection-shell",
+  "非编辑 AI 改写模式选区 overlay 不应继承编辑器 min-height"
+);
+assertIncludes(
+  part04,
+  ".workbench-editor-editable *::selection",
+  "编辑器内部槽位文本应使用主题化选区样式"
+);
+assertIncludes(
+  part04,
+  ".workbench-editor-selection-shape",
+  "编辑器应使用独立 SVG path 装饰层绘制选区边框和光晕"
+);
+assertIncludes(
+  selectionDecorationOverlay,
+  "range.getClientRects()",
+  "选区装饰层应基于真实 Range 矩形计算选区范围"
+);
+assertIncludes(
+  selectionDecorationOverlay,
+  "mergeLineRects(rects)",
+  "选区装饰层应先按视觉行合并 Range 矩形"
+);
+assertIncludes(
+  selectionDecorationOverlay,
+  "normalizeLineRectsForOutline(rects)",
+  "选区装饰层应在视觉层桥接相邻行，避免每行一个独立框"
+);
+assertIncludes(
+  selectionDecorationOverlay,
+  "horizontalOverlap(current, next)",
+  "跨行选区只应在相邻行水平重叠时桥接，避免外框覆盖无关文本"
+);
+assertIncludes(
+  selectionDecorationOverlay,
+  "buildSelectionOutlinePath(rects)",
+  "选区装饰层应基于矩形并集绘制完整外轮廓"
+);
+assertIncludes(
+  selectionDecorationOverlay,
+  "<path",
+  "选区装饰层应绘制正交外轮廓 path，而不是每行独立矩形框"
+);
+assertNotIncludes(
+  selectionDecorationOverlay,
+  "buildConnectedSelectionPath",
+  "跨行选区不应再用单个 path 连接相邻行，避免错位折线"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "<SelectionDecorationOverlay rects={selectionDecorationRects} />",
+  "结构化编辑器应渲染选区装饰层"
+);
+assertIncludes(
+  plainTextDocumentEditor,
+  "<SelectionDecorationOverlay rects={selectionDecorationRects} />",
+  "纯文本编辑器也应渲染选区装饰层"
+);
+assertIncludes(
+  useEditorSelectionRewrite,
+  "selectionRanges: resolved.selectionRanges",
+  "编辑选区 AI 改写后应重新选中实际替换后的区域"
+);
+assertIncludes(
+  documentPanel,
+  "const rewriteSelectionDisabled = !editorMode || !canRewriteSelection || anyBusy;",
+  "编辑模式选区优化按钮应仅在存在正文选区时可点击"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "onPointerUp={scheduleSelectionStateSync}",
+  "结构化编辑器应在拖选结束后主动同步选区状态，不能只依赖 selectionchange"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "onSelect={scheduleSelectionStateSync}",
+  "结构化编辑器应监听内容选中事件来刷新选区按钮启用态"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "setEditorSelectionAvailable(false)",
+  "编辑器内部新点击应立即清空旧选区启用态"
+);
+assertIncludes(
+  documentActionBar,
+  "event.preventDefault();",
+  "点击选区优化按钮时不应抢走编辑器焦点并清空原生选区"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "restoreSlotSelection(slotNodesRef.current, options.selectionRanges)",
+  "结构化编辑器应按替换后的新文本长度恢复选区"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "return lastSnapshotRef.current;",
+  "点击选区优化按钮时应回退到最近一次真实选区缓存，不应因等待时间失效"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "clearSnapshotOnCollapsedSelectionRef.current &&",
+  "工具栏点击造成的折叠选区不应清掉真实选区缓存"
+);
+assertIncludes(
+  structuredSlotEditor,
+  "onPointerDown={markSelectionCacheClearOnEditorIntent}",
+  "只有编辑器内交互才应主动使旧选区缓存失效"
+);
+assertNotIncludes(
+  structuredSlotEditor,
+  "buildRewriteUnitSnapshot",
+  "选区优化不应在选区丢失或光标折叠时回退为整分块优化"
+);
+assertIncludes(
+  useEditorHunks,
+  "for (const rewriteUnit of currentSession.rewriteUnits)",
+  "槽位编辑模式的 diff 应按 rewrite unit 分块展示，而不是按单个 slot 展示"
+);
+assertIncludes(
+  useEditorHunks,
+  "id: `rewrite-unit-${rewriteUnit.id}`",
+  "槽位编辑模式的 diff hunk id 应沿用 rewrite unit 粒度"
+);
+assertNotIncludes(
+  useEditorHunks,
+  "id: `slot-${slot.id}`",
+  "槽位编辑模式不应生成单槽位 diff hunk"
 );
 assertIncludes(
   paragraphDocumentFlow,

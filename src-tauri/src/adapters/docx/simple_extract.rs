@@ -419,7 +419,9 @@ pub(super) fn paragraph_region_skip_rewrite(
 }
 
 #[cfg(test)]
-pub(super) fn flatten_writeback_blocks_for_test(blocks: &[WritebackBlockTemplate]) -> Vec<TextRegion> {
+pub(super) fn flatten_writeback_blocks_for_test(
+    blocks: &[WritebackBlockTemplate],
+) -> Vec<TextRegion> {
     flatten_writeback_blocks(blocks, false)
 }
 
@@ -458,7 +460,7 @@ pub(super) fn parse_writeback_paragraph_template(
                     index = skip_subtree_events(events, index)?;
                     continue;
                 }
-                let (child_events, next_index) = capture_subtree_events(events, index)?;
+                let (child_events, next_index) = capture_subtree_events_from_slice(events, index)?;
                 match name.as_slice() {
                     b"r" => regions.extend(parse_writeback_run_regions(&child_events, None, None)?),
                     b"hyperlink" => regions.extend(parse_writeback_hyperlink_regions(
@@ -539,46 +541,12 @@ pub(super) fn parse_writeback_paragraph_template(
     })
 }
 
-pub(super) fn skip_subtree_events(events: &[Event<'static>], start_index: usize) -> Result<usize, String> {
-    let (_, next_index) = capture_subtree_events(events, start_index)?;
-    Ok(next_index)
-}
-
-pub(super) fn capture_subtree_events(
+pub(super) fn skip_subtree_events(
     events: &[Event<'static>],
     start_index: usize,
-) -> Result<(Vec<Event<'static>>, usize), String> {
-    let Some(first) = events.get(start_index) else {
-        return Err("解析 docx 写回模板失败：子树起点越界。".to_string());
-    };
-    match first {
-        Event::Empty(e) => Ok((vec![Event::Empty(e.clone())], start_index + 1)),
-        Event::Start(e) => {
-            let mut depth = 1usize;
-            let mut out = vec![Event::Start(e.clone())];
-            let mut index = start_index + 1;
-            while index < events.len() {
-                let event = events[index].clone();
-                match &event {
-                    Event::Start(_) => depth += 1,
-                    Event::End(_) => {
-                        depth -= 1;
-                        out.push(event);
-                        index += 1;
-                        if depth == 0 {
-                            return Ok((out, index));
-                        }
-                        continue;
-                    }
-                    _ => {}
-                }
-                out.push(event);
-                index += 1;
-            }
-            Err("解析 docx 写回模板失败：子树未正常闭合。".to_string())
-        }
-        _ => Err("解析 docx 写回模板失败：非法子树起点。".to_string()),
-    }
+) -> Result<usize, String> {
+    let (_, next_index) = capture_subtree_events_from_slice(events, start_index)?;
+    Ok(next_index)
 }
 
 pub(super) fn parse_writeback_hyperlink_regions(
@@ -602,7 +570,7 @@ pub(super) fn parse_writeback_hyperlink_regions(
         match &events[index] {
             Event::Start(e) | Event::Empty(e) => {
                 let name = local_name_owned(e.name().as_ref());
-                let (child_events, next_index) = capture_subtree_events(events, index)?;
+                let (child_events, next_index) = capture_subtree_events_from_slice(events, index)?;
                 match name.as_slice() {
                     b"r" => {
                         let run_regions = match parse_writeback_run_regions(
@@ -651,4 +619,3 @@ pub(super) fn parse_writeback_hyperlink_regions(
 
     Ok(regions)
 }
-

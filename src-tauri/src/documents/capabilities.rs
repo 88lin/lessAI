@@ -197,44 +197,15 @@ fn compute_document_editor_mode(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
     use std::path::Path;
 
     use crate::{
-        models::{DocumentSession, RunningState, SegmentationPreset},
-        session_capability_models::{CapabilityGate, DocumentSessionCapabilities},
+        models::DocumentSession, session_capability_models::CapabilityGate,
+        test_support::sample_clean_session,
     };
 
     fn sample_session(document_path: &str) -> DocumentSession {
-        let now = Utc::now();
-        let mut session = DocumentSession {
-            id: "session-1".to_string(),
-            title: "示例".to_string(),
-            document_path: document_path.to_string(),
-            source_text: "正文".to_string(),
-            source_snapshot: None,
-            template_kind: None,
-            template_signature: None,
-            slot_structure_signature: None,
-            template_snapshot: None,
-            normalized_text: "正文".to_string(),
-            capabilities: DocumentSessionCapabilities {
-                source_writeback: CapabilityGate::allowed(),
-                editor_writeback: CapabilityGate::allowed(),
-                ..Default::default()
-            },
-            segmentation_preset: Some(SegmentationPreset::Paragraph),
-            rewrite_headings: Some(false),
-            writeback_slots: Vec::new(),
-            rewrite_units: Vec::new(),
-            suggestions: Vec::new(),
-            next_suggestion_sequence: 1,
-            status: RunningState::Idle,
-            created_at: now,
-            updated_at: now,
-        };
-        super::hydrate_session_capabilities(&mut session);
-        session
+        sample_clean_session("session-1", document_path, "正文")
     }
 
     #[test]

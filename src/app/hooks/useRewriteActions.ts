@@ -370,7 +370,7 @@ export function useRewriteActions(options: {
 
   const handleRetry = useCallback(async () => {
     const session = currentSessionRef.current;
-    const rewriteUnit = findRewriteUnit(session ?? null as never, activeRewriteUnitIdRef.current);
+    const rewriteUnit = findRewriteUnit(session, activeRewriteUnitIdRef.current);
     if (!session || !rewriteUnit) return;
     const latestSession = await refreshRewriteableSessionOrNotify({
       session,

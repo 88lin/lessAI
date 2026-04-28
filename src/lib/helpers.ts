@@ -9,6 +9,9 @@ import type {
 } from "./types";
 import type { NoticeTone } from "./constants";
 import { sessionSupportsAiRewrite } from "./documentCapabilities";
+import { buildWritebackSlotMap } from "./slotText";
+export { normalizeLineEndingsToLf, normalizeNewlines } from "./textNormalize";
+export { mergedTextFromSlots, rewriteUnitSourceText } from "./slotText";
 
 export function readableError(error: unknown): string {
   if (error instanceof Error) {
@@ -109,10 +112,6 @@ export function countCharacters(text: string) {
   return text.replace(/\s+/g, "").length;
 }
 
-export function normalizeNewlines(text: string) {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
 const zhDateFormatter = new Intl.DateTimeFormat("zh-CN", {
   month: "2-digit",
   day: "2-digit",
@@ -122,10 +121,6 @@ const zhDateFormatter = new Intl.DateTimeFormat("zh-CN", {
 
 export function formatDate(value: string) {
   return zhDateFormatter.format(new Date(value));
-}
-
-function buildWritebackSlotMap(slots: ReadonlyArray<WritebackSlot>) {
-  return new Map(slots.map((slot) => [slot.id, slot] as const));
 }
 
 const sessionWritebackSlotMapCache = new WeakMap<
@@ -160,10 +155,6 @@ export function resolveRewriteUnitSlots(
     .filter((slot): slot is WritebackSlot => slot != null);
 }
 
-export function mergedTextFromSlots(slots: ReadonlyArray<WritebackSlot>) {
-  return slots.map((slot) => `${slot.text}${slot.separatorAfter}`).join("");
-}
-
 function applySlotUpdatesToSlots(
   slots: ReadonlyArray<WritebackSlot>,
   updates: ReadonlyArray<SlotUpdate>
@@ -177,13 +168,6 @@ function applySlotUpdatesToSlots(
     ...slot,
     text: nextTexts.get(slot.id) ?? slot.text
   }));
-}
-
-export function rewriteUnitSourceText(
-  session: DocumentSession,
-  rewriteUnit: RewriteUnit
-) {
-  return mergedTextFromSlots(resolveRewriteUnitSlots(session, rewriteUnit));
 }
 
 export function rewriteUnitSlotsWithSuggestion(
@@ -206,10 +190,10 @@ export function rewriteUnitHasEditableSlot(
 }
 
 export function findRewriteUnit(
-  session: DocumentSession,
+  session: DocumentSession | null | undefined,
   rewriteUnitId: string | null | undefined
 ) {
-  if (!rewriteUnitId) return null;
+  if (!session || !rewriteUnitId) return null;
   return session.rewriteUnits.find((item) => item.id === rewriteUnitId) ?? null;
 }
 

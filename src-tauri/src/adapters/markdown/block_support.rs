@@ -5,71 +5,18 @@ use super::syntax::{
     is_yaml_front_matter_close, is_yaml_front_matter_open,
 };
 
+use crate::text_boundaries::{split_indexed_lines_with_offsets, IndexedTextLine as IndexedLine};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct MarkdownBlock {
     pub kind: &'static str,
     pub text: String,
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct IndexedLine<'a> {
-    pub line: &'a str,
-    pub start: usize,
-    pub end: usize,
-}
-
 const MAX_FRONT_MATTER_LINES: usize = 200;
 
 pub(super) fn split_lines_with_offsets(text: &str) -> Vec<IndexedLine<'_>> {
-    let bytes = text.as_bytes();
-    let mut lines = Vec::new();
-    let mut start = 0usize;
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\n' => {
-                lines.push(IndexedLine {
-                    line: &text[start..index],
-                    start,
-                    end: index + 1,
-                });
-                index += 1;
-                start = index;
-            }
-            b'\r' => {
-                let end = if index + 1 < bytes.len() && bytes[index + 1] == b'\n' {
-                    index + 2
-                } else {
-                    index + 1
-                };
-                lines.push(IndexedLine {
-                    line: &text[start..index],
-                    start,
-                    end,
-                });
-                index = end;
-                start = index;
-            }
-            _ => index += 1,
-        }
-    }
-
-    if start < bytes.len() {
-        lines.push(IndexedLine {
-            line: &text[start..bytes.len()],
-            start,
-            end: bytes.len(),
-        });
-    } else if text.is_empty() {
-        lines.push(IndexedLine {
-            line: "",
-            start: 0,
-            end: 0,
-        });
-    }
-
-    lines
+    split_indexed_lines_with_offsets(text)
 }
 
 pub(super) fn find_yaml_front_matter_range(lines: &[IndexedLine<'_>]) -> Option<(usize, usize)> {

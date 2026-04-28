@@ -1,7 +1,9 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { countSelectedRewriteUnits } from "../../../lib/rewriteUnitSelection";
 import { ParagraphDocumentFlow } from "./ParagraphDocumentFlow";
+import { SelectionDecorationOverlay } from "./SelectionDecorationOverlay";
 import type { DocumentFlowBodyProps } from "./documentFlowShared";
+import { useSelectionDecorationRects } from "./useSelectionDecorationRects";
 
 interface DocumentFlowProps extends DocumentFlowBodyProps {
   sessionId: string;
@@ -49,6 +51,12 @@ export const DocumentFlow = memo(function DocumentFlow({
   onSelectSuggestion
 }: DocumentFlowProps) {
   const selectedDisplayCount = countSelectedRewriteUnits(selectedRewriteUnitIds);
+  const flowRootRef = useRef<HTMLParagraphElement | null>(null);
+  const {
+    selectionDecorationRects,
+    clearSelectionDecoration,
+    scheduleSelectionStateSync
+  } = useSelectionDecorationRects({ rootRef: flowRootRef });
 
   return (
     <div className={buildWrapClassName(showMarkers, selectedDisplayCount)}>
@@ -90,27 +98,37 @@ export const DocumentFlow = memo(function DocumentFlow({
         </div>
       ) : null}
 
-      <p className="document-flow">
-        <ParagraphDocumentFlow
-          sessionId={sessionId}
-          session={session}
-          rewriteUnits={rewriteUnits}
-          documentView={documentView}
-          documentFormat={documentFormat}
-          rewriteEnabled={rewriteEnabled}
-          rewriteBlockedReason={rewriteBlockedReason}
-          showMarkers={showMarkers}
-          suggestionsByRewriteUnit={suggestionsByRewriteUnit}
-          runningRewriteUnitIdSet={runningRewriteUnitIdSet}
-          optimisticManualRunningRewriteUnitId={optimisticManualRunningRewriteUnitId}
-          activeRewriteUnitId={activeRewriteUnitId}
-          activeSuggestionId={activeSuggestionId}
-          activeReviewNavigationRequestId={activeReviewNavigationRequestId}
-          selectedRewriteUnitIds={selectedRewriteUnitIds}
-          onSelectRewriteUnit={onSelectRewriteUnit}
-          onSelectSuggestion={onSelectSuggestion}
-        />
-      </p>
+      <div className="workbench-editor-selection-shell document-flow-selection-shell">
+        <p
+          ref={flowRootRef}
+          className="document-flow"
+          onPointerDown={clearSelectionDecoration}
+          onPointerUp={scheduleSelectionStateSync}
+          onDoubleClick={scheduleSelectionStateSync}
+          onKeyUp={scheduleSelectionStateSync}
+        >
+          <ParagraphDocumentFlow
+            sessionId={sessionId}
+            session={session}
+            rewriteUnits={rewriteUnits}
+            documentView={documentView}
+            documentFormat={documentFormat}
+            rewriteEnabled={rewriteEnabled}
+            rewriteBlockedReason={rewriteBlockedReason}
+            showMarkers={showMarkers}
+            suggestionsByRewriteUnit={suggestionsByRewriteUnit}
+            runningRewriteUnitIdSet={runningRewriteUnitIdSet}
+            optimisticManualRunningRewriteUnitId={optimisticManualRunningRewriteUnitId}
+            activeRewriteUnitId={activeRewriteUnitId}
+            activeSuggestionId={activeSuggestionId}
+            activeReviewNavigationRequestId={activeReviewNavigationRequestId}
+            selectedRewriteUnitIds={selectedRewriteUnitIds}
+            onSelectRewriteUnit={onSelectRewriteUnit}
+            onSelectSuggestion={onSelectSuggestion}
+          />
+        </p>
+        <SelectionDecorationOverlay rects={selectionDecorationRects} />
+      </div>
     </div>
   );
 });

@@ -21,8 +21,8 @@ export function useBusyAction() {
       busyActionRef.current = actionKey;
       setBusyAction(actionKey);
 
-      const promise = operation();
-      pendingPromiseRef.current = promise as unknown as Promise<unknown>;
+      const promise = Promise.resolve().then(operation);
+      pendingPromiseRef.current = promise;
 
       try {
         return await promise;

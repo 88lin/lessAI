@@ -1,3 +1,5 @@
+import { normalizeLineEndingsToLf } from "./textNormalize";
+
 interface ScriptStats {
   cjk: number;
   latin: number;
@@ -385,9 +387,7 @@ export function validateSelectionRewriteOutput(source: string, candidate: string
   }
 }
 
-export function normalizeLineEndingsToLf(text: string) {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
+export { normalizeLineEndingsToLf } from "./textNormalize";
 
 export function splitLinesKeepEmpty(text: string) {
   return normalizeLineEndingsToLf(text).split("\n");
@@ -526,4 +526,3 @@ export function finalizePlainSelectionCandidate(sourceText: string, candidateTex
   validateSelectionRewriteOutput(sourceText, candidate);
   return candidate;
 }
-

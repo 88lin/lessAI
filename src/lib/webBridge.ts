@@ -372,6 +372,12 @@ export async function webInvoke<T>(command: string, payload?: CommandPayload) {
         String(payload?.text ?? ""),
         (payload?.editorBaseSnapshot as DocumentSnapshot | null | undefined) ?? null
       )) as T;
+    case "rewrite_editor_slots":
+      return (await rewriteCommands.rewriteEditorSlotsCommand(
+        String(payload?.sessionId ?? ""),
+        (payload?.slots as Array<{ slotId: string; text: string; separatorAfter: string }>) ?? [],
+        (payload?.editorBaseSnapshot as DocumentSnapshot | null | undefined) ?? null
+      )) as T;
     case "is_main_window_maximized":
       return (await isMainWindowMaximizedCommand()) as T;
     case "minimize_main_window":

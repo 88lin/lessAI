@@ -34,6 +34,13 @@
   --mark-active-ring: rgba(23, 68, 207, 0.28);
   --mark-selected-bg: rgba(180, 95, 24, 0.14);
   --mark-selected-ring: rgba(180, 95, 24, 0.24);
+  --selection-bg: rgba(23, 68, 207, 0.24);
+  --selection-ink: #111827;
+  --editor-selection-bg: transparent;
+  --editor-selection-ink: inherit;
+  --editor-selection-fill: transparent;
+  --editor-selection-border: rgba(23, 68, 207, 0.58);
+  --editor-selection-halo: rgba(23, 68, 207, 0.16);
   --mark-protected-bg: rgba(148, 163, 184, 0.16);
   --mark-protected-ring: rgba(100, 116, 139, 0.2);
   --mark-running-bg: rgba(134, 93, 255, 0.13);
@@ -58,6 +65,11 @@
     linear-gradient(90deg, rgba(20, 20, 20, 0.05) 1px, transparent 1px),
     linear-gradient(rgba(20, 20, 20, 0.05) 1px, transparent 1px),
     var(--paper);
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-ink);
 }
 
 * {

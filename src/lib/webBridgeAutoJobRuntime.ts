@@ -54,6 +54,28 @@ function sleep(ms: number) {
 }
 
 export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
+  function isCurrentJob(sessionId: string, job: WebAutoJob) {
+    return deps.autoJobs.get(sessionId) === job;
+  }
+
+  function deleteCurrentJob(sessionId: string, job: WebAutoJob) {
+    if (isCurrentJob(sessionId, job)) {
+      deps.autoJobs.delete(sessionId);
+    }
+  }
+
+  function stopCurrentJob(sessionId: string, job: WebAutoJob) {
+    if (!isCurrentJob(sessionId, job)) {
+      return false;
+    }
+    job.queue = [];
+    for (const controller of job.controllers.values()) {
+      controller.abort();
+    }
+    deps.autoJobs.delete(sessionId);
+    return true;
+  }
+
   async function emitRewriteProgress(
     session: DocumentSession,
     job: WebAutoJob,
@@ -110,9 +132,13 @@ export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
     }
 
     while (true) {
+      if (!isCurrentJob(sessionId, job)) {
+        return;
+      }
+
       const session = deps.sessions.get(sessionId);
       if (!session) {
-        deps.autoJobs.delete(sessionId);
+        deleteCurrentJob(sessionId, job);
         return;
       }
 
@@ -122,7 +148,7 @@ export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
         deps.updateSessionTimestamp(session);
         await emitRewriteProgress(session, job, "cancelled");
         await emitRewriteFinished(sessionId);
-        deps.autoJobs.delete(sessionId);
+        deleteCurrentJob(sessionId, job);
         return;
       }
 
@@ -152,13 +178,15 @@ export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
         job.controllers.set(token, controller);
         void emitRewriteProgress(session, job, "running");
 
-        const promise = deps
-          .processRewriteBatch({
-            session,
-            rewriteUnitIds,
-            autoApprove: true,
-            signal: controller.signal
-          })
+        const promise = Promise.resolve()
+          .then(() =>
+            deps.processRewriteBatch({
+              session,
+              rewriteUnitIds,
+              autoApprove: true,
+              signal: controller.signal
+            })
+          )
           .then(
             (completed): WebAutoBatchResult => ({
               kind: "success",
@@ -183,7 +211,7 @@ export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
         void (async () => {
           const result = await promise;
           const activeSession = deps.sessions.get(sessionId);
-          if (!activeSession) {
+          if (!activeSession || !isCurrentJob(sessionId, job)) {
             return;
           }
           if (result.kind === "cancelled") {
@@ -193,14 +221,20 @@ export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
           }
           if (result.kind === "failed") {
             deps.markBatchFailure(activeSession, result.rewriteUnitIds, result.error);
+            stopCurrentJob(sessionId, job);
             await emitRewriteFailed(sessionId, result.error);
-            deps.autoJobs.delete(sessionId);
             return;
           }
           job.completedUnits += result.completed.length;
           await emitRewriteUnitCompleted(sessionId, result.completed);
-          await emitRewriteProgress(activeSession, job, "running");
+          if (isCurrentJob(sessionId, job)) {
+            await emitRewriteProgress(activeSession, job, "running");
+          }
         })();
+      }
+
+      if (!isCurrentJob(sessionId, job)) {
+        return;
       }
 
       if (job.controllers.size === 0 && job.queue.length === 0) {
@@ -209,7 +243,7 @@ export function createAutoJobRuntime(deps: AutoJobRuntimeDeps) {
         deps.updateSessionTimestamp(session);
         await emitRewriteProgress(session, job, session.status);
         await emitRewriteFinished(sessionId);
-        deps.autoJobs.delete(sessionId);
+        deleteCurrentJob(sessionId, job);
         return;
       }
 

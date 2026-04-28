@@ -1,4 +1,11 @@
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef
+} from "react";
 import type { ClipboardEvent } from "react";
 
 import { normalizeNewlines } from "../../../lib/helpers";
@@ -9,6 +16,13 @@ import type {
   DocumentEditorPreviewResult,
 } from "./documentEditorTypes";
 import { buildSelectionSnapshotBase, resolveSnapshotRangeInText } from "./editorSelectionShared";
+import { SelectionDecorationOverlay } from "./SelectionDecorationOverlay";
+import { useEditorSaveShortcut } from "./useEditorSaveShortcut";
+import {
+  resolveContainedSelectionDecorationRange,
+  type SelectionDecorationContext,
+  useSelectionDecorationRects
+} from "./useSelectionDecorationRects";
 
 function buildSelectionSnapshot(
   node: HTMLDivElement,
@@ -60,18 +74,39 @@ export const PlainTextDocumentEditor = memo(
     const hasSelectionRef = useRef(false);
     const lastSyncedTextRef = useRef<string | null>(null);
 
-    useEffect(() => {
-      const handleKeyDown = (event: KeyboardEvent) => {
-        const key = event.key.toLowerCase();
-        if (!(event.ctrlKey || event.metaKey) || key !== "s") return;
-        event.preventDefault();
-        if (!dirty || busy) return;
-        onSave();
-      };
+    useEditorSaveShortcut({ busy, dirty, onSave });
 
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [busy, dirty, onSave]);
+    const setEditorSelectionAvailable = useCallback(
+      (next: boolean) => {
+        if (next === hasSelectionRef.current) return;
+        hasSelectionRef.current = next;
+        onSelectionChange?.(next);
+      },
+      [onSelectionChange]
+    );
+
+    const resolveSelectionDecorationRange = useCallback(
+      (context: SelectionDecorationContext<HTMLDivElement>) => {
+        const range = resolveContainedSelectionDecorationRange(context);
+        setEditorSelectionAvailable(range != null);
+        return range;
+      },
+      [setEditorSelectionAvailable]
+    );
+
+    const {
+      selectionDecorationRects,
+      clearSelectionDecoration,
+      scheduleSelectionStateSync
+    } = useSelectionDecorationRects({
+      rootRef: editorFieldRef,
+      resolveRange: resolveSelectionDecorationRange
+    });
+
+    const clearSelectionState = useCallback(() => {
+      clearSelectionDecoration();
+      setEditorSelectionAvailable(false);
+    }, [clearSelectionDecoration, setEditorSelectionAvailable]);
 
     useEffect(() => {
       const node = editorFieldRef.current;
@@ -100,29 +135,6 @@ export const PlainTextDocumentEditor = memo(
       return () => cancelAnimationFrame(id);
     }, []);
 
-    useEffect(() => {
-      if (!onSelectionChange) return;
-
-      const handleSelectionChange = () => {
-        const node = editorFieldRef.current;
-        if (!node) return;
-
-        const selection = window.getSelection();
-        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-        const withinEditor =
-          !!range &&
-          node.contains(range.startContainer) &&
-          node.contains(range.endContainer) &&
-          !range.collapsed;
-        if (withinEditor === hasSelectionRef.current) return;
-        hasSelectionRef.current = withinEditor;
-        onSelectionChange(withinEditor);
-      };
-
-      document.addEventListener("selectionchange", handleSelectionChange);
-      return () => document.removeEventListener("selectionchange", handleSelectionChange);
-    }, [onSelectionChange]);
-
     useImperativeHandle(
       ref,
       (): DocumentEditorHandle => ({
@@ -149,13 +161,18 @@ export const PlainTextDocumentEditor = memo(
           node.textContent = preview.value;
           lastSyncedTextRef.current = preview.value;
           node.focus();
+          clearSelectionState();
           onChange(preview.value);
           return { ok: true };
         },
 
-        collectSlotEdits: () => null
+        collectSlotEdits: () => null,
+
+        applySlotUpdates: (_slotUpdates: Map<string, string>, _options) => {
+          // 纯文本编辑器无槽位概念，不需要逐槽位应用。
+        }
       }),
-      [onChange]
+      [clearSelectionState, onChange]
     );
 
     const handleEditorInput = useCallback(() => {
@@ -164,14 +181,18 @@ export const PlainTextDocumentEditor = memo(
       const nextText = normalizeNewlines(node.innerText);
       lastSyncedTextRef.current = nextText;
       onChange(nextText);
-    }, [onChange]);
+      scheduleSelectionStateSync();
+    }, [onChange, scheduleSelectionStateSync]);
 
     const handleEditorPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
       event.preventDefault();
       const text = event.clipboardData.getData("text/plain");
       if (!text) return;
 
-      if (document.execCommand("insertText", false, text)) return;
+      if (document.execCommand("insertText", false, text)) {
+        scheduleSelectionStateSync();
+        return;
+      }
       const selection = window.getSelection();
       if (!selection?.rangeCount) return;
       selection.deleteFromDocument();
@@ -182,26 +203,34 @@ export const PlainTextDocumentEditor = memo(
         const nextText = normalizeNewlines(node.innerText);
         lastSyncedTextRef.current = nextText;
         onChange(nextText);
+        scheduleSelectionStateSync();
       }
-    }, [onChange]);
+    }, [onChange, scheduleSelectionStateSync]);
 
     return (
-      <div
-        ref={editorFieldRef}
-        className={`document-flow workbench-editor-editable ${
-          value.trim().length === 0 ? "is-empty" : ""
-        }`}
-        contentEditable={!busy}
-        role="textbox"
-        aria-multiline="true"
-        aria-label="编辑终稿"
-        tabIndex={0}
-        spellCheck={false}
-        data-placeholder="在此编辑终稿…"
-        onInput={handleEditorInput}
-        onPaste={handleEditorPaste}
-        suppressContentEditableWarning
-      />
+      <div className="workbench-editor-selection-shell">
+        <div
+          ref={editorFieldRef}
+          className={`document-flow workbench-editor-editable ${
+            value.trim().length === 0 ? "is-empty" : ""
+          }`}
+          contentEditable={!busy}
+          role="textbox"
+          aria-multiline="true"
+          aria-label="编辑终稿"
+          tabIndex={0}
+          spellCheck={false}
+          data-placeholder="在此编辑终稿…"
+          onPointerDown={clearSelectionState}
+          onPointerUp={scheduleSelectionStateSync}
+          onSelect={scheduleSelectionStateSync}
+          onKeyUp={scheduleSelectionStateSync}
+          onInput={handleEditorInput}
+          onPaste={handleEditorPaste}
+          suppressContentEditableWarning
+        />
+        <SelectionDecorationOverlay rects={selectionDecorationRects} />
+      </div>
     );
   })
 );

@@ -7,7 +7,8 @@ import type {
   EditorSlotEdit,
   ProviderCheckResult,
   ReleaseVersionSummary,
-  RewriteMode
+  RewriteMode,
+  SlotUpdate
 } from "./types";
 
 type EditorWritebackMode = "validate" | "write";
@@ -147,6 +148,23 @@ export async function rewriteSelection(
 ) {
   return invokeSessionCommand<string>("rewrite_selection", sessionId, {
     text,
+    editorBaseSnapshot
+  });
+}
+
+export interface SlotTextInput {
+  slotId: string;
+  text: string;
+  separatorAfter: string;
+}
+
+export async function rewriteEditorSlots(
+  sessionId: string,
+  slots: SlotTextInput[],
+  editorBaseSnapshot: DocumentSnapshot | null
+) {
+  return invokeSessionCommand<SlotUpdate[]>("rewrite_editor_slots", sessionId, {
+    slots,
     editorBaseSnapshot
   });
 }

@@ -356,6 +356,11 @@ export const DocumentActionBar = memo(function DocumentActionBar({
               <button
                 type="button"
                 className="icon-button"
+                onMouseDown={(event) => {
+                  if (!rewriteSelectionDisabled) {
+                    event.preventDefault();
+                  }
+                }}
                 onClick={onRewriteSelection}
                 aria-label="对选区执行降 AIGC 处理"
                 title={rewriteSelectionTitle}

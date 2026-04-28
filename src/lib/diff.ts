@@ -7,8 +7,6 @@ type DiffOp =
   | { type: "delete"; value: string };
 
 const MAX_REFINED_CHARS = 8_000;
-const DEFAULT_CONTEXT_CHARS = 80;
-const DEFAULT_MAX_HUNKS = 120;
 
 export interface DiffHunk {
   id: string;
@@ -28,10 +26,6 @@ function splitLinesPreserveNewline(text: string): string[] {
 
 function splitChars(text: string): string[] {
   return Array.from(text);
-}
-
-function countNonWhitespaceChars(text: string) {
-  return text.replace(/\s+/g, "").length;
 }
 
 function myersDiff(before: ReadonlyArray<string>, after: ReadonlyArray<string>) {
@@ -148,7 +142,7 @@ function pushSpan(spans: DiffSpan[], type: DiffSpan["type"], text: string) {
   spans.push({ type, text });
 }
 
-function diffTextByChars(beforeText: string, afterText: string): DiffSpan[] {
+export function diffTextByChars(beforeText: string, afterText: string): DiffSpan[] {
   const ops = myersDiff(splitChars(beforeText), splitChars(afterText));
   const spans: DiffSpan[] = [];
 
@@ -222,151 +216,4 @@ export function diffTextByLines(beforeText: string, afterText: string): DiffSpan
 
   flushPending();
   return spans;
-}
-
-function tailContext(text: string, maxChars: number) {
-  if (!text) return "";
-  const lastNewline = text.lastIndexOf("\n");
-  const candidate = lastNewline >= 0 ? text.slice(lastNewline + 1) : text;
-  if (candidate.length <= maxChars) return candidate;
-  return candidate.slice(candidate.length - maxChars);
-}
-
-function splitHeadContext(text: string, maxChars: number) {
-  if (!text) return { head: "", rest: "" };
-  const newlineIndex = text.indexOf("\n");
-  if (newlineIndex >= 0 && newlineIndex + 1 <= maxChars) {
-    return { head: text.slice(0, newlineIndex + 1), rest: text.slice(newlineIndex + 1) };
-  }
-  if (text.length <= maxChars) return { head: text, rest: "" };
-  return { head: text.slice(0, maxChars), rest: text.slice(maxChars) };
-}
-
-export function buildDiffHunks(
-  spans: ReadonlyArray<DiffSpan>,
-  options?: { contextChars?: number; maxHunks?: number }
-): DiffHunk[] {
-  const contextChars = Math.max(0, options?.contextChars ?? DEFAULT_CONTEXT_CHARS);
-  const bridgeChars = contextChars * 2;
-  const maxHunks = Math.max(1, options?.maxHunks ?? DEFAULT_MAX_HUNKS);
-  const work = spans.map((item) => ({ ...item }));
-
-  // 预计算每个位置之后下一个非 unchanged span 的索引，
-  // 避免内层 while 循环在连续 unchanged 区间重复扫描导致 O(n²)。
-  const nextChangeIdx: number[] = new Array(work.length).fill(work.length);
-  let next = work.length;
-  for (let idx = work.length - 1; idx >= 0; idx -= 1) {
-    nextChangeIdx[idx] = next;
-    if (work[idx].type !== "unchanged") {
-      next = idx;
-    }
-  }
-
-  const hunks: DiffHunk[] = [];
-  let lastUnchangedText = "";
-  let i = 0;
-
-  while (i < work.length) {
-    const span = work[i];
-    if (span.type === "unchanged") {
-      lastUnchangedText = span.text;
-      i += 1;
-      continue;
-    }
-
-    const prefix = tailContext(lastUnchangedText, contextChars);
-    const hunkSpans: DiffSpan[] = [];
-    if (prefix) {
-      pushSpan(hunkSpans, "unchanged", prefix);
-    }
-
-    let sawChange = false;
-    while (i < work.length) {
-      const current = work[i];
-
-      if (current.type !== "unchanged") {
-        sawChange = true;
-        pushSpan(hunkSpans, current.type, current.text);
-        i += 1;
-        continue;
-      }
-
-      if (!sawChange) {
-        lastUnchangedText = current.text;
-        i += 1;
-        continue;
-      }
-
-      // 变更对合并策略：
-      // - 若两段变更之间的 unchanged 很短，则视为同一组（避免”随手改一下就几十个变更对”）
-      // - 若 unchanged 很长，则切分为新的变更对，仅保留末尾/开头少量上下文
-      const nextChangeIndex = nextChangeIdx[i];
-      const hasNextChange = nextChangeIndex < work.length;
-
-      if (!hasNextChange) {
-        const { head } = splitHeadContext(current.text, contextChars);
-        if (head) {
-          pushSpan(hunkSpans, "unchanged", head);
-        }
-        i = nextChangeIndex;
-        break;
-      }
-
-      if (current.text.length <= bridgeChars) {
-        pushSpan(hunkSpans, "unchanged", current.text);
-        i += 1;
-        continue;
-      }
-
-      const { head, rest } = splitHeadContext(current.text, contextChars);
-      if (head) {
-        pushSpan(hunkSpans, "unchanged", head);
-      }
-      if (rest) {
-        work[i] = { type: "unchanged", text: rest };
-      } else {
-        i += 1;
-      }
-      break;
-    }
-
-    let beforeText = "";
-    let afterText = "";
-    let insertedChars = 0;
-    let deletedChars = 0;
-
-    for (const item of hunkSpans) {
-      if (item.type !== "insert") {
-        beforeText += item.text;
-      }
-      if (item.type !== "delete") {
-        afterText += item.text;
-      }
-      if (item.type === "insert") {
-        insertedChars += countNonWhitespaceChars(item.text);
-      }
-      if (item.type === "delete") {
-        deletedChars += countNonWhitespaceChars(item.text);
-      }
-    }
-
-    const sequence = hunks.length + 1;
-    hunks.push({
-      id: `hunk-${sequence}`,
-      sequence,
-      diffSpans: hunkSpans,
-      beforeText,
-      afterText,
-      insertedChars,
-      deletedChars
-    });
-
-    if (hunks.length >= maxHunks) {
-      break;
-    }
-
-    lastUnchangedText = "";
-  }
-
-  return hunks;
 }

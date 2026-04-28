@@ -10,9 +10,7 @@ interface StructuredEditorUnitProps {
   session: DocumentSession;
   rewriteUnit: RewriteUnit;
   slotOverrides: EditorSlotOverrides;
-  busy: boolean;
   registerNode: (slotId: string, node: HTMLSpanElement | null) => void;
-  onChangeSlotText: (slotId: string, value: string) => void;
 }
 
 function buildUnitClassName(hasEditableSlot: boolean) {
@@ -35,9 +33,7 @@ export const StructuredEditorUnit = memo(function StructuredEditorUnit({
   session,
   rewriteUnit,
   slotOverrides,
-  busy,
-  registerNode,
-  onChangeSlotText
+  registerNode
 }: StructuredEditorUnitProps) {
   const slots = resolveRewriteUnitSlots(session, rewriteUnit);
   if (slots.length === 0) {
@@ -59,20 +55,34 @@ export const StructuredEditorUnit = memo(function StructuredEditorUnit({
                 <EditableSlotSpan
                   slot={slot}
                   text={text}
-                  busy={busy}
                   registerNode={registerNode}
-                  onChange={onChangeSlotText}
                   classNameOptions={slotClassOptions}
                 />
               ) : (
-                <span className={slotPresentationClass(slot, slotClassOptions)}>{text}</span>
+                <span
+                  className={slotPresentationClass(slot, slotClassOptions)}
+                  contentEditable={false}
+                >
+                  {text}
+                </span>
               )}
-              {intraUnitSeparator}
+              {intraUnitSeparator ? (
+                <span className="structured-editor-separator" contentEditable={false}>
+                  {intraUnitSeparator}
+                </span>
+              ) : null}
             </Fragment>
           );
         })}
       </span>
-      {trailingSeparator ? <span className="doc-unit-separator">{trailingSeparator}</span> : null}
+      {trailingSeparator ? (
+        <span
+          className="doc-unit-separator structured-editor-separator"
+          contentEditable={false}
+        >
+          {trailingSeparator}
+        </span>
+      ) : null}
     </span>
   );
 });

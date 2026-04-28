@@ -20,7 +20,7 @@ pub(super) fn build_regions(
     regions
         .into_iter()
         .enumerate()
-        .map(|(region_index, region)| build_region(block_anchor, region_index, region))
+        .map(|(region_index, region)| region.into_template_region(block_anchor, region_index))
         .collect()
 }
 
@@ -61,20 +61,6 @@ fn parse_block_regions_for_kind(
         process_markdown_line(&mut out, slice.line, ending);
     }
     out
-}
-
-fn build_region(block_anchor: &str, region_index: usize, region: TextRegion) -> TextTemplateRegion {
-    let (text, separator_after) = split_text_and_trailing_separator(&region.body);
-
-    TextTemplateRegion {
-        anchor: format!("{block_anchor}:r{region_index}"),
-        text,
-        editable: !region.skip_rewrite,
-        role: region.role,
-        presentation: region.presentation,
-        split_mode: region.split_mode,
-        separator_after,
-    }
 }
 
 fn expand_locked_regions(regions: Vec<TextRegion>) -> Vec<TextRegion> {

@@ -1,7 +1,13 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { DiffHunk } from "../../../lib/diff";
 import { diffTextByLines } from "../../../lib/diff";
-import { countCharacters, normalizeNewlines, rewriteUnitSourceText } from "../../../lib/helpers";
+import {
+  countCharacters,
+  mergedTextFromSlots,
+  normalizeNewlines,
+  resolveRewriteUnitSlots,
+  rewriteUnitSourceText
+} from "../../../lib/helpers";
 import type { DocumentSession } from "../../../lib/types";
 import type { EditorSlotOverrides } from "../../../lib/editorSlots";
 import { resolveEditorSlotText } from "../../../lib/editorSlots";
@@ -50,11 +56,19 @@ export function useEditorHunks(options: {
     if (!enabled || !slotBasedMode || !currentSession) return [];
 
     const changed: DiffHunk[] = [];
-    for (const slot of currentSession.writebackSlots) {
-      if (!slot.editable) continue;
+    for (const rewriteUnit of currentSession.rewriteUnits) {
+      const slots = resolveRewriteUnitSlots(currentSession, rewriteUnit);
+      if (!slots.some((slot) => slot.editable)) continue;
 
-      const beforeText = normalizeNewlines(slot.text);
-      const afterText = normalizeNewlines(resolveEditorSlotText(slot, editorSlotOverrides));
+      const beforeText = normalizeNewlines(mergedTextFromSlots(slots));
+      const afterText = normalizeNewlines(
+        mergedTextFromSlots(
+          slots.map((slot) => ({
+            ...slot,
+            text: resolveEditorSlotText(slot, editorSlotOverrides)
+          }))
+        )
+      );
       if (beforeText === afterText) continue;
 
       const diffSpans = diffTextByLines(beforeText, afterText);
@@ -66,7 +80,7 @@ export function useEditorHunks(options: {
       }
 
       changed.push({
-        id: `slot-${slot.id}`,
+        id: `rewrite-unit-${rewriteUnit.id}`,
         sequence: changed.length + 1,
         diffSpans,
         beforeText,

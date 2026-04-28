@@ -24,7 +24,8 @@ import type {
   DocumentSnapshot,
   RewriteMode,
   RunningState,
-  SlotUpdate
+  SlotUpdate,
+  WritebackSlot
 } from "./types";
 
 interface RewriteCommandDeps {
@@ -250,12 +251,72 @@ export function createRewriteCommands(deps: RewriteCommandDeps) {
     return mergedTextFromSlots(updatedSlots);
   }
 
+  interface SlotTextInput {
+    slotId: string;
+    text: string;
+    separatorAfter: string;
+  }
+
+  async function rewriteEditorSlotsCommand(
+    sessionId: string,
+    slots: SlotTextInput[],
+    editorBaseSnapshot: DocumentSnapshot | null | undefined
+  ): Promise<SlotUpdate[]> {
+    if (slots.length === 0) {
+      throw new Error("槽位列表为空。");
+    }
+    const session = deps.getSessionOrThrow(sessionId);
+    deps.ensureNoActiveJob(sessionId, deps.activeEditorSessionError);
+    deps.ensureEditorBaseSnapshotMatches(session, editorBaseSnapshot);
+    deps.ensureSessionSourceMatches(session);
+    ensureSessionCanUseEditorWriteback(session);
+    const settings = deps.getSettings();
+    ensureSettingsReady(settings);
+
+    const writebackSlots: WritebackSlot[] = slots.map((input, i) => ({
+      id: input.slotId,
+      order: i,
+      text: input.text,
+      editable: true,
+      role: "editableText" as const,
+      presentation: null,
+      anchor: null,
+      separatorAfter: input.separatorAfter
+    }));
+
+    if (!writebackSlots.some((s) => s.editable && s.text.trim())) {
+      throw new Error("选区不包含可改写文本。");
+    }
+
+    const request = buildRewriteUnitRequestFromSlots(
+      "editor-selection",
+      writebackSlots,
+      WEB_DOCUMENT_FORMAT
+    );
+    const raw = await callChatModel(
+      settings,
+      rewriteUnitSystemPrompt(),
+      rewriteUnitUserPrompt(request)
+    );
+    const response = parseRewriteUnitResponse(request, raw);
+    const updates: SlotUpdate[] = response.updates.map((update) => {
+      const sourceSlot = writebackSlots.find((s) => s.id === update.slotId);
+      if (!sourceSlot) {
+        throw new Error(`未知 slot_id：${update.slotId}。`);
+      }
+      const normalized = finalizePlainSelectionCandidate(sourceSlot.text, update.text);
+      return { slotId: update.slotId, text: normalized };
+    });
+    return updates;
+  }
+
   return {
     startRewriteCommand,
     pauseRewriteCommand,
     resumeRewriteCommand,
     cancelRewriteCommand,
     retryRewriteUnitCommand,
-    rewriteSelectionCommand
+    rewriteSelectionCommand,
+    rewriteEditorSlotsCommand
   };
 }

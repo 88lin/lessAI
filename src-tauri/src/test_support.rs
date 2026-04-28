@@ -9,12 +9,12 @@ use uuid::Uuid;
 use zip::{write::FileOptions, ZipWriter};
 
 use crate::{
+    documents::{capability_gate, DocumentCapabilityPolicy, LoadedDocumentSource},
     models::{
-        DiffResult, DocumentSession, RewriteUnitStatus, RunningState, SegmentationPreset,
-        SuggestionDecision,
+        DiffResult, DocumentSession, RewriteUnitStatus, SegmentationPreset, SuggestionDecision,
     },
     rewrite_unit::{RewriteSuggestion, RewriteUnit, SlotUpdate, WritebackSlot},
-    session_capability_models::{CapabilityGate, DocumentSessionCapabilities},
+    session_builder::{build_clean_session, CleanSessionBuildInput},
 };
 
 pub(crate) fn unique_test_dir(name: &str) -> PathBuf {
@@ -283,33 +283,29 @@ pub(crate) fn sample_clean_session(
     source_text: &str,
 ) -> DocumentSession {
     let now = Utc::now();
-    let mut session = DocumentSession {
-        id: id.to_string(),
-        title: "示例".to_string(),
-        document_path: document_path.to_string(),
+    let loaded = LoadedDocumentSource {
         source_text: source_text.to_string(),
-        source_snapshot: None,
         template_kind: None,
         template_signature: None,
         slot_structure_signature: None,
         template_snapshot: None,
-        normalized_text: source_text.to_string(),
-        capabilities: DocumentSessionCapabilities {
-            source_writeback: CapabilityGate::allowed(),
-            editor_writeback: CapabilityGate::allowed(),
-            ..Default::default()
-        },
-        segmentation_preset: Some(SegmentationPreset::Paragraph),
-        rewrite_headings: Some(false),
         writeback_slots: Vec::new(),
-        rewrite_units: Vec::new(),
-        suggestions: Vec::new(),
-        next_suggestion_sequence: 1,
-        status: RunningState::Idle,
-        created_at: now,
-        updated_at: now,
+        capability_policy: DocumentCapabilityPolicy::new(
+            capability_gate(true, None),
+            capability_gate(true, None),
+        ),
     };
-    crate::documents::hydrate_session_capabilities(&mut session);
+    let mut session = build_clean_session(CleanSessionBuildInput {
+        session_id: id.to_string(),
+        canonical_path: Path::new(document_path),
+        document_path: document_path.to_string(),
+        loaded,
+        source_snapshot: None,
+        segmentation_preset: SegmentationPreset::Paragraph,
+        rewrite_headings: false,
+        created_at: now,
+    });
+    session.title = "示例".to_string();
     session
 }
 

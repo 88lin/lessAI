@@ -1,6 +1,6 @@
 use quick_xml::events::{BytesStart, Event};
 
-use super::{model::LockedDisplayMode, placeholders};
+use super::{model::LockedDisplayMode, placeholders, xml::local_name};
 
 pub(crate) struct InlineSpecialRegion {
     pub text: String,
@@ -154,11 +154,4 @@ fn contains_local_tag(events: &[Event<'static>], tag: &[u8]) -> bool {
         Event::End(e) => local_name(e.name().as_ref()) == tag,
         _ => false,
     })
-}
-
-fn local_name(name: &[u8]) -> &[u8] {
-    match name.iter().rposition(|byte| *byte == b':') {
-        Some(index) if index + 1 < name.len() => &name[index + 1..],
-        _ => name,
-    }
 }

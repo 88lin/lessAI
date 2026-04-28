@@ -147,11 +147,12 @@ fn parse_json_chat_response_body(body: &str) -> Result<String, String> {
 fn body_preview(body: &str) -> String {
     let trimmed = body.trim();
     let limit = 300usize;
-    if trimmed.len() <= limit {
+    let char_count = trimmed.chars().count();
+    if char_count <= limit {
         trimmed.to_string()
     } else {
-        let preview = &trimmed[..limit];
-        format!("{preview}…（共 {} 字符）", trimmed.len())
+        let preview = trimmed.chars().take(limit).collect::<String>();
+        format!("{preview}…（共 {char_count} 字符）")
     }
 }
 
@@ -380,4 +381,18 @@ fn extract_text_field(value: &Value) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::body_preview;
+
+    #[test]
+    fn body_preview_truncates_utf8_without_panicking() {
+        let body = "中文🙂".repeat(120);
+        let preview = body_preview(&body);
+
+        assert!(preview.ends_with("…（共 360 字符）"));
+        assert!(preview.starts_with("中文🙂中文🙂"));
+    }
 }
