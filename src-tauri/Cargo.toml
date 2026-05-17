@@ -1,6 +1,6 @@
 [package]
 name = "lessai"
-version = "0.3.4"
+version = "0.3.6"
 description = "LessAI desktop rewrite studio"
 edition = "2021"
 license = "MIT"

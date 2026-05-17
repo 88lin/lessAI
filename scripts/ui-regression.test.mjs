@@ -179,6 +179,7 @@ const webBridgeTextCore = read("src/lib/webBridgeTextCore.ts");
 const webBridgeSessionUtils = read("src/lib/webBridgeSessionUtils.ts");
 const settingsTypes = read("src/lib/types.ts");
 const settingsConstants = read("src/lib/constants.ts");
+const promptPresetsSource = read("src/lib/promptPresets.ts");
 const frontendDiff = read("src/lib/diff.ts");
 const webBridgeSelectionText = read("src/lib/webBridgeSelectionText.ts");
 const rewriteStrategyPage = read("src/components/settings/RewriteStrategyPage.tsx");
@@ -287,6 +288,10 @@ assertIncludes(settingsConstants, "timeoutMs: 45_000");
 assertIncludes(rustDomainModels, "timeout_ms: 45_000");
 assertIncludes(settingsConstants, "promptPresetId: \"humanizer_zh\"");
 assertIncludes(rustDomainModels, "\"humanizer_zh\".to_string()");
+assertIncludes(promptPresetsSource, 'from "../../prompt/3.txt?raw"');
+assertIncludes(promptPresetsSource, 'id: "academic_aigc_reduction"');
+assertIncludes(promptPresetsSource, 'label: "方案 3：学术 AIGC 痕迹深度压降"');
+assertIncludes(promptPresetsSource, 'label: "方案 4：学术自然优化"');
 for (const unwantedMetaPattern of [
   "i am claude",
   "made by anthropic",

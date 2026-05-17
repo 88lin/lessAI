@@ -1,5 +1,6 @@
 import aigcV1Prompt from "../../prompt/1.txt?raw";
 import humanizerZhPrompt from "../../prompt/2.txt?raw";
+import academicAigcReductionPrompt from "../../prompt/3.txt?raw";
 import thesisAiReductionPrompt from "../../prompt/4.txt?raw";
 import type { PromptPresetId } from "./types";
 
@@ -24,8 +25,14 @@ export const PROMPT_PRESETS: ReadonlyArray<PromptPresetDefinition> = [
     content: humanizerZhPrompt
   },
   {
+    id: "academic_aigc_reduction",
+    label: "方案 3：学术 AIGC 痕迹深度压降",
+    hint: "更偏中文论文 AIGC 高风险模式处理，压低套话、三段式与泛化表达",
+    content: academicAigcReductionPrompt
+  },
+  {
     id: "thesis_ai_reduction",
-    label: "方案 3：学术自然优化",
+    label: "方案 4：学术自然优化",
     hint: "更偏学术论文人性化改写，降低机器感，同时尽量保留原有信息密度",
     content: thesisAiReductionPrompt
   }
