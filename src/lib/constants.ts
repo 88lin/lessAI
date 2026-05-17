@@ -47,9 +47,9 @@ export const TAURI_EVENTS = {
 } as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  baseUrl: "https://api.deepseek.com/v1",
+  baseUrl: "https://cliproxy.eqing.tech/v1",
   apiKey: "",
-  model: "deepseek-v4-flash",
+  model: "gpt-5.5",
   updateProxy: "",
   timeoutMs: 45_000,
   temperature: 0.8,

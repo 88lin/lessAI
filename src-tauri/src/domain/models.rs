@@ -45,9 +45,9 @@ pub struct PromptTemplate {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            base_url: "https://api.deepseek.com/v1".to_string(),
+            base_url: "https://cliproxy.eqing.tech/v1".to_string(),
             api_key: String::new(),
-            model: "deepseek-v4-flash".to_string(),
+            model: "gpt-5.5".to_string(),
             update_proxy: String::new(),
             timeout_ms: 45_000,
             temperature: 0.8,

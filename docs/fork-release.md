@@ -36,7 +36,7 @@ When you push to `master`, GitHub Actions:
 
 1. Reads the base version from `src-tauri/tauri.conf.json`.
 2. Publishes the first fork release as `v0.3.4` if that tag does not exist.
-3. Publishes later fork releases as `v0.3.4.1`, `v0.3.4.2`, and so on.
+3. Publishes later fork releases as `v0.3.4.1`, `v0.3.6`, and so on.
 4. Uses Tauri-compatible internal versions such as `0.3.4` and `0.3.4-1`.
 5. Builds Windows, Linux, and macOS installers.
 6. Publishes a GitHub Release with installers, signatures, `latest.json`, `system-packages.json`, and checksums.

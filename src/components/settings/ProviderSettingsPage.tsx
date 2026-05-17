@@ -49,7 +49,7 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
           <input
             value={settings.baseUrl}
             onChange={(event) => onUpdateStringSetting("baseUrl", event.target.value)}
-            placeholder="https://api.deepseek.com/v1"
+            placeholder="https://cliproxy.eqing.tech/v1"
           />
         </label>
         <label className="field">
@@ -66,7 +66,7 @@ export const ProviderSettingsPage = memo(function ProviderSettingsPage({
           <input
             value={settings.model}
             onChange={(event) => onUpdateStringSetting("model", event.target.value)}
-            placeholder="deepseek-v4-flash"
+            placeholder="gpt-5.5"
           />
         </label>
         <label className="field field-inline">
